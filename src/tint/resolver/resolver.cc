@@ -79,8 +79,7 @@
 #include "src/tint/utils/scoped_assignment.h"
 #include "src/tint/utils/transform.h"
 
-namespace tint {
-namespace resolver {
+namespace tint::resolver {
 
 Resolver::Resolver(ProgramBuilder* builder)
     : builder_(builder),
@@ -518,7 +517,7 @@ void Resolver::SetShadows() {
         [&](sem::LocalVariable* local) { local->SetShadows(Sem(it.second)); },
         [&](sem::Parameter* param) { param->SetShadows(Sem(it.second)); });
   }
-}  // namespace resolver
+}
 
 sem::GlobalVariable* Resolver::GlobalVariable(const ast::Variable* var) {
   auto* sem = Variable(var, VariableKind::kGlobal);
@@ -867,6 +866,9 @@ sem::Statement* Resolver::Statement(const ast::Statement* stmt) {
       [&](const ast::DiscardStatement* d) { return DiscardStatement(d); },
       [&](const ast::FallthroughStatement* f) {
         return FallthroughStatement(f);
+      },
+      [&](const ast::IncrementDecrementStatement* i) {
+        return IncrementDecrementStatement(i);
       },
       [&](const ast::ReturnStatement* r) { return ReturnStatement(r); },
       [&](const ast::VariableDeclStatement* v) {
@@ -2685,6 +2687,21 @@ sem::Statement* Resolver::FallthroughStatement(
   });
 }
 
+sem::Statement* Resolver::IncrementDecrementStatement(
+    const ast::IncrementDecrementStatement* stmt) {
+  auto* sem = builder_->create<sem::Statement>(
+      stmt, current_compound_statement_, current_function_);
+  return StatementScope(stmt, sem, [&] {
+    auto* lhs = Expression(stmt->lhs);
+    if (!lhs) {
+      return false;
+    }
+    sem->Behaviors() = lhs->Behaviors();
+
+    return ValidateIncrementDecrementStatement(stmt);
+  });
+}
+
 bool Resolver::ApplyStorageClassUsageToType(ast::StorageClass sc,
                                             sem::Type* ty,
                                             const Source& usage) {
@@ -2910,5 +2927,4 @@ std::size_t Resolver::TypeConstructorSig::Hasher::operator()(
   return utils::Hash(sig.type, sig.parameters);
 }
 
-}  // namespace resolver
-}  // namespace tint
+}  // namespace tint::resolver

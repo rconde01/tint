@@ -26,9 +26,7 @@
 #include "src/tint/reader/spirv/construct.h"
 #include "src/tint/reader/spirv/parser_impl.h"
 
-namespace tint {
-namespace reader {
-namespace spirv {
+namespace tint::reader::spirv {
 
 /// Kinds of CFG edges.
 //
@@ -70,7 +68,8 @@ enum class EdgeKind {
   kForward
 };
 
-enum : uint32_t { kInvalidBlockPos = ~(0u) };
+/// The number used to represent an invalid block position
+static constexpr uint32_t kInvalidBlockPos = ~0u;
 
 /// Bookkeeping info for a basic block.
 struct BlockInfo {
@@ -177,6 +176,10 @@ struct BlockInfo {
   std::vector<uint32_t> phis_needing_state_vars;
 };
 
+/// Writes the BlockInfo to the ostream
+/// @param o the ostream
+/// @param bi the BlockInfo
+/// @returns the ostream so calls can be chained
 inline std::ostream& operator<<(std::ostream& o, const BlockInfo& bi) {
   o << "BlockInfo{"
     << " id: " << bi.id << " pos: " << bi.pos
@@ -314,6 +317,10 @@ struct DefInfo {
   SkipReason skip = SkipReason::kDontSkip;
 };
 
+/// Writes the DefInfo to the ostream
+/// @param o the ostream
+/// @param di the DefInfo
+/// @returns the ostream so calls can be chained
 inline std::ostream& operator<<(std::ostream& o, const DefInfo& di) {
   o << "DefInfo{"
     << " inst.result_id: " << di.inst.result_id()
@@ -1297,8 +1304,6 @@ class FunctionEmitter {
   const EntryPointInfo* ep_info_ = nullptr;
 };
 
-}  // namespace spirv
-}  // namespace reader
-}  // namespace tint
+}  // namespace tint::reader::spirv
 
 #endif  // SRC_TINT_READER_SPIRV_FUNCTION_H_

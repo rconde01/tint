@@ -18,18 +18,15 @@
 #include "src/tint/sem/statement.h"
 
 // Forward declarations
-namespace tint {
-namespace ast {
+namespace tint::ast {
 class IfStatement;
 class ElseStatement;
-}  // namespace ast
-namespace sem {
+}  // namespace tint::ast
+namespace tint::sem {
 class Expression;
-}  // namespace sem
-}  // namespace tint
+}  // namespace tint::sem
 
-namespace tint {
-namespace sem {
+namespace tint::sem {
 
 /// Holds semantic information about an if statement
 class IfStatement final : public Castable<IfStatement, CompoundStatement> {
@@ -92,7 +89,6 @@ class ElseStatement final : public Castable<ElseStatement, CompoundStatement> {
   const Expression* condition_ = nullptr;
 };
 
-}  // namespace sem
-}  // namespace tint
+}  // namespace tint::sem
 
 #endif  // SRC_TINT_SEM_IF_STATEMENT_H_

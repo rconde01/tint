@@ -30,14 +30,12 @@
 // Forward declarations
 namespace tint {
 class ProgramBuilder;
-namespace ast {
-class Type;
-}  // namespace ast
 }  // namespace tint
+namespace tint::ast {
+class Type;
+}  // namespace tint::ast
 
-namespace tint {
-namespace reader {
-namespace spirv {
+namespace tint::reader::spirv {
 
 /// Type is the base class for all types
 class Type : public Castable<Type> {
@@ -89,6 +87,7 @@ class Type : public Castable<Type> {
 #endif  // NDEBUG
 };
 
+/// TypeList is a list of Types
 using TypeList = std::vector<const Type*>;
 
 /// `void` type
@@ -604,8 +603,6 @@ class TypeManager {
   std::unique_ptr<State> state;
 };
 
-}  // namespace spirv
-}  // namespace reader
-}  // namespace tint
+}  // namespace tint::reader::spirv
 
 #endif  // SRC_TINT_READER_SPIRV_PARSER_TYPE_H_

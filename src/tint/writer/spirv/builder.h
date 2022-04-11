@@ -38,20 +38,18 @@
 #include "src/tint/sem/builtin.h"
 #include "src/tint/sem/storage_texture_type.h"
 #include "src/tint/writer/spirv/function.h"
+#include "src/tint/writer/spirv/generator.h"
 #include "src/tint/writer/spirv/scalar_constant.h"
 
-namespace tint {
-
 // Forward declarations
-namespace sem {
+namespace tint::sem {
 class Call;
 class Reference;
 class TypeConstructor;
 class TypeConversion;
-}  // namespace sem
+}  // namespace tint::sem
 
-namespace writer {
-namespace spirv {
+namespace tint::writer::spirv {
 
 /// The result of sanitizing a program for generation.
 struct SanitizedResult {
@@ -60,13 +58,9 @@ struct SanitizedResult {
 };
 
 /// Sanitize a program in preparation for generating SPIR-V.
-/// @param emit_vertex_point_size `true` to emit a vertex point size builtin
-/// @param disable_workgroup_init `true` to disable workgroup memory zero
-/// @returns the sanitized program and any supplementary information
-SanitizedResult Sanitize(const Program* program,
-                         bool emit_vertex_point_size = false,
-                         bool disable_workgroup_init = false,
-                         bool generate_external_texture_bindings = false);
+/// @program The program to sanitize
+/// @param options The SPIR-V generator options.
+SanitizedResult Sanitize(const Program* program, const Options& options);
 
 /// Builder class to create SPIR-V instructions from a module.
 class Builder {
@@ -658,8 +652,6 @@ class Builder {
   std::vector<Backedge> backedge_stack_;
 };
 
-}  // namespace spirv
-}  // namespace writer
-}  // namespace tint
+}  // namespace tint::writer::spirv
 
 #endif  // SRC_TINT_WRITER_SPIRV_BUILDER_H_

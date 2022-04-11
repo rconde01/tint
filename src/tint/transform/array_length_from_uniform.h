@@ -21,12 +21,12 @@
 #include "src/tint/sem/binding_point.h"
 #include "src/tint/transform/transform.h"
 
-namespace tint {
-
 // Forward declarations
+namespace tint {
 class CloneContext;
+}  // namespace tint
 
-namespace transform {
+namespace tint::transform {
 
 /// ArrayLengthFromUniform is a transform that implements calls to arrayLength()
 /// by calculating the length from the total size of the storage buffer, which
@@ -98,7 +98,7 @@ class ArrayLengthFromUniform final
     ~Result() override;
 
     /// Indices into the UBO that are statically used.
-    const std::unordered_set<uint32_t> used_size_indices;
+    std::unordered_set<uint32_t> used_size_indices;
   };
 
   /// @param program the program to inspect
@@ -119,7 +119,6 @@ class ArrayLengthFromUniform final
            DataMap& outputs) const override;
 };
 
-}  // namespace transform
-}  // namespace tint
+}  // namespace tint::transform
 
 #endif  // SRC_TINT_TRANSFORM_ARRAY_LENGTH_FROM_UNIFORM_H_

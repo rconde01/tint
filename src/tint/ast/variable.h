@@ -23,14 +23,15 @@
 #include "src/tint/ast/expression.h"
 #include "src/tint/ast/storage_class.h"
 
-namespace tint {
-namespace ast {
-
 // Forward declarations
+namespace tint::ast {
 class BindingAttribute;
 class GroupAttribute;
 class LocationAttribute;
 class Type;
+}  // namespace tint::ast
+
+namespace tint::ast {
 
 /// VariableBindingPoint holds a group and binding attribute.
 struct VariableBindingPoint {
@@ -180,7 +181,6 @@ class Variable final : public Castable<Variable, Node> {
 /// A list of variables
 using VariableList = std::vector<const Variable*>;
 
-}  // namespace ast
-}  // namespace tint
+}  // namespace tint::ast
 
 #endif  // SRC_TINT_AST_VARIABLE_H_

@@ -39,20 +39,18 @@
 #include "src/tint/scope_stack.h"
 #include "src/tint/sem/struct.h"
 #include "src/tint/writer/array_length_from_uniform_options.h"
+#include "src/tint/writer/msl/generator.h"
 #include "src/tint/writer/text_generator.h"
 
-namespace tint {
-
 // Forward declarations
-namespace sem {
+namespace tint::sem {
 class Call;
 class Builtin;
 class TypeConstructor;
 class TypeConversion;
-}  // namespace sem
+}  // namespace tint::sem
 
-namespace writer {
-namespace msl {
+namespace tint::writer::msl {
 
 /// The result of sanitizing a program for generation.
 struct SanitizedResult {
@@ -73,19 +71,10 @@ struct SanitizedResult {
 };
 
 /// Sanitize a program in preparation for generating MSL.
-/// @param buffer_size_ubo_index the index to use for the buffer size UBO
-/// @param fixed_sample_mask the fixed sample mask to use for fragment shaders
-/// @param emit_vertex_point_size `true` to emit a vertex point size builtin
-/// @param disable_workgroup_init `true` to disable workgroup memory zero
+/// @program The program to sanitize
+/// @param options The MSL generator options.
 /// @returns the sanitized program and any supplementary information
-SanitizedResult Sanitize(
-    const Program* program,
-    uint32_t buffer_size_ubo_index,
-    uint32_t fixed_sample_mask = 0xFFFFFFFF,
-    bool emit_vertex_point_size = false,
-    bool disable_workgroup_init = false,
-    bool generate_external_texture_bindings = false,
-    const ArrayLengthFromUniformOptions& array_length_from_uniform = {});
+SanitizedResult Sanitize(const Program* program, const Options& options);
 
 /// Implementation class for MSL generator
 class GeneratorImpl : public TextGenerator {
@@ -444,8 +433,6 @@ class GeneratorImpl : public TextGenerator {
   std::unordered_map<uint32_t, std::string> int_dot_funcs_;
 };
 
-}  // namespace msl
-}  // namespace writer
-}  // namespace tint
+}  // namespace tint::writer::msl
 
 #endif  // SRC_TINT_WRITER_MSL_GENERATOR_IMPL_H_

@@ -20,13 +20,12 @@
 
 #include "src/tint/writer/text.h"
 
-namespace tint {
-
 // Forward declarations
+namespace tint {
 class Program;
+}  // namespace tint
 
-namespace writer {
-namespace wgsl {
+namespace tint::writer::wgsl {
 
 class GeneratorImpl;
 
@@ -62,8 +61,6 @@ struct Result {
 /// @returns the resulting WGSL and supplementary information
 Result Generate(const Program* program, const Options& options);
 
-}  // namespace wgsl
-}  // namespace writer
-}  // namespace tint
+}  // namespace tint::writer::wgsl
 
 #endif  // SRC_TINT_WRITER_WGSL_GENERATOR_H_

@@ -17,9 +17,7 @@
 #include "src/tint/reader/spirv/parser_impl_test_helper.h"
 #include "src/tint/reader/spirv/spirv_tools_helpers_test.h"
 
-namespace tint {
-namespace reader {
-namespace spirv {
+namespace tint::reader::spirv {
 namespace {
 
 using ::testing::Eq;
@@ -260,25 +258,6 @@ TEST_F(SpvParserMemoryTest,
   const auto got = test::ToString(p->program(), ast_body);
   const auto* expected = "x_2 = x_1;";
   EXPECT_THAT(got, HasSubstr(expected));
-}
-
-TEST_F(SpvParserMemoryTest, EmitStatement_AccessChain_NoOperands) {
-  auto err = test::AssembleFailure(Preamble() + R"(
-     %void = OpTypeVoid
-     %voidfn = OpTypeFunction %void
-     %ty = OpTypeInt 32 0
-     %val = OpConstant %ty 42
-     %ptr_ty = OpTypePointer Private %ty
-     %1 = OpVariable %ptr_ty Private
-     %100 = OpFunction %void None %voidfn
-     %entry = OpLabel
-
-     %2 = OpAccessChain %ptr_ty  ; Needs a base operand
-     OpStore %1 %val
-     OpReturn
-  )");
-  EXPECT_THAT(err,
-              Eq("16:5: Expected operand, found next instruction instead."));
 }
 
 TEST_F(SpvParserMemoryTest, EmitStatement_AccessChain_BaseIsNotPointer) {
@@ -1309,6 +1288,4 @@ TEST_F(SpvParserMemoryTest, InvalidPointer_ConstantNull_IsError) {
 }
 
 }  // namespace
-}  // namespace spirv
-}  // namespace reader
-}  // namespace tint
+}  // namespace tint::reader::spirv

@@ -22,8 +22,7 @@
 #include "src/tint/castable.h"
 #include "src/tint/program.h"
 
-namespace tint {
-namespace transform {
+namespace tint::transform {
 
 /// Data is the base class for transforms that accept extra input or emit extra
 /// output information along with a Program.
@@ -89,6 +88,13 @@ class DataMap {
   /// Put()
   template <typename T>
   T const* Get() const {
+    return const_cast<DataMap*>(this)->Get<T>();
+  }
+
+  /// @returns a pointer to the Data placed into the DataMap with a call to
+  /// Put()
+  template <typename T>
+  T* Get() {
     auto it = map_.find(&TypeInfo::Of<T>());
     if (it == map_.end()) {
       return nullptr;
@@ -193,7 +199,6 @@ class Transform : public Castable<Transform> {
                                            const sem::Type* ty);
 };
 
-}  // namespace transform
-}  // namespace tint
+}  // namespace tint::transform
 
 #endif  // SRC_TINT_TRANSFORM_TRANSFORM_H_

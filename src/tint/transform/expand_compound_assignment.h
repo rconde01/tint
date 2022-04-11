@@ -17,8 +17,7 @@
 
 #include "src/tint/transform/transform.h"
 
-namespace tint {
-namespace transform {
+namespace tint::transform {
 
 /// Converts compound assignment statements to regular assignment statements,
 /// hoisting the LHS expression if necessary.
@@ -36,6 +35,9 @@ namespace transform {
 ///   let _idx = bar();
 ///   (*_vec)[_idx] = (*_vec)[_idx] * 2.0;
 /// ```
+///
+/// This transform also handles increment and decrement statements in the same
+/// manner, by replacing `i++` with `i = i + 1`.
 class ExpandCompoundAssignment
     : public Castable<ExpandCompoundAssignment, Transform> {
  public:
@@ -62,7 +64,6 @@ class ExpandCompoundAssignment
            DataMap& outputs) const override;
 };
 
-}  // namespace transform
-}  // namespace tint
+}  // namespace tint::transform
 
 #endif  // SRC_TINT_TRANSFORM_EXPAND_COMPOUND_ASSIGNMENT_H_

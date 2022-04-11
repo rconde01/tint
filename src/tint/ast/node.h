@@ -19,18 +19,16 @@
 
 #include "src/tint/clone_context.h"
 
-namespace tint {
-
 // Forward declarations
+namespace tint {
 class CloneContext;
-namespace sem {
+}  // namespace tint
+namespace tint::sem {
 class Type;
-}
-namespace sem {
 class Info;
-}
+}  // namespace tint::sem
 
-namespace ast {
+namespace tint::ast {
 
 /// AST base class node
 class Node : public Castable<Node, Cloneable> {
@@ -55,7 +53,9 @@ class Node : public Castable<Node, Cloneable> {
   Node(const Node&) = delete;
 };
 
-}  // namespace ast
+}  // namespace tint::ast
+
+namespace tint {
 
 /// @param node a pointer to an AST node
 /// @returns the ProgramID of the given AST node.

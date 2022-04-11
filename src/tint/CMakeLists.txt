@@ -136,6 +136,8 @@ set(TINT_LIB_SRCS
   ast/identifier_expression.h
   ast/if_statement.cc
   ast/if_statement.h
+  ast/increment_decrement_statement.cc
+  ast/increment_decrement_statement.h
   ast/int_literal_expression.cc
   ast/int_literal_expression.h
   ast/internal_attribute.cc
@@ -681,6 +683,7 @@ if(TINT_BUILD_TESTS)
     ast/id_attribute_test.cc
     ast/identifier_expression_test.cc
     ast/if_statement_test.cc
+    ast/increment_decrement_statement_test.cc
     ast/index_accessor_expression_test.cc
     ast/int_literal_expression_test.cc
     ast/interpolate_attribute_test.cc
@@ -744,6 +747,7 @@ if(TINT_BUILD_TESTS)
     resolver/entry_point_validation_test.cc
     resolver/function_validation_test.cc
     resolver/host_shareable_validation_test.cc
+    resolver/increment_decrement_validation_test.cc
     resolver/inferred_type_test.cc
     resolver/is_host_shareable_test.cc
     resolver/is_storeable_test.cc
@@ -899,6 +903,7 @@ if(TINT_BUILD_TESTS)
       reader/wgsl/parser_impl_global_variable_decl_test.cc
       reader/wgsl/parser_impl_if_stmt_test.cc
       reader/wgsl/parser_impl_inclusive_or_expression_test.cc
+      reader/wgsl/parser_impl_increment_decrement_stmt_test.cc
       reader/wgsl/parser_impl_logical_and_expression_test.cc
       reader/wgsl/parser_impl_logical_or_expression_test.cc
       reader/wgsl/parser_impl_loop_stmt_test.cc

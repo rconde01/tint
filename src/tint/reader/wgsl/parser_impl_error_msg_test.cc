@@ -14,9 +14,7 @@
 
 #include "src/tint/reader/wgsl/parser_impl_test_helper.h"
 
-namespace tint {
-namespace reader {
-namespace wgsl {
+namespace tint::reader::wgsl {
 namespace {
 
 const diag::Formatter::Style formatter_style{
@@ -1118,6 +1116,14 @@ fn f() { return 1 | >; }
 )");
 }
 
+TEST_F(ParserImplErrorTest, PostfixIncrementAsExpr) {
+  EXPECT("fn f() { var x : i32; let y = x++; }",
+         R"(test.wgsl:1:32 error: expected ';' for variable declaration
+fn f() { var x : i32; let y = x++; }
+                               ^^
+)");
+}
+
 TEST_F(ParserImplErrorTest, RelationalInvalidExpr) {
   EXPECT("fn f() { return 1 < >; }",
          R"(test.wgsl:1:21 error: unable to parse right side of < expression
@@ -1244,6 +1250,4 @@ TEST_F(ParserImplErrorTest, InvalidUTF8) {
 }
 
 }  // namespace
-}  // namespace wgsl
-}  // namespace reader
-}  // namespace tint
+}  // namespace tint::reader::wgsl

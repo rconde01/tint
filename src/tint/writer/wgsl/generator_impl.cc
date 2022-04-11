@@ -56,9 +56,7 @@
 #include "src/tint/utils/scoped_assignment.h"
 #include "src/tint/writer/float_to_string.h"
 
-namespace tint {
-namespace writer {
-namespace wgsl {
+namespace tint::writer::wgsl {
 
 GeneratorImpl::GeneratorImpl(const Program* program) : TextGenerator(program) {}
 
@@ -924,6 +922,9 @@ bool GeneratorImpl::EmitStatement(const ast::Statement* stmt) {
       [&](const ast::DiscardStatement* d) { return EmitDiscard(d); },
       [&](const ast::FallthroughStatement* f) { return EmitFallthrough(f); },
       [&](const ast::IfStatement* i) { return EmitIf(i); },
+      [&](const ast::IncrementDecrementStatement* l) {
+        return EmitIncrementDecrement(l);
+      },
       [&](const ast::LoopStatement* l) { return EmitLoop(l); },
       [&](const ast::ForLoopStatement* l) { return EmitForLoop(l); },
       [&](const ast::ReturnStatement* r) { return EmitReturn(r); },
@@ -1074,6 +1075,16 @@ bool GeneratorImpl::EmitIf(const ast::IfStatement* stmt) {
   return true;
 }
 
+bool GeneratorImpl::EmitIncrementDecrement(
+    const ast::IncrementDecrementStatement* stmt) {
+  auto out = line();
+  if (!EmitExpression(out, stmt->lhs)) {
+    return false;
+  }
+  out << (stmt->increment ? "++" : "--") << ";";
+  return true;
+}
+
 bool GeneratorImpl::EmitDiscard(const ast::DiscardStatement*) {
   line() << "discard;";
   return true;
@@ -1212,6 +1223,4 @@ bool GeneratorImpl::EmitSwitch(const ast::SwitchStatement* stmt) {
   return true;
 }
 
-}  // namespace wgsl
-}  // namespace writer
-}  // namespace tint
+}  // namespace tint::writer::wgsl

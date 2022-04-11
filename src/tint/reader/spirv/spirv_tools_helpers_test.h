@@ -18,28 +18,17 @@
 #include <string>
 #include <vector>
 
-namespace tint {
-namespace reader {
-namespace spirv {
-namespace test {
+namespace tint::reader::spirv::test {
 
 /// @param spirv_assembly SPIR-V assembly text
 /// @returns the SPIR-V module assembled from the given text.  Numeric IDs
 /// are preserved.
 std::vector<uint32_t> Assemble(const std::string& spirv_assembly);
 
-/// Attempts to assemble given SPIR-V assembly text.  Expect it to fail.
-/// @param spirv_assembly the SPIR-V assembly
-/// @returns the failure message.
-std::string AssembleFailure(const std::string& spirv_assembly);
-
 /// @param spirv_module a SPIR-V binary module
 /// @returns the disassembled module
 std::string Disassemble(const std::vector<uint32_t>& spirv_module);
 
-}  // namespace test
-}  // namespace spirv
-}  // namespace reader
-}  // namespace tint
+}  // namespace tint::reader::spirv::test
 
 #endif  // SRC_TINT_READER_SPIRV_SPIRV_TOOLS_HELPERS_TEST_H_

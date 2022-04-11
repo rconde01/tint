@@ -20,11 +20,12 @@
 #include "src/tint/ast/attribute.h"
 #include "src/tint/ast/type.h"
 
-namespace tint {
-namespace ast {
-
-// Forward declarations.
+// Forward declarations
+namespace tint::ast {
 class Expression;
+}  // namespace tint::ast
+
+namespace tint::ast {
 
 /// An array type. If size is zero then it is a runtime array.
 class Array final : public Castable<Array, Type> {
@@ -69,7 +70,6 @@ class Array final : public Castable<Array, Type> {
   const AttributeList attributes;
 };
 
-}  // namespace ast
-}  // namespace tint
+}  // namespace tint::ast
 
 #endif  // SRC_TINT_AST_ARRAY_H_

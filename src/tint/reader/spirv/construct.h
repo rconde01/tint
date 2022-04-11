@@ -20,9 +20,7 @@
 #include <string>
 #include <vector>
 
-namespace tint {
-namespace reader {
-namespace spirv {
+namespace tint::reader::spirv {
 
 /// A structured control flow construct, consisting of a set of basic blocks.
 /// A construct is a span of blocks in the computed block order,
@@ -151,6 +149,7 @@ struct Construct {
   const uint32_t scope_end_pos = 0;
 };
 
+/// ConstructList is a list of Construct unique pointers.
 using ConstructList = std::vector<std::unique_ptr<Construct>>;
 
 /// Converts a construct kind to a string.
@@ -271,8 +270,6 @@ inline std::string ToString(const ConstructList& cl) {
   return ss.str();
 }
 
-}  // namespace spirv
-}  // namespace reader
-}  // namespace tint
+}  // namespace tint::reader::spirv
 
 #endif  // SRC_TINT_READER_SPIRV_CONSTRUCT_H_

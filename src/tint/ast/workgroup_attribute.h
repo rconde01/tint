@@ -20,11 +20,12 @@
 
 #include "src/tint/ast/attribute.h"
 
-namespace tint {
-namespace ast {
-
-// Forward declaration
+// Forward declarations
+namespace tint::ast {
 class Expression;
+}  // namespace tint::ast
+
+namespace tint::ast {
 
 /// A workgroup attribute
 class WorkgroupAttribute final
@@ -64,7 +65,6 @@ class WorkgroupAttribute final
   const ast::Expression* const z = nullptr;
 };
 
-}  // namespace ast
-}  // namespace tint
+}  // namespace tint::ast
 
 #endif  // SRC_TINT_AST_WORKGROUP_ATTRIBUTE_H_

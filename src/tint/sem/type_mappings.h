@@ -17,10 +17,8 @@
 
 #include <type_traits>
 
-namespace tint {
-
 // Forward declarations
-namespace ast {
+namespace tint::ast {
 class Array;
 class CallExpression;
 class Expression;
@@ -36,10 +34,8 @@ class StructMember;
 class Type;
 class TypeDecl;
 class Variable;
-}  // namespace ast
-
-namespace sem {
-// Forward declarations
+}  // namespace tint::ast
+namespace tint::sem {
 class Array;
 class Call;
 class Expression;
@@ -54,6 +50,9 @@ class Struct;
 class StructMember;
 class Type;
 class Variable;
+}  // namespace tint::sem
+
+namespace tint::sem {
 
 /// TypeMappings is a struct that holds undefined `operator()` methods that's
 /// used by SemanticNodeTypeFor to map AST / type node types to their
@@ -85,7 +84,6 @@ template <typename AST_OR_TYPE>
 using SemanticNodeTypeFor = typename std::remove_pointer<decltype(
     TypeMappings()(std::declval<AST_OR_TYPE*>()))>::type;
 
-}  // namespace sem
-}  // namespace tint
+}  // namespace tint::sem
 
 #endif  // SRC_TINT_SEM_TYPE_MAPPINGS_H_

@@ -25,9 +25,7 @@
 #include "src/tint/writer/hlsl/generator.h"
 #include "src/tint/writer/hlsl/generator_impl.h"
 
-namespace tint {
-namespace writer {
-namespace hlsl {
+namespace tint::writer::hlsl {
 
 /// Helper class for testing
 template <typename BODY>
@@ -78,11 +76,7 @@ class TestHelperBase : public BODY, public ProgramBuilder {
           << formatter.format(program->Diagnostics());
     }();
 
-    auto sanitized_result =
-        Sanitize(program.get(), options.root_constant_binding_point,
-                 options.disable_workgroup_init,
-                 options.generate_external_texture_bindings,
-                 options.array_length_from_uniform);
+    auto sanitized_result = Sanitize(program.get(), options);
     [&]() {
       ASSERT_TRUE(sanitized_result.program.IsValid())
           << formatter.format(sanitized_result.program.Diagnostics());
@@ -111,13 +105,16 @@ class TestHelperBase : public BODY, public ProgramBuilder {
  private:
   std::unique_ptr<GeneratorImpl> gen_;
 };
+
+/// TestHelper the the base class for HLSL writer unit tests.
+/// Use this form when you don't need to template any further.
 using TestHelper = TestHelperBase<testing::Test>;
 
+/// TestParamHelper the the base class for HLSL unit tests that take a templated
+/// parameter.
 template <typename T>
 using TestParamHelper = TestHelperBase<testing::TestWithParam<T>>;
 
-}  // namespace hlsl
-}  // namespace writer
-}  // namespace tint
+}  // namespace tint::writer::hlsl
 
 #endif  // SRC_TINT_WRITER_HLSL_TEST_HELPER_H_

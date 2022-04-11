@@ -37,20 +37,18 @@
 #include "src/tint/transform/decompose_memory_access.h"
 #include "src/tint/utils/hash.h"
 #include "src/tint/writer/array_length_from_uniform_options.h"
+#include "src/tint/writer/hlsl/generator.h"
 #include "src/tint/writer/text_generator.h"
 
-namespace tint {
-
 // Forward declarations
-namespace sem {
+namespace tint::sem {
 class Call;
 class Builtin;
 class TypeConstructor;
 class TypeConversion;
-}  // namespace sem
+}  // namespace tint::sem
 
-namespace writer {
-namespace hlsl {
+namespace tint::writer::hlsl {
 
 /// The result of sanitizing a program for generation.
 struct SanitizedResult {
@@ -69,16 +67,10 @@ struct SanitizedResult {
 };
 
 /// Sanitize a program in preparation for generating HLSL.
-/// @param root_constant_binding_point the binding point to use for information
-/// that will be passed via root constants
-/// @param disable_workgroup_init `true` to disable workgroup memory zero
+/// @param program the input program
+/// @param options The HLSL generator options.
 /// @returns the sanitized program and any supplementary information
-SanitizedResult Sanitize(
-    const Program* program,
-    sem::BindingPoint root_constant_binding_point = {},
-    bool disable_workgroup_init = false,
-    bool generate_external_texture_bindings = false,
-    const ArrayLengthFromUniformOptions& array_length_from_uniform = {});
+SanitizedResult Sanitize(const Program* program, const Options& options);
 
 /// Implementation class for HLSL generator
 class GeneratorImpl : public TextGenerator {
@@ -539,8 +531,6 @@ class GeneratorImpl : public TextGenerator {
   std::unordered_map<const sem::Type*, std::string> value_or_one_if_zero_;
 };
 
-}  // namespace hlsl
-}  // namespace writer
-}  // namespace tint
+}  // namespace tint::writer::hlsl
 
 #endif  // SRC_TINT_WRITER_HLSL_GENERATOR_IMPL_H_

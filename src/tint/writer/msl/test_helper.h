@@ -24,9 +24,7 @@
 #include "src/tint/writer/msl/generator.h"
 #include "src/tint/writer/msl/generator_impl.h"
 
-namespace tint {
-namespace writer {
-namespace msl {
+namespace tint::writer::msl {
 
 /// Helper class for testing
 template <typename BASE>
@@ -76,11 +74,7 @@ class TestHelperBase : public BASE, public ProgramBuilder {
           << diag::Formatter().format(program->Diagnostics());
     }();
 
-    auto result = Sanitize(
-        program.get(), options.buffer_size_ubo_index, options.fixed_sample_mask,
-        options.emit_vertex_point_size, options.disable_workgroup_init,
-        options.generate_external_texture_bindings,
-        options.array_length_from_uniform);
+    auto result = Sanitize(program.get(), options);
     [&]() {
       ASSERT_TRUE(result.program.IsValid())
           << diag::Formatter().format(result.program.Diagnostics());
@@ -101,8 +95,6 @@ using TestHelper = TestHelperBase<testing::Test>;
 template <typename T>
 using TestParamHelper = TestHelperBase<testing::TestWithParam<T>>;
 
-}  // namespace msl
-}  // namespace writer
-}  // namespace tint
+}  // namespace tint::writer::msl
 
 #endif  // SRC_TINT_WRITER_MSL_TEST_HELPER_H_

@@ -17,12 +17,13 @@
 
 #include "src/tint/ast/expression.h"
 
-namespace tint {
-namespace ast {
-
-// Forward declarations.
+// Forward declarations
+namespace tint::ast {
 class Type;
 class IdentifierExpression;
+}  // namespace tint::ast
+
+namespace tint::ast {
 
 /// A call expression - represents either a:
 /// * sem::Function
@@ -78,7 +79,6 @@ class CallExpression final : public Castable<CallExpression, Expression> {
   const ExpressionList args;
 };
 
-}  // namespace ast
-}  // namespace tint
+}  // namespace tint::ast
 
 #endif  // SRC_TINT_AST_CALL_EXPRESSION_H_

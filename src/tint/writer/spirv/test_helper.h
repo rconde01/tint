@@ -23,9 +23,7 @@
 #include "spirv-tools/libspirv.hpp"
 #include "src/tint/writer/spirv/binary_writer.h"
 
-namespace tint {
-namespace writer {
-namespace spirv {
+namespace tint::writer::spirv {
 
 /// Helper class for testing
 template <typename BASE>
@@ -57,10 +55,11 @@ class TestHelperBase : public ProgramBuilder, public BASE {
 
   /// Builds the program, runs the program through the transform::Spirv
   /// sanitizer and returns a spirv::Builder from the sanitized program.
+  /// @param options The SPIR-V generator options.
   /// @note The spirv::Builder is only built once. Multiple calls to Build()
   /// will return the same spirv::Builder without rebuilding.
   /// @return the built spirv::Builder
-  spirv::Builder& SanitizeAndBuild() {
+  spirv::Builder& SanitizeAndBuild(const Options& options = {}) {
     if (spirv_builder) {
       return *spirv_builder;
     }
@@ -73,7 +72,7 @@ class TestHelperBase : public ProgramBuilder, public BASE {
       ASSERT_TRUE(program->IsValid())
           << diag::Formatter().format(program->Diagnostics());
     }();
-    auto result = Sanitize(program.get());
+    auto result = Sanitize(program.get(), options);
     [&]() {
       ASSERT_TRUE(result.program.IsValid())
           << diag::Formatter().format(result.program.Diagnostics());
@@ -132,8 +131,6 @@ using TestHelper = TestHelperBase<testing::Test>;
 template <typename T>
 using TestParamHelper = TestHelperBase<testing::TestWithParam<T>>;
 
-}  // namespace spirv
-}  // namespace writer
-}  // namespace tint
+}  // namespace tint::writer::spirv
 
 #endif  // SRC_TINT_WRITER_SPIRV_TEST_HELPER_H_

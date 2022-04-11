@@ -32,8 +32,7 @@
 
 #define TINT_DUMP_DEPENDENCY_GRAPH 0
 
-namespace tint {
-namespace resolver {
+namespace tint::resolver {
 namespace {
 
 // Forward declaration
@@ -233,6 +232,9 @@ class DependencyScanner {
           TraverseExpression(l->condition);
           TraverseStatement(l->continuing);
           TraverseStatement(l->body);
+        },
+        [&](const ast::IncrementDecrementStatement* i) {
+          TraverseExpression(i->lhs);
         },
         [&](const ast::LoopStatement* l) {
           scope_stack_.Push();
@@ -735,5 +737,4 @@ bool DependencyGraph::Build(const ast::Module& module,
   return da.Run(module);
 }
 
-}  // namespace resolver
-}  // namespace tint
+}  // namespace tint::resolver

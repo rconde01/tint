@@ -35,10 +35,8 @@
 #include "src/tint/utils/map.h"
 #include "src/tint/utils/unique_vector.h"
 
-namespace tint {
-
 // Forward declarations
-namespace ast {
+namespace tint::ast {
 class IndexAccessorExpression;
 class BinaryExpression;
 class BitcastExpression;
@@ -54,8 +52,8 @@ class ReturnStatement;
 class SwitchStatement;
 class UnaryOpExpression;
 class Variable;
-}  // namespace ast
-namespace sem {
+}  // namespace tint::ast
+namespace tint::sem {
 class Array;
 class Atomic;
 class BlockStatement;
@@ -68,9 +66,9 @@ class LoopStatement;
 class Statement;
 class SwitchStatement;
 class TypeConstructor;
-}  // namespace sem
+}  // namespace tint::sem
 
-namespace resolver {
+namespace tint::resolver {
 
 /// Resolves types for all items in the given tint program
 class Resolver {
@@ -224,6 +222,8 @@ class Resolver {
   sem::GlobalVariable* GlobalVariable(const ast::Variable*);
   sem::Statement* Parameter(const ast::Variable*);
   sem::IfStatement* IfStatement(const ast::IfStatement*);
+  sem::Statement* IncrementDecrementStatement(
+      const ast::IncrementDecrementStatement*);
   sem::LoopStatement* LoopStatement(const ast::LoopStatement*);
   sem::Statement* ReturnStatement(const ast::ReturnStatement*);
   sem::Statement* Statement(const ast::Statement*);
@@ -263,6 +263,8 @@ class Resolver {
   bool ValidateFunctionCall(const sem::Call* call);
   bool ValidateGlobalVariable(const sem::Variable* var);
   bool ValidateIfStatement(const sem::IfStatement* stmt);
+  bool ValidateIncrementDecrementStatement(
+      const ast::IncrementDecrementStatement* stmt);
   bool ValidateInterpolateAttribute(const ast::InterpolateAttribute* attr,
                                     const sem::Type* storage_type);
   bool ValidateBuiltinCall(const sem::Call* call);
@@ -547,7 +549,6 @@ class Resolver {
   sem::BlockStatement* current_block_ = nullptr;
 };
 
-}  // namespace resolver
-}  // namespace tint
+}  // namespace tint::resolver
 
 #endif  // SRC_TINT_RESOLVER_RESOLVER_H_

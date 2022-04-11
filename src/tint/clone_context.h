@@ -28,16 +28,18 @@
 #include "src/tint/symbol.h"
 #include "src/tint/traits.h"
 
-namespace tint {
-
 // Forward declarations
+namespace tint {
 class CloneContext;
 class Program;
 class ProgramBuilder;
-namespace ast {
+}  // namespace tint
+namespace tint::ast {
 class FunctionList;
 class Node;
-}  // namespace ast
+}  // namespace tint::ast
+
+namespace tint {
 
 ProgramID ProgramIDOf(const Program*);
 ProgramID ProgramIDOf(const ProgramBuilder*);

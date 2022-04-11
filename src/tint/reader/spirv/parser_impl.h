@@ -51,15 +51,15 @@
 /// familiar to Vulkan SPIR-V developers.  We will tend to use "image"
 /// and "sampler" instead of "handle".
 
-namespace tint {
-namespace reader {
-namespace spirv {
+namespace tint::reader::spirv {
 
 /// The binary representation of a SPIR-V decoration enum followed by its
 /// operands, if any.
 /// Example:   { SpvDecorationBlock }
 /// Example:   { SpvDecorationArrayStride, 16 }
 using Decoration = std::vector<uint32_t>;
+
+/// DecorationList is a list of decorations
 using DecorationList = std::vector<Decoration>;
 
 /// An AST expression with its type.
@@ -881,8 +881,6 @@ class ParserImpl : Reader {
   WorkgroupSizeInfo workgroup_size_builtin_;
 };
 
-}  // namespace spirv
-}  // namespace reader
-}  // namespace tint
+}  // namespace tint::reader::spirv
 
 #endif  // SRC_TINT_READER_SPIRV_PARSER_IMPL_H_

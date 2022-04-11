@@ -38,9 +38,7 @@
 #include "src/tint/sem/struct.h"
 #include "src/tint/writer/text_generator.h"
 
-namespace tint {
-namespace writer {
-namespace wgsl {
+namespace tint::writer::wgsl {
 
 /// Implementation class for WGSL generator
 class GeneratorImpl : public TextGenerator {
@@ -135,6 +133,10 @@ class GeneratorImpl : public TextGenerator {
   /// @param stmt the statement to emit
   /// @returns true if the statement was successfully emitted
   bool EmitIf(const ast::IfStatement* stmt);
+  /// Handles an increment/decrement statement
+  /// @param stmt the statement to emit
+  /// @returns true if the statement was successfully emitted
+  bool EmitIncrementDecrement(const ast::IncrementDecrementStatement* stmt);
   /// Handles generating a discard statement
   /// @param stmt the discard statement
   /// @returns true if the statement was successfully emitted
@@ -209,8 +211,6 @@ class GeneratorImpl : public TextGenerator {
   bool EmitAttributes(std::ostream& out, const ast::AttributeList& attrs);
 };
 
-}  // namespace wgsl
-}  // namespace writer
-}  // namespace tint
+}  // namespace tint::writer::wgsl
 
 #endif  // SRC_TINT_WRITER_WGSL_GENERATOR_IMPL_H_

@@ -20,11 +20,12 @@
 
 #include "src/tint/ast/attribute.h"
 
-namespace tint {
-namespace ast {
-
-// Forward declaration
+// Forward declarations
+namespace tint::ast {
 class Type;
+}  // namespace tint::ast
+
+namespace tint::ast {
 
 /// A struct member statement.
 class StructMember final : public Castable<StructMember, Node> {
@@ -64,7 +65,6 @@ class StructMember final : public Castable<StructMember, Node> {
 /// A list of struct members
 using StructMemberList = std::vector<const StructMember*>;
 
-}  // namespace ast
-}  // namespace tint
+}  // namespace tint::ast
 
 #endif  // SRC_TINT_AST_STRUCT_MEMBER_H_

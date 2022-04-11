@@ -16,9 +16,7 @@
 
 #include "src/tint/writer/hlsl/generator_impl.h"
 
-namespace tint {
-namespace writer {
-namespace hlsl {
+namespace tint::writer::hlsl {
 
 Options::Options() = default;
 Options::~Options() = default;
@@ -33,10 +31,7 @@ Result Generate(const Program* program, const Options& options) {
   Result result;
 
   // Sanitize the program.
-  auto sanitized_result = Sanitize(program, options.root_constant_binding_point,
-                                   options.disable_workgroup_init,
-                                   options.generate_external_texture_bindings,
-                                   options.array_length_from_uniform);
+  auto sanitized_result = Sanitize(program, options);
   if (!sanitized_result.program.IsValid()) {
     result.success = false;
     result.error = sanitized_result.program.Diagnostics().str();
@@ -63,6 +58,4 @@ Result Generate(const Program* program, const Options& options) {
   return result;
 }
 
-}  // namespace hlsl
-}  // namespace writer
-}  // namespace tint
+}  // namespace tint::writer::hlsl
