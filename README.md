@@ -1,22 +1,31 @@
 # Tint
 
+---
+Note: This repo is read-only, minimized mirror of [the Dawn repo](https://dawn.googlesource.com/dawn).
+
+**Tint changes should be made in [the Dawn repo](https://dawn.googlesource.com/dawn).**
+
+---
+
 Tint is a compiler for the WebGPU Shader Language (WGSL).
 
 This is not an officially supported Google product.
 
 ## Requirements
- * Git
- * CMake (3.10.2 or later)
- * Ninja (or other build tool)
- * Python, for fetching dependencies
- * [depot_tools] in your path
+
+* Git
+* CMake (3.10.2 or later)
+* Ninja (or other build tool)
+* Python, for fetching dependencies
+* [depot_tools] in your path
 
 ## Build options
- * `TINT_BUILD_SPV_READER` : enable the SPIR-V input reader (off by default)
- * `TINT_BUILD_WGSL_READER` : enable the WGSL input reader (on by default)
- * `TINT_BUILD_SPV_WRITER` : enable the SPIR-V output writer (on by default)
- * `TINT_BUILD_WGSL_WRITER` : enable the WGSL output writer (on by default)
- * `TINT_BUILD_FUZZERS` : enable building fuzzzers (off by default)
+
+* `TINT_BUILD_SPV_READER` : enable the SPIR-V input reader (off by default)
+* `TINT_BUILD_WGSL_READER` : enable the WGSL input reader (on by default)
+* `TINT_BUILD_SPV_WRITER` : enable the SPIR-V output writer (on by default)
+* `TINT_BUILD_WGSL_WRITER` : enable the WGSL output writer (on by default)
+* `TINT_BUILD_FUZZERS` : enable building fuzzzers (off by default)
 
 ## Building
 Tint uses Chromium dependency management so you need to install [depot_tools]
@@ -39,6 +48,7 @@ gclient sync
 ```
 
 ### Compiling using CMake + Ninja
+
 ```sh
 mkdir -p out/Debug
 cd out/Debug
@@ -47,6 +57,7 @@ ninja # or autoninja
 ```
 
 ### Compiling using CMake + make
+
 ```sh
 mkdir -p out/Debug
 cd out/Debug
@@ -55,6 +66,7 @@ make # -j N for N-way parallel build
 ```
 
 ### Compiling using gn + ninja
+
 ```sh
 mkdir -p out/Debug
 gn gen out/Debug
@@ -62,12 +74,14 @@ autoninja -C out/Debug
 ```
 
 ### Fuzzers on MacOS
+
 If you are attempting fuzz, using `TINT_BUILD_FUZZERS=ON`, the version of llvm
 in the XCode SDK does not have the needed libfuzzer functionality included.
 
 The build error that you will see from using the XCode SDK will look something
 like this:
-```
+
+```text
 ld: file not found:/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/11.0.0/lib/darwin/libclang_rt.fuzzer_osx.a
 ```
 
@@ -76,6 +90,7 @@ get via homebrew, `brew install llvm`, and use something like `CC=<path to full
 clang> cmake ..` to setup a build using that toolchain.
 
 ### Checking [chromium-style] issues in CMake builds
+
 The gn based work flow uses the Chromium toolchain for building in anticipation
 of integration of Tint into Chromium based projects. This toolchain has
 additional plugins for checking for style issues, which are marked with
@@ -96,11 +111,10 @@ CC=../../third_party/llvm-build/Release+Asserts/bin/clang cmake -DTINT_CHECK_CHR
 ```
 
 ## Issues
+
 Please file any issues or feature requests at
 https://bugs.chromium.org/p/tint/issues/entry
 
 ## Contributing
-Please see the CONTRIBUTING and CODE_OF_CONDUCT files on how to contribute to
-Tint.
 
-Tint has a process for supporting [experimental extensions](docs/tint/experimental_extensions.md).
+Please see the [contributing guide in the Dawn repo](https://dawn.googlesource.com/dawn/+/refs/heads/main/CONTRIBUTING.md).
