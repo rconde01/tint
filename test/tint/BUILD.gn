@@ -1,4 +1,4 @@
-# Copyright 2021 The Tint Authors
+# Copyright 2022 The Dawn & Tint Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -175,6 +175,7 @@ tint_unittests_source_set("tint_unittests_ast_src") {
     "../../src/tint/ast/id_attribute_test.cc",
     "../../src/tint/ast/identifier_expression_test.cc",
     "../../src/tint/ast/if_statement_test.cc",
+    "../../src/tint/ast/increment_decrement_statement_test.cc",
     "../../src/tint/ast/index_accessor_expression_test.cc",
     "../../src/tint/ast/int_literal_expression_test.cc",
     "../../src/tint/ast/interpolate_attribute_test.cc",
@@ -252,6 +253,7 @@ tint_unittests_source_set("tint_unittests_resolver_src") {
     "../../src/tint/resolver/entry_point_validation_test.cc",
     "../../src/tint/resolver/function_validation_test.cc",
     "../../src/tint/resolver/host_shareable_validation_test.cc",
+    "../../src/tint/resolver/increment_decrement_validation_test.cc",
     "../../src/tint/resolver/is_host_shareable_test.cc",
     "../../src/tint/resolver/is_storeable_test.cc",
     "../../src/tint/resolver/pipeline_overridable_constant_test.cc",
@@ -320,11 +322,11 @@ tint_unittests_source_set("tint_unittests_transform_src") {
     "../../src/tint/transform/decompose_memory_access_test.cc",
     "../../src/tint/transform/decompose_strided_array_test.cc",
     "../../src/tint/transform/decompose_strided_matrix_test.cc",
+    "../../src/tint/transform/expand_compound_assignment_test.cc",
     "../../src/tint/transform/first_index_offset_test.cc",
     "../../src/tint/transform/fold_constants_test.cc",
     "../../src/tint/transform/fold_trivial_single_use_lets_test.cc",
     "../../src/tint/transform/for_loop_to_loop_test.cc",
-    "../../src/tint/transform/expand_compound_assignment_test.cc",
     "../../src/tint/transform/localize_struct_array_assignment_test.cc",
     "../../src/tint/transform/loop_to_for_loop_test.cc",
     "../../src/tint/transform/module_scope_var_to_entry_point_param_test.cc",
@@ -497,6 +499,7 @@ tint_unittests_source_set("tint_unittests_wgsl_reader_src") {
     "../../src/tint/reader/wgsl/parser_impl_global_variable_decl_test.cc",
     "../../src/tint/reader/wgsl/parser_impl_if_stmt_test.cc",
     "../../src/tint/reader/wgsl/parser_impl_inclusive_or_expression_test.cc",
+    "../../src/tint/reader/wgsl/parser_impl_increment_decrement_stmt_test.cc",
     "../../src/tint/reader/wgsl/parser_impl_logical_and_expression_test.cc",
     "../../src/tint/reader/wgsl/parser_impl_logical_or_expression_test.cc",
     "../../src/tint/reader/wgsl/parser_impl_loop_stmt_test.cc",
@@ -664,7 +667,6 @@ tint_unittests_source_set("tint_unittests_hlsl_writer_src") {
 
 tint_unittests_source_set("tint_unittests_glsl_writer_src") {
   sources = [
-    "../../src/tint/transform/glsl_test.cc",
     "../../src/tint/writer/glsl/generator_impl_array_accessor_test.cc",
     "../../src/tint/writer/glsl/generator_impl_assign_test.cc",
     "../../src/tint/writer/glsl/generator_impl_binary_test.cc",

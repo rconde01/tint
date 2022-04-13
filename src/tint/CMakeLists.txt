@@ -339,8 +339,6 @@ set(TINT_LIB_SRCS
   transform/for_loop_to_loop.h
   transform/expand_compound_assignment.cc
   transform/expand_compound_assignment.h
-  transform/glsl.cc
-  transform/glsl.h
   transform/loop_to_for_loop.cc
   transform/loop_to_for_loop.h
   transform/manager.cc
@@ -519,6 +517,8 @@ if(${TINT_BUILD_SPV_WRITER})
     writer/spirv/function.h
     writer/spirv/generator.cc
     writer/spirv/generator.h
+    writer/spirv/generator_impl.cc
+    writer/spirv/generator_impl.h
     writer/spirv/instruction.cc
     writer/spirv/instruction.h
     writer/spirv/operand.cc
