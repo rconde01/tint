@@ -75,7 +75,6 @@ CLONE_SRC_DIR="$(pwd)"
 . /bin/using.sh # Declare the bash `using` function for configuring toolchains.
 
 using depot_tools
-using go-1.14.4      # Speeds up ./tools/lint
 using doxygen-1.8.18
 
 status "Creating source directory '${SRC_DIR}' and build directory '${BUILD_DIR}'"
@@ -89,9 +88,6 @@ git clone ${CLONE_SRC_DIR} .
 status "Fetching dependencies"
 cp standalone.gclient .gclient
 with_retry gclient sync
-
-status "Linting"
-./tools/lint
 
 status "Configuring build system"
 if [ "$BUILD_SYSTEM" == "cmake" ]; then
@@ -156,11 +152,6 @@ if [ "$BUILD_SYSTEM" == "cmake" ]; then
             ./tint_regex_fuzzer_unittests
         hide_cmds
     fi
-
-    status "Testing test/tint/test-all.sh"
-    show_cmds
-        ${SRC_DIR}/test/tint/test-all.sh "${BUILD_DIR}/tint" --verbose
-    hide_cmds
 
     status "Checking _other.cc files also build"
     show_cmds
