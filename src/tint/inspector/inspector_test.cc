@@ -623,7 +623,7 @@ TEST_F(InspectorGetEntryPointTest, OverridableConstantTypes) {
 }
 
 TEST_F(InspectorGetEntryPointTest, OverridableConstantInitialized) {
-    AddOverridableConstantWithoutID("foo", ty.f32(), Expr(0.0f));
+    AddOverridableConstantWithoutID("foo", ty.f32(), Expr(0_f));
     MakePlainGlobalReferenceBodyFunction("ep_func", "foo", ty.f32(),
                                          {Stage(ast::PipelineStage::kCompute), WorkgroupSize(1_i)});
 
@@ -991,7 +991,7 @@ TEST_F(InspectorGetConstantIDsTest, U32) {
 
 TEST_F(InspectorGetConstantIDsTest, I32) {
     AddOverridableConstantWithID("foo", 1, ty.i32(), nullptr);
-    AddOverridableConstantWithID("bar", 20, ty.i32(), Expr(i32(-42)));
+    AddOverridableConstantWithID("bar", 20, ty.i32(), Expr(-42_i));
     AddOverridableConstantWithID("baz", 300, ty.i32(), Expr(42_i));
 
     Inspector& inspector = Build();
@@ -1013,9 +1013,9 @@ TEST_F(InspectorGetConstantIDsTest, I32) {
 
 TEST_F(InspectorGetConstantIDsTest, Float) {
     AddOverridableConstantWithID("foo", 1, ty.f32(), nullptr);
-    AddOverridableConstantWithID("bar", 20, ty.f32(), Expr(0.0f));
-    AddOverridableConstantWithID("baz", 300, ty.f32(), Expr(-10.0f));
-    AddOverridableConstantWithID("x", 4000, ty.f32(), Expr(15.0f));
+    AddOverridableConstantWithID("bar", 20, ty.f32(), Expr(0_f));
+    AddOverridableConstantWithID("baz", 300, ty.f32(), Expr(-10_f));
+    AddOverridableConstantWithID("x", 4000, ty.f32(), Expr(15_f));
 
     Inspector& inspector = Build();
 
@@ -1027,15 +1027,15 @@ TEST_F(InspectorGetConstantIDsTest, Float) {
 
     ASSERT_TRUE(result.find(20) != result.end());
     EXPECT_TRUE(result[20].IsFloat());
-    EXPECT_FLOAT_EQ(0.0, result[20].AsFloat());
+    EXPECT_FLOAT_EQ(0.0f, result[20].AsFloat());
 
     ASSERT_TRUE(result.find(300) != result.end());
     EXPECT_TRUE(result[300].IsFloat());
-    EXPECT_FLOAT_EQ(-10.0, result[300].AsFloat());
+    EXPECT_FLOAT_EQ(-10.0f, result[300].AsFloat());
 
     ASSERT_TRUE(result.find(4000) != result.end());
     EXPECT_TRUE(result[4000].IsFloat());
-    EXPECT_FLOAT_EQ(15.0, result[4000].AsFloat());
+    EXPECT_FLOAT_EQ(15.0f, result[4000].AsFloat());
 }
 
 TEST_F(InspectorGetConstantNameToIdMapTest, WithAndWithoutIds) {

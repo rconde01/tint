@@ -36,7 +36,7 @@ TEST_F(ResolverCallValidationTest, TooFewArgs) {
 
 TEST_F(ResolverCallValidationTest, TooManyArgs) {
     Func("foo", {Param(Sym(), ty.i32()), Param(Sym(), ty.f32())}, ty.void_(), {Return()});
-    auto* call = Call(Source{{12, 34}}, "foo", 1_i, 1.0f, 1.0f);
+    auto* call = Call(Source{{12, 34}}, "foo", 1_i, 1_f, 1_f);
     WrapInFunction(call);
 
     EXPECT_FALSE(r()->Resolve());
@@ -45,7 +45,7 @@ TEST_F(ResolverCallValidationTest, TooManyArgs) {
 
 TEST_F(ResolverCallValidationTest, MismatchedArgs) {
     Func("foo", {Param(Sym(), ty.i32()), Param(Sym(), ty.f32())}, ty.void_(), {Return()});
-    auto* call = Call("foo", Expr(Source{{12, 34}}, true), 1.0f);
+    auto* call = Call("foo", Expr(Source{{12, 34}}, true), 1_f);
     WrapInFunction(call);
 
     EXPECT_FALSE(r()->Resolve());
@@ -58,7 +58,7 @@ TEST_F(ResolverCallValidationTest, UnusedRetval) {
     // fn func() -> f32 { return 1.0; }
     // fn main() {func(); return; }
 
-    Func("func", {}, ty.f32(), {Return(Expr(1.0f))}, {});
+    Func("func", {}, ty.f32(), {Return(Expr(1_f))}, {});
 
     Func("main", {}, ty.void_(),
          {
@@ -139,7 +139,7 @@ TEST_F(ResolverCallValidationTest, PointerArgument_AddressOfMemberAccessor) {
     Func("main", {}, ty.void_(),
          {
              Decl(Let("v", ty.Of(S), Construct(ty.Of(S)))),
-             CallStmt(Call("foo", AddressOf(Expr(Source{{12, 34}}, MemberAccessor("v", "m"))))),
+             CallStmt(Call("foo", AddressOf(MemberAccessor(Source{{12, 34}}, "v", "m")))),
          });
 
     EXPECT_FALSE(r()->Resolve());

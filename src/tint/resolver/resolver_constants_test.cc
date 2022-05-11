@@ -58,7 +58,7 @@ TEST_F(ResolverConstantsTest, Scalar_u32) {
 }
 
 TEST_F(ResolverConstantsTest, Scalar_f32) {
-    auto* expr = Expr(9.9f);
+    auto* expr = Expr(9.9_f);
     WrapInFunction(expr);
 
     EXPECT_TRUE(r()->Resolve()) << r()->error();
@@ -139,9 +139,9 @@ TEST_F(ResolverConstantsTest, Vec3_ZeroInit_f32) {
     EXPECT_EQ(sem->ConstantValue().Type(), sem->Type());
     EXPECT_TRUE(sem->ConstantValue().ElementType()->Is<sem::F32>());
     ASSERT_EQ(sem->ConstantValue().Elements().size(), 3u);
-    EXPECT_EQ(sem->ConstantValue().Elements()[0].f32, 0u);
-    EXPECT_EQ(sem->ConstantValue().Elements()[1].f32, 0u);
-    EXPECT_EQ(sem->ConstantValue().Elements()[2].f32, 0u);
+    EXPECT_EQ(sem->ConstantValue().Elements()[0].f32, 0.0f);
+    EXPECT_EQ(sem->ConstantValue().Elements()[1].f32, 0.0f);
+    EXPECT_EQ(sem->ConstantValue().Elements()[2].f32, 0.0f);
 }
 
 TEST_F(ResolverConstantsTest, Vec3_ZeroInit_bool) {
@@ -202,7 +202,7 @@ TEST_F(ResolverConstantsTest, Vec3_Splat_u32) {
 }
 
 TEST_F(ResolverConstantsTest, Vec3_Splat_f32) {
-    auto* expr = vec3<f32>(9.9f);
+    auto* expr = vec3<f32>(9.9_f);
     WrapInFunction(expr);
 
     EXPECT_TRUE(r()->Resolve()) << r()->error();
@@ -278,7 +278,7 @@ TEST_F(ResolverConstantsTest, Vec3_FullConstruct_u32) {
 }
 
 TEST_F(ResolverConstantsTest, Vec3_FullConstruct_f32) {
-    auto* expr = vec3<f32>(1.f, 2.f, 3.f);
+    auto* expr = vec3<f32>(1_f, 2_f, 3_f);
     WrapInFunction(expr);
 
     EXPECT_TRUE(r()->Resolve()) << r()->error();
@@ -354,7 +354,7 @@ TEST_F(ResolverConstantsTest, Vec3_MixConstruct_u32) {
 }
 
 TEST_F(ResolverConstantsTest, Vec3_MixConstruct_f32) {
-    auto* expr = vec3<f32>(1.f, vec2<f32>(2.f, 3.f));
+    auto* expr = vec3<f32>(1_f, vec2<f32>(2_f, 3_f));
     WrapInFunction(expr);
 
     EXPECT_TRUE(r()->Resolve()) << r()->error();
@@ -392,7 +392,7 @@ TEST_F(ResolverConstantsTest, Vec3_MixConstruct_bool) {
 }
 
 TEST_F(ResolverConstantsTest, Vec3_Cast_f32_to_32) {
-    auto* expr = vec3<i32>(vec3<f32>(1.1f, 2.2f, 3.3f));
+    auto* expr = vec3<i32>(vec3<f32>(1.1_f, 2.2_f, 3.3_f));
     WrapInFunction(expr);
 
     EXPECT_TRUE(r()->Resolve()) << r()->error();

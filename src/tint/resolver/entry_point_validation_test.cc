@@ -49,7 +49,7 @@ class ResolverEntryPointValidationTest : public TestHelper, public testing::Test
 TEST_F(ResolverEntryPointValidationTest, ReturnTypeAttribute_Location) {
     // @stage(fragment)
     // fn main() -> @location(0) f32 { return 1.0; }
-    Func(Source{{12, 34}}, "main", {}, ty.f32(), {Return(1.0f)},
+    Func(Source{{12, 34}}, "main", {}, ty.f32(), {Return(1_f)},
          {Stage(ast::PipelineStage::kFragment)}, {Location(0)});
 
     EXPECT_TRUE(r()->Resolve()) << r()->error();
@@ -501,7 +501,7 @@ TEST_F(LocationAttributeTests, BadType_Input_Struct_RuntimeArray) {
     // @stage(fragment)
     // fn main(param : Input) {}
     auto* input =
-        Structure("Input", {Member(Source{{13, 43}}, "a", ty.array<float>(), {Location(0)})});
+        Structure("Input", {Member(Source{{13, 43}}, "a", ty.array<f32>(), {Location(0)})});
     auto* param = Param("param", ty.Of(input));
     Func(Source{{12, 34}}, "main", {param}, ty.void_(), {}, {Stage(ast::PipelineStage::kFragment)});
 
@@ -633,7 +633,7 @@ TEST_F(LocationAttributeTests, ReturnType_Struct_RuntimeArray) {
     // fn main() -> Output {
     //   return Output();
     // }
-    auto* output = Structure("Output", {Member(Source{{13, 43}}, "a", ty.array<float>(),
+    auto* output = Structure("Output", {Member(Source{{13, 43}}, "a", ty.array<f32>(),
                                                {Location(Source{{12, 34}}, 0)})});
     Func(Source{{12, 34}}, "main", {}, ty.Of(output), {Return(Construct(ty.Of(output)))},
          {Stage(ast::PipelineStage::kFragment)});
