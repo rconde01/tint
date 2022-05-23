@@ -42,6 +42,7 @@
 #include "src/tint/sem/reference.h"
 #include "src/tint/sem/sampled_texture.h"
 #include "src/tint/sem/statement.h"
+#include "src/tint/sem/switch_statement.h"
 #include "src/tint/sem/variable.h"
 
 using ::testing::ElementsAre;
@@ -111,11 +112,11 @@ TEST_F(ResolverTest, Stmt_Case) {
 
     auto* assign = Assign(lhs, rhs);
     auto* block = Block(assign);
-    ast::CaseSelectorList lit;
-    lit.push_back(Expr(3_i));
-    auto* cse = create<ast::CaseStatement>(lit, block);
+    auto* sel = Expr(3_i);
+    auto* cse = Case(sel, block);
+    auto* def = DefaultCase();
     auto* cond_var = Var("c", ty.i32());
-    auto* sw = Switch(cond_var, cse, DefaultCase());
+    auto* sw = Switch(cond_var, cse, def);
     WrapInFunction(v, cond_var, sw);
 
     EXPECT_TRUE(r()->Resolve()) << r()->error();
@@ -127,6 +128,13 @@ TEST_F(ResolverTest, Stmt_Case) {
     EXPECT_EQ(StmtOf(lhs), assign);
     EXPECT_EQ(StmtOf(rhs), assign);
     EXPECT_EQ(BlockOf(assign), block);
+    auto* sem = Sem().Get(sw);
+    ASSERT_EQ(sem->Cases().size(), 2u);
+    EXPECT_EQ(sem->Cases()[0]->Declaration(), cse);
+    ASSERT_EQ(sem->Cases()[0]->Selectors().size(), 1u);
+    EXPECT_EQ(sem->Cases()[0]->Selectors()[0]->Declaration(), sel);
+    EXPECT_EQ(sem->Cases()[1]->Declaration(), def);
+    EXPECT_EQ(sem->Cases()[1]->Selectors().size(), 0u);
 }
 
 TEST_F(ResolverTest, Stmt_Block) {
@@ -2096,6 +2104,34 @@ TEST_F(ResolverTest, ModuleDependencyOrderedDeclarations) {
     ASSERT_NE(Sem().Module(), nullptr);
     EXPECT_THAT(Sem().Module()->DependencyOrderedDeclarations(),
                 ElementsAre(f0, v0, a0, s0, f1, v1, a1, s1, f2, v2, a2, s2));
+}
+
+constexpr size_t kMaxExpressionDepth = 512U;
+
+TEST_F(ResolverTest, MaxExpressionDepth_Pass) {
+    auto* b = Var("b", ty.i32());
+    const ast::Expression* chain = nullptr;
+    for (size_t i = 0; i < kMaxExpressionDepth; ++i) {
+        chain = Add(chain ? chain : Expr("b"), Expr("b"));
+    }
+    auto* a = Let("a", nullptr, chain);
+    WrapInFunction(b, a);
+
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+}
+
+TEST_F(ResolverTest, MaxExpressionDepth_Fail) {
+    auto* b = Var("b", ty.i32());
+    const ast::Expression* chain = nullptr;
+    for (size_t i = 0; i < kMaxExpressionDepth + 1; ++i) {
+        chain = Add(chain ? chain : Expr("b"), Expr("b"));
+    }
+    auto* a = Let("a", nullptr, chain);
+    WrapInFunction(b, a);
+
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_THAT(r()->error(), HasSubstr("error: reached max expression depth of " +
+                                        std::to_string(kMaxExpressionDepth)));
 }
 
 }  // namespace

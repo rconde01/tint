@@ -30,6 +30,7 @@
 #include "src/tint/sem/depth_multisampled_texture.h"
 #include "src/tint/sem/depth_texture.h"
 #include "src/tint/sem/function.h"
+#include "src/tint/sem/materialize.h"
 #include "src/tint/sem/member_accessor_expression.h"
 #include "src/tint/sem/module.h"
 #include "src/tint/sem/multisampled_texture.h"
@@ -55,8 +56,9 @@ const char kGLSLstd450[] = "GLSL.std.450";
 
 uint32_t size_of(const InstructionList& instructions) {
     uint32_t size = 0;
-    for (const auto& inst : instructions)
+    for (const auto& inst : instructions) {
         size += inst.word_length();
+    }
 
     return size;
 }
@@ -256,7 +258,7 @@ bool Builder::Build() {
     push_memory_model(spv::Op::OpMemoryModel,
                       {U32Operand(SpvAddressingModelLogical), U32Operand(SpvMemoryModelGLSL450)});
 
-    for (auto ext : builder_.AST().Extensions()) {
+    for (auto ext : builder_.Sem().Module()->Extensions()) {
         GenerateExtension(ext);
     }
 
@@ -366,7 +368,7 @@ void Builder::push_capability(uint32_t cap) {
     }
 }
 
-bool Builder::GenerateExtension(ast::Enable::ExtensionKind) {
+bool Builder::GenerateExtension(ast::Extension) {
     /*
     For each supported extension, push corresponding capability into the builder.
     For example:
@@ -1272,7 +1274,13 @@ bool Builder::IsConstructorConst(const ast::Expression* expr) {
             return ast::TraverseAction::Descend;
         }
         if (auto* ce = e->As<ast::CallExpression>()) {
-            auto* call = builder_.Sem().Get(ce);
+            auto* sem = builder_.Sem().Get(ce);
+            if (sem->Is<sem::Materialize>()) {
+                // Materialize can only occur on compile time expressions, so this sub-tree must be
+                // constant.
+                return ast::TraverseAction::Skip;
+            }
+            auto* call = sem->As<sem::Call>();
             if (call->Target()->Is<sem::TypeConstructor>()) {
                 return ast::TraverseAction::Descend;
             }
@@ -1628,6 +1636,8 @@ uint32_t Builder::GenerateLiteralIfNeeded(const ast::Variable* var,
                     constant.kind = ScalarConstant::Kind::kF32;
                     constant.value.f32 = static_cast<float>(f->value);
                     return;
+                case ast::FloatLiteralExpression::Suffix::kH:
+                    error_ = "Type f16 is not completely implemented yet";
             }
         },
         [&](Default) { error_ = "unknown literal type"; });
@@ -2151,7 +2161,12 @@ bool Builder::GenerateBlockStatementWithoutScoping(const ast::BlockStatement* st
 }
 
 uint32_t Builder::GenerateCallExpression(const ast::CallExpression* expr) {
-    auto* call = builder_.Sem().Get(expr);
+    auto* sem = builder_.Sem().Get(expr);
+    if (auto* m = sem->As<sem::Materialize>()) {
+        // TODO(crbug.com/tint/1504): Just emit the constant value.
+        sem = m->Expr();
+    }
+    auto* call = sem->As<sem::Call>();
     auto* target = call->Target();
     return Switch(
         target, [&](const sem::Function* func) { return GenerateFunctionCall(call, func); },
@@ -3671,6 +3686,11 @@ uint32_t Builder::GenerateTypeIfNeeded(const sem::Type* type) {
             [&](const sem::F32*) {
                 push_type(spv::Op::OpTypeFloat, {result, Operand(32u)});
                 return true;
+            },
+            [&](const sem::F16*) {
+                // Should be `push_type(spv::Op::OpTypeFloat, {result, Operand(16u)});`
+                error_ = "Type f16 is not completely implemented yet.";
+                return false;
             },
             [&](const sem::I32*) {
                 push_type(spv::Op::OpTypeInt, {result, Operand(32u), Operand(1u)});

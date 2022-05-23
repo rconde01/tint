@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -74,7 +75,10 @@ class Resolver {
   public:
     /// Constructor
     /// @param builder the program builder
-    explicit Resolver(ProgramBuilder* builder);
+    /// @param enable_abstract_numerics if true, then treat unsuffixed integers as abstract integers
+    /// and unsuffixed floats as abstract floats. This is a temporary flag while abstract numerics
+    /// are being developed. Once complete, this will be permanently enabled.
+    explicit Resolver(ProgramBuilder* builder, bool enable_abstract_numerics = false);
 
     /// Destructor
     ~Resolver();
@@ -184,23 +188,14 @@ class Resolver {
     sem::Function* Function(const ast::Function*);
     sem::Call* FunctionCall(const ast::CallExpression*,
                             sem::Function* target,
-                            const std::vector<const sem::Expression*> args,
+                            std::vector<const sem::Expression*> args,
                             sem::Behaviors arg_behaviors);
     sem::Expression* Identifier(const ast::IdentifierExpression*);
     sem::Call* BuiltinCall(const ast::CallExpression*,
                            sem::BuiltinType,
-                           const std::vector<const sem::Expression*> args,
-                           const std::vector<const sem::Type*> arg_tys);
+                           std::vector<const sem::Expression*> args);
     sem::Expression* Literal(const ast::LiteralExpression*);
     sem::Expression* MemberAccessor(const ast::MemberAccessorExpression*);
-    sem::Call* TypeConversion(const ast::CallExpression* expr,
-                              const sem::Type* ty,
-                              const sem::Expression* arg,
-                              const sem::Type* arg_ty);
-    sem::Call* TypeConstructor(const ast::CallExpression* expr,
-                               const sem::Type* ty,
-                               const std::vector<const sem::Expression*> args,
-                               const std::vector<const sem::Type*> arg_tys);
     sem::Expression* UnaryOp(const ast::UnaryOpExpression*);
 
     // Statement resolving methods
@@ -226,6 +221,12 @@ class Resolver {
     sem::Statement* VariableDeclStatement(const ast::VariableDeclStatement*);
     bool Statements(const ast::StatementList&);
 
+    // CollectTextureSamplerPairs() collects all the texture/sampler pairs from the target function
+    // / builtin, and records these on the current function by calling AddTextureSamplerPair().
+    void CollectTextureSamplerPairs(sem::Function* func,
+                                    const std::vector<const sem::Expression*>& args) const;
+    void CollectTextureSamplerPairs(const sem::Builtin* builtin,
+                                    const std::vector<const sem::Expression*>& args) const;
 
     /// Resolves the WorkgroupSize for the given function, assigning it to
     /// current_function_
@@ -236,6 +237,10 @@ class Resolver {
     /// returned.
     /// @param ty the ast::Type
     sem::Type* Type(const ast::Type* ty);
+
+    /// @param enable the enable declaration
+    /// @returns the resolved extension
+    bool Enable(const ast::Enable* enable);
 
     /// @param named_type the named type to resolve
     /// @returns the resolved semantic type
@@ -327,7 +332,9 @@ class Resolver {
     //////////////////////////////////////////////////////////////////////////////
     /// Cast `Value` to `target_type`
     /// @return the casted value
-    sem::Constant ConstantCast(const sem::Constant& value, const sem::Type* target_elem_type);
+    sem::Constant ConstantCast(const sem::Constant& value,
+                               const sem::Type* target_type,
+                               const sem::Type* target_element_type = nullptr);
 
     sem::Constant EvaluateConstantValue(const ast::Expression* expr, const sem::Type* type);
     sem::Constant EvaluateConstantValue(const ast::LiteralExpression* literal,
@@ -337,39 +344,13 @@ class Resolver {
     /// @returns true if the symbol is the name of a builtin function.
     bool IsBuiltin(Symbol) const;
 
-    /// @returns true if `expr` is the current CallStatement's CallExpression
-    bool IsCallStatement(const ast::Expression* expr) const;
+    // ArrayConstructorSig represents a unique array constructor signature.
+    // It is a tuple of the array type and number of arguments provided.
+    using ArrayConstructorSig = utils::UnorderedKeyWrapper<std::tuple<const sem::Array*, size_t>>;
 
-    struct TypeConversionSig {
-        const sem::Type* target;
-        const sem::Type* source;
-
-        bool operator==(const TypeConversionSig&) const;
-
-        /// Hasher provides a hash function for the TypeConversionSig
-        struct Hasher {
-            /// @param sig the TypeConversionSig to create a hash for
-            /// @return the hash value
-            std::size_t operator()(const TypeConversionSig& sig) const;
-        };
-    };
-
-    struct TypeConstructorSig {
-        const sem::Type* type;
-        const std::vector<const sem::Type*> parameters;
-
-        TypeConstructorSig(const sem::Type* ty, const std::vector<const sem::Type*> params);
-        TypeConstructorSig(const TypeConstructorSig&);
-        ~TypeConstructorSig();
-        bool operator==(const TypeConstructorSig&) const;
-
-        /// Hasher provides a hash function for the TypeConstructorSig
-        struct Hasher {
-            /// @param sig the TypeConstructorSig to create a hash for
-            /// @return the hash value
-            std::size_t operator()(const TypeConstructorSig& sig) const;
-        };
-    };
+    // StructConstructorSig represents a unique structure constructor signature.
+    // It is a tuple of the structure type and number of arguments provided.
+    using StructConstructorSig = utils::UnorderedKeyWrapper<std::tuple<const sem::Struct*, size_t>>;
 
     ProgramBuilder* const builder_;
     diag::List& diagnostics_;
@@ -377,19 +358,20 @@ class Resolver {
     DependencyGraph dependencies_;
     SemHelper sem_;
     Validator validator_;
+    ast::Extensions enabled_extensions_;
     std::vector<sem::Function*> entry_points_;
     std::unordered_map<const sem::Type*, const Source&> atomic_composite_info_;
     std::unordered_set<const ast::Node*> marked_;
     std::unordered_map<uint32_t, const sem::Variable*> constant_ids_;
-    std::unordered_map<TypeConversionSig, sem::CallTarget*, TypeConversionSig::Hasher>
-        type_conversions_;
-    std::unordered_map<TypeConstructorSig, sem::CallTarget*, TypeConstructorSig::Hasher>
-        type_ctors_;
+    std::unordered_map<ArrayConstructorSig, sem::CallTarget*> array_ctors_;
+    std::unordered_map<StructConstructorSig, sem::CallTarget*> struct_ctors_;
 
     sem::Function* current_function_ = nullptr;
     sem::Statement* current_statement_ = nullptr;
     sem::CompoundStatement* current_compound_statement_ = nullptr;
     sem::BlockStatement* current_block_ = nullptr;
+
+    bool enable_abstract_numerics_ = false;
 };
 
 }  // namespace tint::resolver

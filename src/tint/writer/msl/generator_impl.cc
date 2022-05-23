@@ -41,6 +41,7 @@
 #include "src/tint/sem/f32.h"
 #include "src/tint/sem/function.h"
 #include "src/tint/sem/i32.h"
+#include "src/tint/sem/materialize.h"
 #include "src/tint/sem/matrix.h"
 #include "src/tint/sem/member_accessor_expression.h"
 #include "src/tint/sem/module.h"
@@ -59,6 +60,7 @@
 #include "src/tint/transform/array_length_from_uniform.h"
 #include "src/tint/transform/builtin_polyfill.h"
 #include "src/tint/transform/canonicalize_entry_point_io.h"
+#include "src/tint/transform/disable_uniformity_analysis.h"
 #include "src/tint/transform/expand_compound_assignment.h"
 #include "src/tint/transform/manager.h"
 #include "src/tint/transform/module_scope_var_to_entry_point_param.h"
@@ -120,6 +122,8 @@ SanitizedResult::SanitizedResult(SanitizedResult&&) = default;
 SanitizedResult Sanitize(const Program* in, const Options& options) {
     transform::Manager manager;
     transform::DataMap data;
+
+    manager.Add<transform::DisableUniformityAnalysis>();
 
     {  // Builtin polyfills
         transform::BuiltinPolyfill::Builtins polyfills;
@@ -510,6 +514,22 @@ bool GeneratorImpl::EmitBinary(std::ostream& out, const ast::BinaryExpression* e
         return true;
     }
 
+    // Handle '&' and '|' of booleans.
+    if ((expr->IsAnd() || expr->IsOr()) && lhs_type->Is<sem::Bool>()) {
+        out << "bool";
+        ScopedParen sp(out);
+        if (!EmitExpression(out, expr->lhs)) {
+            return false;
+        }
+        if (!emit_op()) {
+            return false;
+        }
+        if (!EmitExpression(out, expr->rhs)) {
+            return false;
+        }
+        return true;
+    }
+
     // Emit as usual
     ScopedParen sp(out);
     if (!EmitExpression(out, expr->lhs)) {
@@ -531,7 +551,12 @@ bool GeneratorImpl::EmitBreak(const ast::BreakStatement*) {
 }
 
 bool GeneratorImpl::EmitCall(std::ostream& out, const ast::CallExpression* expr) {
-    auto* call = program_->Sem().Get(expr);
+    auto* sem = program_->Sem().Get(expr);
+    if (auto* m = sem->As<sem::Materialize>()) {
+        // TODO(crbug.com/tint/1504): Just emit the constant value.
+        sem = m->Expr();
+    }
+    auto* call = sem->As<sem::Call>();
     auto* target = call->Target();
     return Switch(
         target, [&](const sem::Function* func) { return EmitFunctionCall(out, call, func); },
@@ -1024,8 +1049,9 @@ bool GeneratorImpl::EmitTextureCall(std::ostream& out,
                 }
             }
 
-            if (!EmitExpression(out, e->Declaration()))
+            if (!EmitExpression(out, e->Declaration())) {
                 return false;
+            }
 
             if (casted) {
                 out << ")";
@@ -1117,8 +1143,8 @@ bool GeneratorImpl::EmitTextureCall(std::ostream& out,
                     break;  // Other texture dimensions don't have an offset
             }
         }
-        auto c = component->ConstantValue().Elements()[0].i32;
-        switch (c) {
+        auto c = component->ConstantValue().Element<AInt>(0);
+        switch (c.value) {
             case 0:
                 out << "component::x";
                 break;
@@ -1463,6 +1489,12 @@ bool GeneratorImpl::EmitZeroValue(std::ostream& out, const sem::Type* type) {
         [&](const sem::Bool*) {
             out << "false";
             return true;
+        },
+        [&](const sem::F16*) {
+            // Placeholder for emitting f16 zero value
+            diagnostics_.add_error(diag::System::Writer,
+                                   "Type f16 is not completely implemented yet");
+            return false;
         },
         [&](const sem::F32*) {
             out << "0.0f";
@@ -2235,6 +2267,11 @@ bool GeneratorImpl::EmitType(std::ostream& out,
         [&](const sem::Bool*) {
             out << "bool";
             return true;
+        },
+        [&](const sem::F16*) {
+            diagnostics_.add_error(diag::System::Writer,
+                                   "Type f16 is not completely implemented yet");
+            return false;
         },
         [&](const sem::F32*) {
             out << "float";

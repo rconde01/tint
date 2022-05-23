@@ -342,7 +342,7 @@ class DependencyScanner {
                 TraverseType(tex->type);
             },
             [&](Default) {
-                if (!ty->IsAnyOf<ast::Void, ast::Bool, ast::I32, ast::U32, ast::F32,
+                if (!ty->IsAnyOf<ast::Void, ast::Bool, ast::I32, ast::U32, ast::F16, ast::F32,
                                  ast::DepthTexture, ast::DepthMultisampledTexture,
                                  ast::StorageTexture, ast::ExternalTexture, ast::Sampler>()) {
                     UnhandledNode(diagnostics_, ty);
@@ -420,7 +420,7 @@ class DependencyScanner {
     DependencyGraph& graph_;
     DependencyEdges& dependency_edges_;
 
-    ScopeStack<const ast::Node*> scope_stack_;
+    ScopeStack<Symbol, const ast::Node*> scope_stack_;
     Global* current_global_ = nullptr;
 };
 

@@ -62,16 +62,32 @@ enum texel_format {
 
 ////////////////////////////////////////////////////////////////////////////////
 // WGSL primitive types                                                       //
+// Types may be decorated with [[precedence(N)]] to prioritize which type     //
+// will be picked when multiple types of a matcher match.                     //
+// This is used to ensure that abstract numerical types materialize to the    //
+// concrete type with the lowest conversion rank.                             //
+// Types with higher the precedence values will be matched first.             //
 ////////////////////////////////////////////////////////////////////////////////
 
 // https://gpuweb.github.io/gpuweb/wgsl/#plain-types-section
 type bool
-type f32
-type i32
-type u32
+[[precedence(4), display("abstract-float")]] type af
+[[precedence(3), display("abstract-int")]]   type ai
+[[precedence(2)]] type i32
+[[precedence(1)]] type u32
+[[precedence(0)]] type f32
 type vec2<T>
 type vec3<T>
 type vec4<T>
+type mat2x2<T>
+type mat2x3<T>
+type mat2x4<T>
+type mat3x2<T>
+type mat3x3<T>
+type mat3x4<T>
+type mat4x2<T>
+type mat4x3<T>
+type mat4x4<T>
 [[display("vec{N}<{T}>")]]     type vec<N: num, T>
 [[display("mat{N}x{M}<{T}>")]] type mat<N: num, M: num, T>
 type ptr<S: storage_class, T, A: access>
@@ -112,6 +128,12 @@ match fiu32: f32 | i32 | u32
 match fi32: f32 | i32
 match iu32: i32 | u32
 match scalar: f32 | i32 | u32 | bool
+match abstract_or_scalar: ai | af | f32 | i32 | u32 | bool
+match af_f32: af | f32
+match scalar_no_f32: i32 | u32 | bool
+match scalar_no_i32: f32 | u32 | bool
+match scalar_no_u32: f32 | i32 | bool
+match scalar_no_bool: f32 | i32 | u32
 
 ////////////////////////////////////////////////////////////////////////////////
 // Enum matchers                                                              //
@@ -141,7 +163,7 @@ match workgroup_or_storage: workgroup | storage
 // functions supported by the WGSL language. This builtin definition          //
 // language supports simple static-type function declarations, as well as     //
 // single overload declarations that can match a number of different          //
-// argument types via the use of 'open-types' and 'open-numbers'.             //
+// argument types via the use of template types and template numbers          //
 //                                                                            //
 // * Basic example:                                                           //
 //                                                                            //
@@ -150,10 +172,9 @@ match workgroup_or_storage: workgroup | storage
 //   Declares an overload of the function 'isInf' that accepts a single       //
 //   parameter of type 'f32' and returns a 'bool'.                            //
 //                                                                            //
-// An 'open-type' can be thought as a template type that is determined by the //
-// arguments to the builtin.                                                  //
+// A template type is a type determined by the arguments to the builtin.      //
 //                                                                            //
-// * Open-type example without constraint:                                    //
+// * Template type example without constraint:                                //
 //                                                                            //
 //    fn arrayLength<T>(array<T>) -> u32                                      //
 //                                                                            //
@@ -162,7 +183,7 @@ match workgroup_or_storage: workgroup | storage
 //    element type. This overload will always return a value of the same type //
 //    as its single argument.                                                 //
 //                                                                            //
-// * Open-type example with constraint:                                       //
+// * Template type example with constraint:                                   //
 //                                                                            //
 //    fn abs<T: fiu32>(T) -> T                                                //
 //                                                                            //
@@ -170,10 +191,10 @@ match workgroup_or_storage: workgroup | storage
 //    argument of type 'f32', 'i32' or 'u32', which returns a value of the    //
 //    same argument type.                                                     //
 //                                                                            //
-// Similarly an 'open-number' can be thought as a template number or          //
-// enumerator that is determined by the arguments to the builtin.             //
+// Similarly a template number is a number or enumerator that is determined   //
+// by the arguments to the builtin.                                           //
 //                                                                            //
-// * Open-number example:                                                     //
+// * Template number example:                                                 //
 //                                                                            //
 //    fn dpdx<N: num>(vec<N, f32>) -> vec<N, f32>                             //
 //                                                                            //
@@ -182,54 +203,76 @@ match workgroup_or_storage: workgroup | storage
 //    the same argument type.                                                 //
 //                                                                            //
 //                                                                            //
-// Matching algorithm:                                                        //
-// -------------------                                                        //
+// Matching algorithm for a single overload:                                  //
+// -----------------------------------------                                  //
 //                                                                            //
-// Prior to matching an overload, all open-types are undefined.               //
+// The goal of matching is to compare a function call's arguments in the      //
+// program source against a possibly-templated overload declaration, and      //
+// determine if the call satisfies the form and type constraints of the       //
+// overload. Currently it is impossible for a call to match more than one     //
+// overload definition. In the event that more than one overload matches, an  //
+// ICE will be raised. Note that Tint may need to support multiple-overload   //
+// resolution in the future, depending on future overload definitions.        //
 //                                                                            //
-// Open-types become closed-types (pinned to a fixed type) on the first       //
-// attempt to match an argument to that open-type.                            //
-// Once open-types are closed, they remain that type for the rest of the      //
-// overload evaluation.                                                       //
+// Prior to matching an overload, all template types are undefined.           //
+//                                                                            //
+// Template types are first defined with the type of the leftmost argument    //
+// that matches against that template type name. Subsequent arguments that    //
+// attempt to match against the template type name will either reject the     //
+// overload or refine the template, in one of 3 ways:                         //
+// (a) Fail to match, causing the overload to be immediately rejected.        //
+// (b) Match the existing template type, either exactly or via implicit       //
+//     conversion, and overload resolution continues.                         //
+// (c) Match via implicit conversion of the currently defined template type   //
+//     to the argument type. In this situation, the template type is refined  //
+//     with the more constrained argument type, and overload resolution       //
+//     continues.                                                             //
 //                                                                            //
 // To better understand, let's consider the following hypothetical overload   //
 // declaration:                                                               //
 //                                                                            //
 //    fn foo<T: scalar>(T, T);                                                //
 //                                                                            //
-//    T           - is the open-type                                          //
+//    T           - is the template type name                                 //
 //    scalar      - is a matcher for the types 'f32', 'i32', 'u32' or 'bool'  //
 //                  (declared above)                                          //
-//    <T: scalar> - declares the open-type T, with the constraint that T must //
-//                  match one of 'f32', 'i32', 'u32' or 'bool'.               //
+//    <T: scalar> - declares the template type T, with the constraint that T  //
+//                  must match one of 'f32', 'i32', 'u32' or 'bool'.          //
 //                                                                            //
 // The process for resolving this overload is as follows:                     //
 //                                                                            //
 //   (1) The overload resolver begins by attempting to match the argument     //
 //       types from left to right.                                            //
-//       The first parameter type is compared against the argument type.      //
-//       As the open-type T has not been closed yet, T is closed as the type  //
-//       of the first argument.                                               //
+//       The first parameter type is compared against the argument type T.    //
+//       As the template type T has not been defined yet, T is defined as the //
+//       type of the first argument.                                          //
 //       There's no verification that the T type is a scalar at this stage.   //
 //   (2) The second parameter is then compared against the second argument.   //
-//       As the open-type T is now closed, the argument type is compared      //
-//       against the value of the closed-type of T. If the types match, then  //
-//       the overload is still a candidate for matching, otherwise the        //
-//       overload is no longer considered.                                    //
-//   (3) If all the parameters matched, constraints on the open-types need    //
-//       to be checked next. If the closed-type does not match the 'match'    //
-//       constraint, then the overload is no longer considered.               //
+//       As the template type T is now defined the argument type is compared  //
+//       against the value of the defined type of T. Depending on the         //
+//       comparison of the argument type to the template type, either the     //
+//       actions of (a), (b) or (c) from above will occur.                    //
+//   (3) If all the parameters matched, constraints on the template types     //
+//       need to be checked next. If the defined type does not match the      //
+//       'match' constraint, then the overload is no longer considered.       //
 //                                                                            //
-// The algorithm for matching open-numbers is almost identical to open-types, //
-// except of course, they match against integer numbers or enumerators        //
-// instead of types.                                                          //
+// This algorithm is less general than the overload resolution described in   //
+// the WGSL spec.  But it makes the same decisions because the overloads      //
+// defined by WGSL are monotonic in the sense that once a template parameter  //
+// has been refined, there is never a need to backtrack and un-refine it to   //
+// match a later argument.                                                    //
+//                                                                            //
+// The algorithm for matching template numbers is similar to matching         //
+// template types, except numbers need to exactly match across all uses -     //
+// there is no implicit conversion. Template numbers may match integer        //
+// numbers or enumerators.                                                    //
 //                                                                            //
 //                                                                            //
 // * More examples:                                                           //
 //                                                                            //
 //   fn F()                                                                   //
 //     - Function called F.                                                   //
-//       No open types or numbers, no parameters, no return value             //
+//       No template types or numbers, no parameters, no return value         //
 //                                                                            //
 //   fn F() -> RETURN_TYPE                                                    //
 //     - Function with RETURN_TYPE as the return type value                   //
@@ -243,21 +286,21 @@ match workgroup_or_storage: workgroup | storage
 //       some builtin functions                                               //
 //                                                                            //
 //   fn F<T>(T)                                                               //
-//     - Single parameter of unconstrained open-type T (any type)             //
+//     - Single parameter of unconstrained template type T (any type)         //
 //                                                                            //
 //   fn F<T: scalar>(T)                                                       //
-//     - Single parameter of constrained open-type T (must be a scalar)       //
+//     - Single parameter of constrained template type T (must be a scalar)   //
 //                                                                            //
 //   fn F<T: fiu32>(T) -> T                                                   //
-//     - Single parameter of constrained open-type T (must be a one of fiu32) //
-//       Return type matches parameter type                                   //
+//     - Single parameter of constrained template type T (must be a one of    //
+//       fiu32) Return type matches parameter type                            //
 //                                                                            //
 //   fn F<T, N: num>(vec<N, T>)                                               //
-//     - Single parameter of vector type with open-number size N and element  //
-//       open-type T                                                          //
+//     - Single parameter of vector type with template number size N and      //
+//       element template type T                                              //
 //                                                                            //
 //   fn F<A: access>(texture_storage_1d<f32_texel_format, A>)                 //
-//     - Single parameter of texture_storage_1d type with open-number         //
+//     - Single parameter of texture_storage_1d type with template number     //
 //       access-control C, and of a texel format that is listed in            //
 //       f32_texel_format                                                     //
 //                                                                            //
@@ -561,6 +604,140 @@ fn textureLoad(texture: texture_external, coords: vec2<i32>) -> vec4<f32>
 [[stage("fragment", "compute")]] fn atomicXor<T: iu32, S: workgroup_or_storage>(ptr<S, atomic<T>, read_write>, T) -> T
 [[stage("fragment", "compute")]] fn atomicExchange<T: iu32, S: workgroup_or_storage>(ptr<S, atomic<T>, read_write>, T) -> T
 [[stage("fragment", "compute")]] fn atomicCompareExchangeWeak<T: iu32, S: workgroup_or_storage>(ptr<S, atomic<T>, read_write>, T, T) -> vec2<T>
+
+////////////////////////////////////////////////////////////////////////////////
+// Type constructors                                                          //
+////////////////////////////////////////////////////////////////////////////////
+
+// Zero value constructors
+ctor i32() -> i32
+ctor u32() -> u32
+ctor f32() -> f32
+ctor bool() -> bool
+ctor vec2<T: scalar>() -> vec2<T>
+ctor vec3<T: scalar>() -> vec3<T>
+ctor vec4<T: scalar>() -> vec4<T>
+ctor mat2x2() -> mat2x2<f32>
+ctor mat2x3() -> mat2x3<f32>
+ctor mat2x4() -> mat2x4<f32>
+ctor mat3x2() -> mat3x2<f32>
+ctor mat3x3() -> mat3x3<f32>
+ctor mat3x4() -> mat3x4<f32>
+ctor mat4x2() -> mat4x2<f32>
+ctor mat4x3() -> mat4x3<f32>
+ctor mat4x4() -> mat4x4<f32>
+
+// Identity constructors
+ctor i32(i32) -> i32
+ctor u32(u32) -> u32
+ctor f32(f32) -> f32
+ctor bool(bool) -> bool
+ctor vec2<T: scalar>(vec2<T>) -> vec2<T>
+ctor vec3<T: scalar>(vec3<T>) -> vec3<T>
+ctor vec4<T: scalar>(vec4<T>) -> vec4<T>
+ctor mat2x2<f32>(mat2x2<f32>) -> mat2x2<f32>
+ctor mat2x3<f32>(mat2x3<f32>) -> mat2x3<f32>
+ctor mat2x4<f32>(mat2x4<f32>) -> mat2x4<f32>
+ctor mat3x2<f32>(mat3x2<f32>) -> mat3x2<f32>
+ctor mat3x3<f32>(mat3x3<f32>) -> mat3x3<f32>
+ctor mat3x4<f32>(mat3x4<f32>) -> mat3x4<f32>
+ctor mat4x2<f32>(mat4x2<f32>) -> mat4x2<f32>
+ctor mat4x3<f32>(mat4x3<f32>) -> mat4x3<f32>
+ctor mat4x4<f32>(mat4x4<f32>) -> mat4x4<f32>
+
+// Vector constructors
+ctor vec2<T: abstract_or_scalar>(T) -> vec2<T>
+ctor vec2<T: abstract_or_scalar>(x: T, y: T) -> vec2<T>
+ctor vec3<T: abstract_or_scalar>(T) -> vec3<T>
+ctor vec3<T: abstract_or_scalar>(x: T, y: T, z: T) -> vec3<T>
+ctor vec3<T: abstract_or_scalar>(xy: vec2<T>, z: T) -> vec3<T>
+ctor vec3<T: abstract_or_scalar>(x: T, yz: vec2<T>) -> vec3<T>
+ctor vec4<T: abstract_or_scalar>(T) -> vec4<T>
+ctor vec4<T: abstract_or_scalar>(x: T, y: T, z: T, w: T) -> vec4<T>
+ctor vec4<T: abstract_or_scalar>(xy: vec2<T>, z: T, w: T) -> vec4<T>
+ctor vec4<T: abstract_or_scalar>(x: T, yz: vec2<T>, w: T) -> vec4<T>
+ctor vec4<T: abstract_or_scalar>(x: T, y: T, zw: vec2<T>) -> vec4<T>
+ctor vec4<T: abstract_or_scalar>(xy: vec2<T>, zw: vec2<T>) -> vec4<T>
+ctor vec4<T: abstract_or_scalar>(xyz: vec3<T>, w: T) -> vec4<T>
+ctor vec4<T: abstract_or_scalar>(x: T, zyw: vec3<T>) -> vec4<T>
+
+// Matrix constructors
+ctor mat2x2<T: af_f32>(T) -> mat2x2<T>
+ctor mat2x2<T: af_f32>(T, T,
+                       T, T) -> mat2x2<T>
+ctor mat2x2<T: af_f32>(vec2<T>, vec2<T>) -> mat2x2<T>
+
+ctor mat2x3<T: af_f32>(T) -> mat2x3<T>
+ctor mat2x3<T: af_f32>(T, T, T,
+                       T, T, T) -> mat2x3<T>
+ctor mat2x3<T: af_f32>(vec3<T>, vec3<T>) -> mat2x3<T>
+
+ctor mat2x4<T: af_f32>(T) -> mat2x4<T>
+ctor mat2x4<T: af_f32>(T, T, T, T,
+                       T, T, T, T) -> mat2x4<T>
+ctor mat2x4<T: af_f32>(vec4<T>, vec4<T>) -> mat2x4<T>
+
+ctor mat3x2<T: af_f32>(T) -> mat3x2<T>
+ctor mat3x2<T: af_f32>(T, T,
+                       T, T,
+                       T, T) -> mat3x2<T>
+ctor mat3x2<T: af_f32>(vec2<T>, vec2<T>, vec2<T>) -> mat3x2<T>
+
+ctor mat3x3<T: af_f32>(T) -> mat3x3<T>
+ctor mat3x3<T: af_f32>(T, T, T,
+                       T, T, T,
+                       T, T, T) -> mat3x3<T>
+ctor mat3x3<T: af_f32>(vec3<T>, vec3<T>, vec3<T>) -> mat3x3<T>
+
+ctor mat3x4<T: af_f32>(T) -> mat3x4<T>
+ctor mat3x4<T: af_f32>(T, T, T, T,
+                       T, T, T, T,
+                       T, T, T, T) -> mat3x4<T>
+ctor mat3x4<T: af_f32>(vec4<T>, vec4<T>, vec4<T>) -> mat3x4<T>
+
+ctor mat4x2<T: af_f32>(T) -> mat4x2<T>
+ctor mat4x2<T: af_f32>(T, T,
+                       T, T,
+                       T, T,
+                       T, T) -> mat4x2<T>
+ctor mat4x2<T: af_f32>(vec2<T>, vec2<T>, vec2<T>, vec2<T>) -> mat4x2<T>
+
+ctor mat4x3<T: af_f32>(T) -> mat4x3<T>
+ctor mat4x3<T: af_f32>(T, T, T,
+                       T, T, T,
+                       T, T, T,
+                       T, T, T) -> mat4x3<T>
+ctor mat4x3<T: af_f32>(vec3<T>, vec3<T>, vec3<T>, vec3<T>) -> mat4x3<T>
+
+ctor mat4x4<T: af_f32>(T) -> mat4x4<T>
+ctor mat4x4<T: af_f32>(T, T, T, T,
+                       T, T, T, T,
+                       T, T, T, T,
+                       T, T, T, T) -> mat4x4<T>
+ctor mat4x4<T: af_f32>(vec4<T>, vec4<T>, vec4<T>, vec4<T>) -> mat4x4<T>
+
+////////////////////////////////////////////////////////////////////////////////
+// Type conversions                                                           //
+////////////////////////////////////////////////////////////////////////////////
+conv f32<T: scalar_no_f32>(T) -> f32
+conv i32<T: scalar_no_i32>(T) -> i32
+conv u32<T: scalar_no_u32>(T) -> u32
+conv bool<T: scalar_no_bool>(T) -> bool
+
+conv vec2<T: f32, U: scalar_no_f32>(vec2<U>) -> vec2<f32>
+conv vec2<T: i32, U: scalar_no_i32>(vec2<U>) -> vec2<i32>
+conv vec2<T: u32, U: scalar_no_u32>(vec2<U>) -> vec2<u32>
+conv vec2<T: bool, U: scalar_no_bool>(vec2<U>) -> vec2<bool>
+
+conv vec3<T: f32, U: scalar_no_f32>(vec3<U>) -> vec3<f32>
+conv vec3<T: i32, U: scalar_no_i32>(vec3<U>) -> vec3<i32>
+conv vec3<T: u32, U: scalar_no_u32>(vec3<U>) -> vec3<u32>
+conv vec3<T: bool, U: scalar_no_bool>(vec3<U>) -> vec3<bool>
+
+conv vec4<T: f32, U: scalar_no_f32>(vec4<U>) -> vec4<f32>
+conv vec4<T: i32, U: scalar_no_i32>(vec4<U>) -> vec4<i32>
+conv vec4<T: u32, U: scalar_no_u32>(vec4<U>) -> vec4<u32>
+conv vec4<T: bool, U: scalar_no_bool>(vec4<U>) -> vec4<bool>
 
 ////////////////////////////////////////////////////////////////////////////////
 // Operators                                                                  //

@@ -14,7 +14,6 @@
 
 #include "src/tint/sem/constant.h"
 
-#include <functional>
 #include <utility>
 
 #include "src/tint/debug.h"
@@ -25,24 +24,19 @@ namespace tint::sem {
 
 namespace {
 
-const Type* ElemType(const Type* ty, size_t num_elements) {
+const Type* CheckElemType(const Type* ty, size_t num_scalars) {
     diag::List diag;
-    if (ty->is_scalar()) {
-        if (num_elements != 1) {
-            TINT_ICE(Semantic, diag) << "sem::Constant() type <-> num_element mismatch. type: '"
-                                     << ty->TypeInfo().name << "' num_elements: " << num_elements;
+    if (ty->is_abstract_or_scalar() || ty->IsAnyOf<Vector, Matrix>()) {
+        uint32_t count = 0;
+        auto* el_ty = Type::ElementOf(ty, &count);
+        if (num_scalars != count) {
+            TINT_ICE(Semantic, diag) << "sem::Constant() type <-> scalar mismatch. type: '"
+                                     << ty->TypeInfo().name << "' scalar: " << num_scalars;
         }
-        return ty;
+        TINT_ASSERT(Semantic, el_ty->is_abstract_or_scalar());
+        return el_ty;
     }
-    if (auto* vec = ty->As<Vector>()) {
-        if (num_elements != vec->Width()) {
-            TINT_ICE(Semantic, diag) << "sem::Constant() type <-> num_element mismatch. type: '"
-                                     << ty->TypeInfo().name << "' num_elements: " << num_elements;
-        }
-        TINT_ASSERT(Semantic, vec->type()->is_scalar());
-        return vec->type();
-    }
-    TINT_UNREACHABLE(Semantic, diag) << "Unsupported sem::Constant type";
+    TINT_UNREACHABLE(Semantic, diag) << "Unsupported sem::Constant type: " << ty->TypeInfo().name;
     return nullptr;
 }
 
@@ -51,7 +45,7 @@ const Type* ElemType(const Type* ty, size_t num_elements) {
 Constant::Constant() {}
 
 Constant::Constant(const sem::Type* ty, Scalars els)
-    : type_(ty), elem_type_(ElemType(ty, els.size())), elems_(std::move(els)) {}
+    : type_(ty), elem_type_(CheckElemType(ty, els.size())), elems_(std::move(els)) {}
 
 Constant::Constant(const Constant&) = default;
 
@@ -60,16 +54,12 @@ Constant::~Constant() = default;
 Constant& Constant::operator=(const Constant& rhs) = default;
 
 bool Constant::AnyZero() const {
-    for (size_t i = 0; i < Elements().size(); ++i) {
-        if (WithScalarAt(i, [&](auto&& s) {
-                // Use std::equal_to to work around -Wfloat-equal warnings
-                using T = std::remove_reference_t<decltype(s)>;
-                auto equal_to = std::equal_to<T>{};
-                if (equal_to(s, T(0))) {
-                    return true;
-                }
-                return false;
-            })) {
+    for (auto scalar : elems_) {
+        auto is_zero = [&](auto&& s) {
+            using T = std::remove_reference_t<decltype(s)>;
+            return s == T(0);
+        };
+        if (std::visit(is_zero, scalar)) {
             return true;
         }
     }

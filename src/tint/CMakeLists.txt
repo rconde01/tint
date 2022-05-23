@@ -114,8 +114,12 @@ set(TINT_LIB_SRCS
   ast/enable.h
   ast/expression.cc
   ast/expression.h
+  ast/extension.cc
+  ast/extension.h
   ast/external_texture.cc
   ast/external_texture.h
+  ast/f16.cc
+  ast/f16.h
   ast/f32.cc
   ast/f32.h
   ast/fallthrough_statement.cc
@@ -246,6 +250,8 @@ set(TINT_LIB_SRCS
   program.h
   reader/reader.cc
   reader/reader.h
+  resolver/ctor_conv_intrinsic.cc
+  resolver/ctor_conv_intrinsic.h
   resolver/dependency_graph.cc
   resolver/dependency_graph.h
   resolver/intrinsic_table.cc
@@ -256,6 +262,8 @@ set(TINT_LIB_SRCS
   resolver/resolver.h
   resolver/sem_helper.cc
   resolver/sem_helper.h
+  resolver/uniformity.cc
+  resolver/uniformity.h
   resolver/validator.cc
   resolver/validator.h
   scope_stack.h
@@ -333,6 +341,8 @@ set(TINT_LIB_SRCS
   transform/decompose_strided_array.h
   transform/decompose_strided_matrix.cc
   transform/decompose_strided_matrix.h
+  transform/disable_uniformity_analysis.cc
+  transform/disable_uniformity_analysis.h
   transform/first_index_offset.cc
   transform/first_index_offset.h
   transform/fold_constants.cc
@@ -399,6 +409,8 @@ set(TINT_LIB_SRCS
   sem/depth_texture.h
   sem/external_texture.cc
   sem/external_texture.h
+  sem/f16.cc
+  sem/f16.h
   sem/f32.cc
   sem/f32.h
   sem/for_loop_statement.cc
@@ -409,6 +421,8 @@ set(TINT_LIB_SRCS
   sem/if_statement.h
   sem/loop_statement.cc
   sem/loop_statement.h
+  sem/materialize.cc
+  sem/materialize.h
   sem/matrix.cc
   sem/matrix.h
   sem/multisampled_texture.cc
@@ -681,7 +695,9 @@ if(TINT_BUILD_TESTS)
     ast/depth_texture_test.cc
     ast/discard_statement_test.cc
     ast/enable_test.cc
+    ast/extension_test.cc
     ast/external_texture_test.cc
+    ast/f16_test.cc
     ast/f32_test.cc
     ast/fallthrough_statement_test.cc
     ast/float_literal_expression_test.cc
@@ -785,7 +801,9 @@ if(TINT_BUILD_TESTS)
     sem/builtin_test.cc
     sem/depth_multisampled_texture_test.cc
     sem/depth_texture_test.cc
+    sem/expression_test.cc
     sem/external_texture_test.cc
+    sem/f16_test.cc
     sem/f32_test.cc
     sem/i32_test.cc
     sem/matrix_test.cc
@@ -798,6 +816,7 @@ if(TINT_BUILD_TESTS)
     sem/sem_struct_test.cc
     sem/storage_texture_test.cc
     sem/texture_test.cc
+    sem/type_test.cc
     sem/type_manager_test.cc
     sem/u32_test.cc
     sem/vector_test.cc
@@ -830,6 +849,13 @@ if(TINT_BUILD_TESTS)
     writer/generate_external_texture_bindings_test.cc
     writer/text_generator_test.cc
   )
+
+  # Uniformity analysis tests depend on WGSL reader
+  if(${TINT_BUILD_WGSL_READER})
+    list(APPEND TINT_TEST_SRCS
+      resolver/uniformity_test.cc
+    )
+  endif()
 
   # Inspector tests depend on WGSL reader
   if(${TINT_BUILD_WGSL_READER})
@@ -1044,6 +1070,7 @@ if(TINT_BUILD_TESTS)
       transform/decompose_memory_access_test.cc
       transform/decompose_strided_array_test.cc
       transform/decompose_strided_matrix_test.cc
+      transform/disable_uniformity_analysis_test.cc
       transform/expand_compound_assignment_test.cc
       transform/first_index_offset_test.cc
       transform/fold_constants_test.cc

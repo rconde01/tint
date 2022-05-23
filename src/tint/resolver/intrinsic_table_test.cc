@@ -14,8 +14,11 @@
 
 #include "src/tint/resolver/intrinsic_table.h"
 
+#include <utility>
+
 #include "gmock/gmock.h"
 #include "src/tint/program_builder.h"
+#include "src/tint/resolver/resolver_test_helper.h"
 #include "src/tint/sem/atomic.h"
 #include "src/tint/sem/depth_multisampled_texture.h"
 #include "src/tint/sem/depth_texture.h"
@@ -24,8 +27,11 @@
 #include "src/tint/sem/reference.h"
 #include "src/tint/sem/sampled_texture.h"
 #include "src/tint/sem/storage_texture.h"
+#include "src/tint/sem/test_helper.h"
+#include "src/tint/sem/type_constructor.h"
+#include "src/tint/sem/type_conversion.h"
 
-namespace tint {
+namespace tint::resolver {
 namespace {
 
 using ::testing::HasSubstr;
@@ -33,6 +39,12 @@ using ::testing::HasSubstr;
 using BuiltinType = sem::BuiltinType;
 using Parameter = sem::Parameter;
 using ParameterUsage = sem::ParameterUsage;
+
+using AFloatV = builder::vec<3, AFloat>;
+using AIntV = builder::vec<3, AInt>;
+using f32V = builder::vec<3, f32>;
+using i32V = builder::vec<3, i32>;
+using u32V = builder::vec<3, u32>;
 
 class IntrinsicTableTest : public testing::Test, public ProgramBuilder {
   public:
@@ -414,7 +426,7 @@ TEST_F(IntrinsicTableTest, ImplicitLoadOnReference) {
     EXPECT_EQ(result->Parameters()[0]->Type(), f32);
 }
 
-TEST_F(IntrinsicTableTest, MatchOpenType) {
+TEST_F(IntrinsicTableTest, MatchTemplateType) {
     auto* f32 = create<sem::F32>();
     auto* result = table->Lookup(BuiltinType::kClamp, {f32, f32, f32}, Source{});
     ASSERT_NE(result, nullptr) << Diagnostics().str();
@@ -426,7 +438,7 @@ TEST_F(IntrinsicTableTest, MatchOpenType) {
     EXPECT_EQ(result->Parameters()[2]->Type(), f32);
 }
 
-TEST_F(IntrinsicTableTest, MismatchOpenType) {
+TEST_F(IntrinsicTableTest, MismatchTemplateType) {
     auto* f32 = create<sem::F32>();
     auto* u32 = create<sem::U32>();
     auto* result = table->Lookup(BuiltinType::kClamp, {f32, u32, f32}, Source{});
@@ -661,5 +673,569 @@ TEST_F(IntrinsicTableTest, MismatchCompoundOp) {
 )");
 }
 
+TEST_F(IntrinsicTableTest, MatchTypeConstructorImplicit) {
+    auto* i32 = create<sem::I32>();
+    auto* vec3_i32 = create<sem::Vector>(i32, 3u);
+    auto* result =
+        table->Lookup(CtorConvIntrinsic::kVec3, nullptr, {i32, i32, i32}, Source{{12, 34}});
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->ReturnType(), vec3_i32);
+    EXPECT_TRUE(result->Is<sem::TypeConstructor>());
+    ASSERT_EQ(result->Parameters().size(), 3u);
+    EXPECT_EQ(result->Parameters()[0]->Type(), i32);
+    EXPECT_EQ(result->Parameters()[1]->Type(), i32);
+    EXPECT_EQ(result->Parameters()[2]->Type(), i32);
+}
+
+TEST_F(IntrinsicTableTest, MatchTypeConstructorExplicit) {
+    auto* i32 = create<sem::I32>();
+    auto* vec3_i32 = create<sem::Vector>(i32, 3u);
+    auto* result = table->Lookup(CtorConvIntrinsic::kVec3, i32, {i32, i32, i32}, Source{{12, 34}});
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->ReturnType(), vec3_i32);
+    EXPECT_TRUE(result->Is<sem::TypeConstructor>());
+    ASSERT_EQ(result->Parameters().size(), 3u);
+    EXPECT_EQ(result->Parameters()[0]->Type(), i32);
+    EXPECT_EQ(result->Parameters()[1]->Type(), i32);
+    EXPECT_EQ(result->Parameters()[2]->Type(), i32);
+}
+
+TEST_F(IntrinsicTableTest, MismatchTypeConstructorImplicit) {
+    auto* i32 = create<sem::I32>();
+    auto* f32 = create<sem::F32>();
+    auto* result =
+        table->Lookup(CtorConvIntrinsic::kVec3, nullptr, {i32, f32, i32}, Source{{12, 34}});
+    ASSERT_EQ(result, nullptr);
+    EXPECT_EQ(Diagnostics().str(), R"(12:34 error: no matching constructor for vec3(i32, f32, i32)
+
+6 candidate constructors:
+  vec3(x: T, y: T, z: T) -> vec3<T>  where: T is abstract-int, abstract-float, f32, i32, u32 or bool
+  vec3(xy: vec2<T>, z: T) -> vec3<T>  where: T is abstract-int, abstract-float, f32, i32, u32 or bool
+  vec3(x: T, yz: vec2<T>) -> vec3<T>  where: T is abstract-int, abstract-float, f32, i32, u32 or bool
+  vec3(T) -> vec3<T>  where: T is abstract-int, abstract-float, f32, i32, u32 or bool
+  vec3(vec3<T>) -> vec3<T>  where: T is f32, i32, u32 or bool
+  vec3() -> vec3<T>  where: T is f32, i32, u32 or bool
+
+4 candidate conversions:
+  vec3(vec3<U>) -> vec3<f32>  where: T is f32, U is i32, u32 or bool
+  vec3(vec3<U>) -> vec3<i32>  where: T is i32, U is f32, u32 or bool
+  vec3(vec3<U>) -> vec3<u32>  where: T is u32, U is f32, i32 or bool
+  vec3(vec3<U>) -> vec3<bool>  where: T is bool, U is f32, i32 or u32
+)");
+}
+
+TEST_F(IntrinsicTableTest, MismatchTypeConstructorExplicit) {
+    auto* i32 = create<sem::I32>();
+    auto* f32 = create<sem::F32>();
+    auto* result = table->Lookup(CtorConvIntrinsic::kVec3, i32, {i32, f32, i32}, Source{{12, 34}});
+    ASSERT_EQ(result, nullptr);
+    EXPECT_EQ(Diagnostics().str(),
+              R"(12:34 error: no matching constructor for vec3<i32>(i32, f32, i32)
+
+6 candidate constructors:
+  vec3(x: T, y: T, z: T) -> vec3<T>  where: T is abstract-int, abstract-float, f32, i32, u32 or bool
+  vec3(x: T, yz: vec2<T>) -> vec3<T>  where: T is abstract-int, abstract-float, f32, i32, u32 or bool
+  vec3(T) -> vec3<T>  where: T is abstract-int, abstract-float, f32, i32, u32 or bool
+  vec3(xy: vec2<T>, z: T) -> vec3<T>  where: T is abstract-int, abstract-float, f32, i32, u32 or bool
+  vec3(vec3<T>) -> vec3<T>  where: T is f32, i32, u32 or bool
+  vec3() -> vec3<T>  where: T is f32, i32, u32 or bool
+
+4 candidate conversions:
+  vec3(vec3<U>) -> vec3<f32>  where: T is f32, U is i32, u32 or bool
+  vec3(vec3<U>) -> vec3<i32>  where: T is i32, U is f32, u32 or bool
+  vec3(vec3<U>) -> vec3<u32>  where: T is u32, U is f32, i32 or bool
+  vec3(vec3<U>) -> vec3<bool>  where: T is bool, U is f32, i32 or u32
+)");
+}
+
+TEST_F(IntrinsicTableTest, MatchTypeConversion) {
+    auto* i32 = create<sem::I32>();
+    auto* vec3_i32 = create<sem::Vector>(i32, 3u);
+    auto* f32 = create<sem::F32>();
+    auto* vec3_f32 = create<sem::Vector>(f32, 3u);
+    auto* result = table->Lookup(CtorConvIntrinsic::kVec3, i32, {vec3_f32}, Source{{12, 34}});
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->ReturnType(), vec3_i32);
+    EXPECT_TRUE(result->Is<sem::TypeConversion>());
+    ASSERT_EQ(result->Parameters().size(), 1u);
+    EXPECT_EQ(result->Parameters()[0]->Type(), vec3_f32);
+}
+
+TEST_F(IntrinsicTableTest, MismatchTypeConversion) {
+    auto* arr = create<sem::Array>(create<sem::U32>(), 0u, 4u, 4u, 4u, 4u);
+    auto* f32 = create<sem::F32>();
+    auto* result = table->Lookup(CtorConvIntrinsic::kVec3, f32, {arr}, Source{{12, 34}});
+    ASSERT_EQ(result, nullptr);
+    EXPECT_EQ(Diagnostics().str(),
+              R"(12:34 error: no matching constructor for vec3<f32>(array<u32>)
+
+6 candidate constructors:
+  vec3(vec3<T>) -> vec3<T>  where: T is f32, i32, u32 or bool
+  vec3(T) -> vec3<T>  where: T is abstract-int, abstract-float, f32, i32, u32 or bool
+  vec3() -> vec3<T>  where: T is f32, i32, u32 or bool
+  vec3(xy: vec2<T>, z: T) -> vec3<T>  where: T is abstract-int, abstract-float, f32, i32, u32 or bool
+  vec3(x: T, yz: vec2<T>) -> vec3<T>  where: T is abstract-int, abstract-float, f32, i32, u32 or bool
+  vec3(x: T, y: T, z: T) -> vec3<T>  where: T is abstract-int, abstract-float, f32, i32, u32 or bool
+
+4 candidate conversions:
+  vec3(vec3<U>) -> vec3<f32>  where: T is f32, U is i32, u32 or bool
+  vec3(vec3<U>) -> vec3<i32>  where: T is i32, U is f32, u32 or bool
+  vec3(vec3<U>) -> vec3<u32>  where: T is u32, U is f32, i32 or bool
+  vec3(vec3<U>) -> vec3<bool>  where: T is bool, U is f32, i32 or u32
+)");
+}
+
+TEST_F(IntrinsicTableTest, Err257Arguments) {  // crbug.com/1323605
+    auto* f32 = create<sem::F32>();
+    std::vector<const sem::Type*> arg_tys(257, f32);
+    auto* result = table->Lookup(BuiltinType::kAbs, std::move(arg_tys), Source{});
+    ASSERT_EQ(result, nullptr);
+    ASSERT_THAT(Diagnostics().str(), HasSubstr("no matching call"));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// AbstractBinaryTests
+////////////////////////////////////////////////////////////////////////////////
+namespace AbstractBinaryTests {
+
+struct Case {
+    template <typename RESULT,
+              typename PARAM_LHS,
+              typename PARAM_RHS,
+              typename ARG_LHS,
+              typename ARG_RHS>
+    static Case Create(bool match = true) {
+        return {
+            match,                              //
+            builder::DataType<RESULT>::Sem,     //
+            builder::DataType<PARAM_LHS>::Sem,  //
+            builder::DataType<PARAM_RHS>::Sem,  //
+            builder::DataType<ARG_LHS>::Sem,    //
+            builder::DataType<ARG_RHS>::Sem,    //
+        };
+    }
+    bool expected_match;
+    builder::sem_type_func_ptr expected_result;
+    builder::sem_type_func_ptr expected_param_lhs;
+    builder::sem_type_func_ptr expected_param_rhs;
+    builder::sem_type_func_ptr arg_lhs;
+    builder::sem_type_func_ptr arg_rhs;
+};
+
+struct IntrinsicTableAbstractBinaryTest : public ResolverTestWithParam<Case> {
+    std::unique_ptr<IntrinsicTable> table = IntrinsicTable::Create(*this);
+};
+
+TEST_P(IntrinsicTableAbstractBinaryTest, MatchAdd) {
+    auto* arg_lhs = GetParam().arg_lhs(*this);
+    auto* arg_rhs = GetParam().arg_rhs(*this);
+    auto result = table->Lookup(ast::BinaryOp::kAdd, arg_lhs, arg_rhs, Source{{12, 34}},
+                                /* is_compound */ false);
+
+    bool matched = result.result != nullptr;
+    bool expected_match = GetParam().expected_match;
+    EXPECT_EQ(matched, expected_match) << Diagnostics().str();
+
+    auto* expected_result = GetParam().expected_result(*this);
+    EXPECT_TYPE(result.result, expected_result);
+
+    auto* expected_param_lhs = GetParam().expected_param_lhs(*this);
+    EXPECT_TYPE(result.lhs, expected_param_lhs);
+
+    auto* expected_param_rhs = GetParam().expected_param_rhs(*this);
+    EXPECT_TYPE(result.rhs, expected_param_rhs);
+}
+
+INSTANTIATE_TEST_SUITE_P(AFloat_AInt,
+                         IntrinsicTableAbstractBinaryTest,
+                         testing::Values(  // clang-format off
+//            result   | param lhs | param rhs |  arg lhs  |  arg rhs
+Case::Create<f32,        f32,        f32,        AFloat,     AFloat>(),
+Case::Create<f32,        f32,        f32,        AFloat,     AInt>(),
+Case::Create<f32,        f32,        f32,        AInt,       AFloat>(),
+Case::Create<i32,        i32,        i32,        AInt,       AInt>()
+                             ));  // clang-format on
+
+INSTANTIATE_TEST_SUITE_P(VecAFloat_VecAInt,
+                         IntrinsicTableAbstractBinaryTest,
+                         testing::Values(  // clang-format off
+//            result   | param lhs | param rhs |  arg lhs  |  arg rhs
+Case::Create<f32V,       f32V,       f32V,       AFloatV,    AFloatV>(),
+Case::Create<f32V,       f32V,       f32V,       AFloatV,    AIntV>(),
+Case::Create<f32V,       f32V,       f32V,       AIntV,      AFloatV>(),
+Case::Create<i32V,       i32V,       i32V,       AIntV,      AIntV>()
+                             ));  // clang-format on
+
+INSTANTIATE_TEST_SUITE_P(AFloat_f32,
+                         IntrinsicTableAbstractBinaryTest,
+                         testing::Values(  // clang-format off
+//            result   | param lhs | param rhs |  arg lhs  |  arg rhs
+Case::Create<f32,        f32,        f32,        AFloat,     f32>(),
+Case::Create<f32,        f32,        f32,        f32,        AFloat>()
+                             ));  // clang-format on
+
+INSTANTIATE_TEST_SUITE_P(VecAFloat_Vecf32,
+                         IntrinsicTableAbstractBinaryTest,
+                         testing::Values(  // clang-format off
+//            result   | param lhs | param rhs |  arg lhs  |  arg rhs
+Case::Create<f32V,       f32V,       f32V,       AFloatV,    f32V>(),
+Case::Create<f32V,       f32V,       f32V,       f32V,       AFloatV>()
+                             ));  // clang-format on
+
+INSTANTIATE_TEST_SUITE_P(
+    AFloat_i32,
+    IntrinsicTableAbstractBinaryTest,
+    testing::Values(  // clang-format off
+//            result   | param lhs | param rhs |  arg lhs  |  arg rhs
+Case::Create<void,        void,        void,        AFloat,     i32>(false),
+Case::Create<void,        void,        void,        i32,        AFloat>(false)
+                             ));  // clang-format on
+
+INSTANTIATE_TEST_SUITE_P(
+    VecAFloat_Veci32,
+    IntrinsicTableAbstractBinaryTest,
+    testing::Values(  // clang-format off
+//            result   | param lhs | param rhs |  arg lhs  |  arg rhs
+Case::Create<void,        void,        void,        AFloatV,    i32V>(false),
+Case::Create<void,        void,        void,        i32V,       AFloatV>(false)
+                             ));  // clang-format on
+
+INSTANTIATE_TEST_SUITE_P(
+    AFloat_u32,
+    IntrinsicTableAbstractBinaryTest,
+    testing::Values(  // clang-format off
+//            result   | param lhs | param rhs |  arg lhs  |  arg rhs
+Case::Create<void,        void,        void,        AFloat,     u32>(false),
+Case::Create<void,        void,        void,        u32,        AFloat>(false)
+                             ));  // clang-format on
+
+INSTANTIATE_TEST_SUITE_P(
+    VecAFloat_Vecu32,
+    IntrinsicTableAbstractBinaryTest,
+    testing::Values(  // clang-format off
+//            result   | param lhs | param rhs |  arg lhs  |  arg rhs
+Case::Create<void,        void,        void,        AFloatV,    u32V>(false),
+Case::Create<void,        void,        void,        u32V,       AFloatV>(false)
+                             ));  // clang-format on
+
+INSTANTIATE_TEST_SUITE_P(AInt_f32,
+                         IntrinsicTableAbstractBinaryTest,
+                         testing::Values(  // clang-format off
+//            result   | param lhs | param rhs |  arg lhs  |  arg rhs
+Case::Create<f32,        f32,        f32,        AInt,       f32>(),
+Case::Create<f32,        f32,        f32,        f32,        AInt>()
+                             ));  // clang-format on
+
+INSTANTIATE_TEST_SUITE_P(VecAInt_Vecf32,
+                         IntrinsicTableAbstractBinaryTest,
+                         testing::Values(  // clang-format off
+//            result   | param lhs | param rhs |  arg lhs  |  arg rhs
+Case::Create<f32V,       f32V,       f32V,       AIntV,      f32V>(),
+Case::Create<f32V,       f32V,       f32V,       f32V,       AIntV>()
+                             ));  // clang-format on
+
+INSTANTIATE_TEST_SUITE_P(AInt_i32,
+                         IntrinsicTableAbstractBinaryTest,
+                         testing::Values(  // clang-format off
+//            result   | param lhs | param rhs |  arg lhs  |  arg rhs
+Case::Create<i32,        i32,        i32,        AInt,       i32>(),
+Case::Create<i32,        i32,        i32,        i32,        AInt>()
+                             ));  // clang-format on
+
+INSTANTIATE_TEST_SUITE_P(VecAInt_Veci32,
+                         IntrinsicTableAbstractBinaryTest,
+                         testing::Values(  // clang-format off
+//            result   | param lhs | param rhs |  arg lhs  |  arg rhs
+Case::Create<i32V,       i32V,       i32V,       AIntV,      i32V>(),
+Case::Create<i32V,       i32V,       i32V,       i32V,       AIntV>()
+                             ));  // clang-format on
+
+INSTANTIATE_TEST_SUITE_P(AInt_u32,
+                         IntrinsicTableAbstractBinaryTest,
+                         testing::Values(  // clang-format off
+//            result   | param lhs | param rhs |  arg lhs  |  arg rhs
+Case::Create<u32,        u32,        u32,        AInt,       u32>(),
+Case::Create<u32,        u32,        u32,        u32,        AInt>()
+                             ));  // clang-format on
+
+INSTANTIATE_TEST_SUITE_P(VecAInt_Vecu32,
+                         IntrinsicTableAbstractBinaryTest,
+                         testing::Values(  // clang-format off
+//            result   | param lhs | param rhs |  arg lhs  |  arg rhs
+Case::Create<u32V,       u32V,       u32V,       AIntV,      u32V>(),
+Case::Create<u32V,       u32V,       u32V,       u32V,       AIntV>()
+                             ));  // clang-format on
+
+}  // namespace AbstractBinaryTests
+
+////////////////////////////////////////////////////////////////////////////////
+// AbstractTernaryTests
+////////////////////////////////////////////////////////////////////////////////
+namespace AbstractTernaryTests {
+
+struct Case {
+    template <typename RESULT,
+              typename PARAM_A,
+              typename PARAM_B,
+              typename PARAM_C,
+              typename ARG_A,
+              typename ARG_B,
+              typename ARG_C>
+    static Case Create(bool match = true) {
+        return {
+            match,
+            builder::DataType<RESULT>::Sem,   //
+            builder::DataType<PARAM_A>::Sem,  //
+            builder::DataType<PARAM_B>::Sem,  //
+            builder::DataType<PARAM_C>::Sem,  //
+            builder::DataType<ARG_A>::Sem,    //
+            builder::DataType<ARG_B>::Sem,    //
+            builder::DataType<ARG_C>::Sem,    //
+        };
+    }
+    bool expected_match;
+    builder::sem_type_func_ptr expected_result;
+    builder::sem_type_func_ptr expected_param_a;
+    builder::sem_type_func_ptr expected_param_b;
+    builder::sem_type_func_ptr expected_param_c;
+    builder::sem_type_func_ptr arg_a;
+    builder::sem_type_func_ptr arg_b;
+    builder::sem_type_func_ptr arg_c;
+};
+
+struct IntrinsicTableAbstractTernaryTest : public ResolverTestWithParam<Case> {
+    std::unique_ptr<IntrinsicTable> table = IntrinsicTable::Create(*this);
+};
+
+TEST_P(IntrinsicTableAbstractTernaryTest, MatchClamp) {
+    auto* arg_a = GetParam().arg_a(*this);
+    auto* arg_b = GetParam().arg_b(*this);
+    auto* arg_c = GetParam().arg_c(*this);
+    auto* builtin =
+        table->Lookup(sem::BuiltinType::kClamp, {arg_a, arg_b, arg_c}, Source{{12, 34}});
+
+    bool matched = builtin != nullptr;
+    bool expected_match = GetParam().expected_match;
+    EXPECT_EQ(matched, expected_match) << Diagnostics().str();
+
+    auto* result = builtin ? builtin->ReturnType() : nullptr;
+    auto* expected_result = GetParam().expected_result(*this);
+    EXPECT_TYPE(result, expected_result);
+
+    auto* param_a = builtin ? builtin->Parameters()[0]->Type() : nullptr;
+    auto* expected_param_a = GetParam().expected_param_a(*this);
+    EXPECT_TYPE(param_a, expected_param_a);
+
+    auto* param_b = builtin ? builtin->Parameters()[1]->Type() : nullptr;
+    auto* expected_param_b = GetParam().expected_param_b(*this);
+    EXPECT_TYPE(param_b, expected_param_b);
+
+    auto* param_c = builtin ? builtin->Parameters()[2]->Type() : nullptr;
+    auto* expected_param_c = GetParam().expected_param_c(*this);
+    EXPECT_TYPE(param_c, expected_param_c);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AFloat_AInt,
+    IntrinsicTableAbstractTernaryTest,
+    testing::Values(  // clang-format off
+//           result  | param a | param b | param c |  arg a  |  arg b  |  arg c
+Case::Create<f32,      f32,      f32,      f32,      AFloat,   AFloat,   AFloat>(),
+Case::Create<f32,      f32,      f32,      f32,      AFloat,   AFloat,   AInt>(),
+Case::Create<f32,      f32,      f32,      f32,      AFloat,   AInt,     AFloat>(),
+Case::Create<f32,      f32,      f32,      f32,      AFloat,   AInt,     AInt>(),
+Case::Create<f32,      f32,      f32,      f32,      AInt,     AFloat,   AFloat>(),
+Case::Create<f32,      f32,      f32,      f32,      AInt,     AFloat,   AInt>(),
+Case::Create<f32,      f32,      f32,      f32,      AInt,     AInt,     AFloat>(),
+Case::Create<i32,      i32,      i32,      i32,      AInt,     AInt,     AInt>()
+        // clang-format on
+        ));
+
+INSTANTIATE_TEST_SUITE_P(
+    VecAFloat_VecAInt,
+    IntrinsicTableAbstractTernaryTest,
+    testing::Values(  // clang-format off
+//           result  | param a | param b | param c |  arg a  |  arg b  |  arg c
+Case::Create<f32V,     f32V,     f32V,     f32V,     AFloatV,  AFloatV,  AFloatV>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     AFloatV,  AFloatV,  AIntV>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     AFloatV,  AIntV,    AFloatV>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     AFloatV,  AIntV,    AIntV>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     AIntV,    AFloatV,  AFloatV>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     AIntV,    AFloatV,  AIntV>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     AIntV,    AIntV,    AFloatV>(),
+Case::Create<i32V,     i32V,     i32V,     i32V,     AIntV,    AIntV,    AIntV>()
+        // clang-format on
+        ));
+
+INSTANTIATE_TEST_SUITE_P(
+    AFloat_f32,
+    IntrinsicTableAbstractTernaryTest,
+    testing::Values(  // clang-format off
+//           result  | param a | param b | param c |  arg a  |  arg b  |  arg c
+Case::Create<f32,      f32,      f32,      f32,      AFloat,   AFloat,   f32>(),
+Case::Create<f32,      f32,      f32,      f32,      AFloat,   f32,      AFloat>(),
+Case::Create<f32,      f32,      f32,      f32,      AFloat,   f32,      f32>(),
+Case::Create<f32,      f32,      f32,      f32,      f32,      AFloat,   AFloat>(),
+Case::Create<f32,      f32,      f32,      f32,      f32,      AFloat,   f32>(),
+Case::Create<f32,      f32,      f32,      f32,      f32,      f32,      AFloat>()
+        // clang-format on
+        ));
+
+INSTANTIATE_TEST_SUITE_P(
+    VecAFloat_Vecf32,
+    IntrinsicTableAbstractTernaryTest,
+    testing::Values(  // clang-format off
+//           result  | param a | param b | param c |  arg a  |  arg b  |  arg c
+Case::Create<f32V,     f32V,     f32V,     f32V,     AFloatV,  AFloatV,  f32V>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     AFloatV,  f32V,     AFloatV>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     AFloatV,  f32V,     f32V>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     f32V,     AFloatV,  AFloatV>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     f32V,     AFloatV,  f32V>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     f32V,     f32V,     AFloatV> ()
+        // clang-format on
+        ));
+
+INSTANTIATE_TEST_SUITE_P(
+    AFloat_i32,
+    IntrinsicTableAbstractTernaryTest,
+    testing::Values(  // clang-format off
+//           result  | param a | param b | param c |  arg a  |  arg b  |  arg c
+Case::Create<void,     void,     void,     void,     AFloat,   AFloat,   i32>(false),
+Case::Create<void,     void,     void,     void,     AFloat,   i32,      AFloat>(false),
+Case::Create<void,     void,     void,     void,     AFloat,   i32,      i32>(false),
+Case::Create<void,     void,     void,     void,     i32,      AFloat,   AFloat>(false),
+Case::Create<void,     void,     void,     void,     i32,      AFloat,   i32>(false),
+Case::Create<void,     void,     void,     void,     i32,      i32,      AFloat>(false)
+        // clang-format on
+        ));
+
+INSTANTIATE_TEST_SUITE_P(
+    VecAFloat_Veci32,
+    IntrinsicTableAbstractTernaryTest,
+    testing::Values(  // clang-format off
+//           result  | param a | param b | param c |  arg a  |  arg b  |  arg c
+Case::Create<void,     void,     void,     void,     AFloatV,  AFloatV,  i32V>(false),
+Case::Create<void,     void,     void,     void,     AFloatV,  i32V,     AFloatV>(false),
+Case::Create<void,     void,     void,     void,     AFloatV,  i32V,     i32V>(false),
+Case::Create<void,     void,     void,     void,     i32V,     AFloatV,  AFloatV>(false),
+Case::Create<void,     void,     void,     void,     i32V,     AFloatV,  i32V>(false),
+Case::Create<void,     void,     void,     void,     i32V,     i32V,     AFloatV>(false)
+        // clang-format on
+        ));
+
+INSTANTIATE_TEST_SUITE_P(
+    AFloat_u32,
+    IntrinsicTableAbstractTernaryTest,
+    testing::Values(  // clang-format off
+//           result  | param a | param b | param c |  arg a  |  arg b  |  arg c
+Case::Create<void,     void,     void,     void,     AFloat,   AFloat,   u32>(false),
+Case::Create<void,     void,     void,     void,     AFloat,   u32,      AFloat>(false),
+Case::Create<void,     void,     void,     void,     AFloat,   u32,      u32>(false),
+Case::Create<void,     void,     void,     void,     u32,      AFloat,   AFloat>(false),
+Case::Create<void,     void,     void,     void,     u32,      AFloat,   u32>(false),
+Case::Create<void,     void,     void,     void,     u32,      u32,      AFloat>(false)
+        // clang-format on
+        ));
+
+INSTANTIATE_TEST_SUITE_P(
+    VecAFloat_Vecu32,
+    IntrinsicTableAbstractTernaryTest,
+    testing::Values(  // clang-format off
+//           result  | param a | param b | param c |  arg a  |  arg b  |  arg c
+Case::Create<void,     void,     void,     void,     AFloatV,  AFloatV,  u32V>(false),
+Case::Create<void,     void,     void,     void,     AFloatV,  u32V,     AFloatV>(false),
+Case::Create<void,     void,     void,     void,     AFloatV,  u32V,     u32V>(false),
+Case::Create<void,     void,     void,     void,     u32V,     AFloatV,  AFloatV>(false),
+Case::Create<void,     void,     void,     void,     u32V,     AFloatV,  u32V>(false),
+Case::Create<void,     void,     void,     void,     u32V,     u32V,     AFloatV>(false)
+        // clang-format on
+        ));
+
+INSTANTIATE_TEST_SUITE_P(
+    AInt_f32,
+    IntrinsicTableAbstractTernaryTest,
+    testing::Values(  // clang-format off
+//           result  | param a | param b | param c |  arg a  |  arg b  |  arg c
+Case::Create<f32,      f32,      f32,      f32,      AInt,     AInt,     f32>(),
+Case::Create<f32,      f32,      f32,      f32,      AInt,     f32,      AInt>(),
+Case::Create<f32,      f32,      f32,      f32,      AInt,     f32,      f32>(),
+Case::Create<f32,      f32,      f32,      f32,      f32,      AInt,     AInt>(),
+Case::Create<f32,      f32,      f32,      f32,      f32,      AInt,     f32>(),
+Case::Create<f32,      f32,      f32,      f32,      f32,      f32,      AInt>()
+        // clang-format on
+        ));
+
+INSTANTIATE_TEST_SUITE_P(
+    VecAInt_Vecf32,
+    IntrinsicTableAbstractTernaryTest,
+    testing::Values(  // clang-format off
+//           result  | param a | param b | param c |  arg a  |  arg b  |  arg c
+Case::Create<f32V,     f32V,     f32V,     f32V,     AIntV,    AIntV,    f32V>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     AIntV,    f32V,     AIntV>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     AIntV,    f32V,     f32V>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     f32V,     AIntV,    AIntV>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     f32V,     AIntV,    f32V>(),
+Case::Create<f32V,     f32V,     f32V,     f32V,     f32V,     f32V,     AIntV>()
+        // clang-format on
+        ));
+
+INSTANTIATE_TEST_SUITE_P(
+    AInt_i32,
+    IntrinsicTableAbstractTernaryTest,
+    testing::Values(  // clang-format off
+//           result  | param a | param b | param c |  arg a  |  arg b  |  arg c
+Case::Create<i32,      i32,      i32,      i32,      AInt,     AInt,     i32>(),
+Case::Create<i32,      i32,      i32,      i32,      AInt,     i32,      AInt>(),
+Case::Create<i32,      i32,      i32,      i32,      AInt,     i32,      i32>(),
+Case::Create<i32,      i32,      i32,      i32,      i32,      AInt,     AInt>(),
+Case::Create<i32,      i32,      i32,      i32,      i32,      AInt,     i32>(),
+Case::Create<i32,      i32,      i32,      i32,      i32,      i32,      AInt>()
+        // clang-format on
+        ));
+
+INSTANTIATE_TEST_SUITE_P(
+    VecAInt_Veci32,
+    IntrinsicTableAbstractTernaryTest,
+    testing::Values(  // clang-format off
+//           result  | param a | param b | param c |  arg a  |  arg b  |  arg c
+Case::Create<i32V,     i32V,     i32V,     i32V,     AIntV,    AIntV,     i32V>(),
+Case::Create<i32V,     i32V,     i32V,     i32V,     AIntV,    i32V,      AIntV>(),
+Case::Create<i32V,     i32V,     i32V,     i32V,     AIntV,    i32V,      i32V>(),
+Case::Create<i32V,     i32V,     i32V,     i32V,     i32V,     AIntV,     AIntV>(),
+Case::Create<i32V,     i32V,     i32V,     i32V,     i32V,     AIntV,     i32V>(),
+Case::Create<i32V,     i32V,     i32V,     i32V,     i32V,     i32V,      AIntV>()
+        // clang-format on
+        ));
+
+INSTANTIATE_TEST_SUITE_P(
+    AInt_u32,
+    IntrinsicTableAbstractTernaryTest,
+    testing::Values(  // clang-format off
+//           result  | param a | param b | param c |  arg a  |  arg b  |  arg c
+Case::Create<u32,      u32,      u32,      u32,      AInt,     AInt,     u32>(),
+Case::Create<u32,      u32,      u32,      u32,      AInt,     u32,      AInt>(),
+Case::Create<u32,      u32,      u32,      u32,      AInt,     u32,      u32>(),
+Case::Create<u32,      u32,      u32,      u32,      u32,      AInt,     AInt>(),
+Case::Create<u32,      u32,      u32,      u32,      u32,      AInt,     u32>(),
+Case::Create<u32,      u32,      u32,      u32,      u32,      u32,      AInt>()
+        // clang-format on
+        ));
+
+INSTANTIATE_TEST_SUITE_P(
+    VecAInt_Vecu32,
+    IntrinsicTableAbstractTernaryTest,
+    testing::Values(  // clang-format off
+//           result  | param a | param b | param c |  arg a  |  arg b  |  arg c
+Case::Create<u32V,     u32V,     u32V,     u32V,     AIntV,    AIntV,    u32V>(),
+Case::Create<u32V,     u32V,     u32V,     u32V,     AIntV,    u32V,     AIntV>(),
+Case::Create<u32V,     u32V,     u32V,     u32V,     AIntV,    u32V,     u32V>(),
+Case::Create<u32V,     u32V,     u32V,     u32V,     u32V,     AIntV,    AIntV>(),
+Case::Create<u32V,     u32V,     u32V,     u32V,     u32V,     AIntV,    u32V>(),
+Case::Create<u32V,     u32V,     u32V,     u32V,     u32V,     u32V,     AIntV>()
+        // clang-format on
+        ));
+
+}  // namespace AbstractTernaryTests
+
 }  // namespace
-}  // namespace tint
+}  // namespace tint::resolver

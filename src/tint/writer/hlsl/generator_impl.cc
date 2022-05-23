@@ -36,6 +36,7 @@
 #include "src/tint/sem/depth_multisampled_texture.h"
 #include "src/tint/sem/depth_texture.h"
 #include "src/tint/sem/function.h"
+#include "src/tint/sem/materialize.h"
 #include "src/tint/sem/member_accessor_expression.h"
 #include "src/tint/sem/module.h"
 #include "src/tint/sem/multisampled_texture.h"
@@ -52,6 +53,7 @@
 #include "src/tint/transform/calculate_array_length.h"
 #include "src/tint/transform/canonicalize_entry_point_io.h"
 #include "src/tint/transform/decompose_memory_access.h"
+#include "src/tint/transform/disable_uniformity_analysis.h"
 #include "src/tint/transform/expand_compound_assignment.h"
 #include "src/tint/transform/fold_trivial_single_use_lets.h"
 #include "src/tint/transform/localize_struct_array_assignment.h"
@@ -65,6 +67,7 @@
 #include "src/tint/transform/simplify_pointers.h"
 #include "src/tint/transform/unshadow.h"
 #include "src/tint/transform/unwind_discard_functions.h"
+#include "src/tint/transform/vectorize_scalar_matrix_constructors.h"
 #include "src/tint/transform/zero_init_workgroup_memory.h"
 #include "src/tint/utils/defer.h"
 #include "src/tint/utils/map.h"
@@ -139,6 +142,8 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
     transform::Manager manager;
     transform::DataMap data;
 
+    manager.Add<transform::DisableUniformityAnalysis>();
+
     {  // Builtin polyfills
         transform::BuiltinPolyfill::Builtins polyfills;
         // TODO(crbug.com/tint/1449): Some of these can map to HLSL's `firstbitlow`
@@ -195,6 +200,7 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
     manager.Add<transform::ExpandCompoundAssignment>();
     manager.Add<transform::PromoteSideEffectsToDecl>();
     manager.Add<transform::UnwindDiscardFunctions>();
+    manager.Add<transform::VectorizeScalarMatrixConstructors>();
     manager.Add<transform::SimplifyPointers>();
     manager.Add<transform::RemovePhonies>();
     // ArrayLengthFromUniform must come after InlinePointerLets and Simplify, as
@@ -246,6 +252,10 @@ bool GeneratorImpl::Generate() {
         if (decl->Is<ast::Alias>()) {
             continue;  // Ignore aliases.
         }
+        if (decl->Is<ast::Enable>()) {
+            // Currently we don't have to do anything for using a extension in HLSL.
+            continue;
+        }
 
         // Emit a new line between declarations if the type of declaration has
         // changed, or we're about to emit a function
@@ -284,11 +294,6 @@ bool GeneratorImpl::Generate() {
                     return EmitEntryPointFunction(func);
                 }
                 return EmitFunction(func);
-            },
-            [&](const ast::Enable*) {
-                // Currently we don't have to do anything for using a extension in
-                // HLSL
-                return true;
             },
             [&](Default) {
                 TINT_ICE(Writer, diagnostics_)
@@ -656,13 +661,8 @@ bool GeneratorImpl::EmitExpressionOrOneIfZero(std::ostream& out, const ast::Expr
                 if (i != 0) {
                     out << ", ";
                 }
-                if (!val.WithScalarAt(i, [&](auto&& s) -> bool {
-                        // Use std::equal_to to work around -Wfloat-equal warnings
-                        using T = std::remove_reference_t<decltype(s)>;
-                        auto equal_to = std::equal_to<T>{};
-                        bool is_zero = equal_to(s, T(0));
-                        return EmitValue(out, elem_ty, is_zero ? 1 : static_cast<int>(s));
-                    })) {
+                auto s = val.Element<AInt>(i).value;
+                if (!EmitValue(out, elem_ty, (s == 0) ? 1 : static_cast<int>(s))) {
                     return false;
                 }
             }
@@ -925,7 +925,12 @@ bool GeneratorImpl::EmitBreak(const ast::BreakStatement*) {
 }
 
 bool GeneratorImpl::EmitCall(std::ostream& out, const ast::CallExpression* expr) {
-    auto* call = builder_.Sem().Get(expr);
+    auto* sem = builder_.Sem().Get(expr);
+    if (auto* m = sem->As<sem::Materialize>()) {
+        // TODO(crbug.com/tint/1504): Just emit the constant value.
+        sem = m->Expr();
+    }
+    auto* call = sem->As<sem::Call>();
     auto* target = call->Target();
     return Switch(
         target, [&](const sem::Function* func) { return EmitFunctionCall(out, call, func); },
@@ -994,23 +999,25 @@ bool GeneratorImpl::EmitFunctionCall(std::ostream& out,
 bool GeneratorImpl::EmitBuiltinCall(std::ostream& out,
                                     const sem::Call* call,
                                     const sem::Builtin* builtin) {
+    const auto type = builtin->Type();
+
     auto* expr = call->Declaration();
     if (builtin->IsTexture()) {
         return EmitTextureCall(out, call, builtin);
     }
-    if (builtin->Type() == sem::BuiltinType::kSelect) {
+    if (type == sem::BuiltinType::kSelect) {
         return EmitSelectCall(out, expr);
     }
-    if (builtin->Type() == sem::BuiltinType::kModf) {
+    if (type == sem::BuiltinType::kModf) {
         return EmitModfCall(out, expr, builtin);
     }
-    if (builtin->Type() == sem::BuiltinType::kFrexp) {
+    if (type == sem::BuiltinType::kFrexp) {
         return EmitFrexpCall(out, expr, builtin);
     }
-    if (builtin->Type() == sem::BuiltinType::kDegrees) {
+    if (type == sem::BuiltinType::kDegrees) {
         return EmitDegreesCall(out, expr, builtin);
     }
-    if (builtin->Type() == sem::BuiltinType::kRadians) {
+    if (type == sem::BuiltinType::kRadians) {
         return EmitRadiansCall(out, expr, builtin);
     }
     if (builtin->IsDataPacking()) {
@@ -1025,9 +1032,28 @@ bool GeneratorImpl::EmitBuiltinCall(std::ostream& out,
     if (builtin->IsAtomic()) {
         return EmitWorkgroupAtomicCall(out, expr, builtin);
     }
+    if (builtin->IsDP4a()) {
+        return EmitDP4aCall(out, expr, builtin);
+    }
+
     auto name = generate_builtin_name(builtin);
     if (name.empty()) {
         return false;
+    }
+
+    // Handle single argument builtins that only accept and return uint (not int overload). We need
+    // to explicitly cast the return value (we also cast the arg for good measure). See
+    // crbug.com/tint/1550
+    if (type == sem::BuiltinType::kCountOneBits || type == sem::BuiltinType::kReverseBits) {
+        auto* arg = call->Arguments()[0];
+        if (arg->Type()->UnwrapRef()->is_signed_scalar_or_vector()) {
+            out << "asint(" << name << "(asuint(";
+            if (!EmitExpression(out, arg->Declaration())) {
+                return false;
+            }
+            out << ")))";
+            return true;
+        }
     }
 
     out << name << "(";
@@ -1045,6 +1071,7 @@ bool GeneratorImpl::EmitBuiltinCall(std::ostream& out,
     }
 
     out << ")";
+
     return true;
 }
 
@@ -1073,6 +1100,55 @@ bool GeneratorImpl::EmitTypeConstructor(std::ostream& out,
     // value for all components.
     if (call->Arguments().empty()) {
         return EmitZeroValue(out, type);
+    }
+
+    if (auto* mat = call->Type()->As<sem::Matrix>()) {
+        if (ctor->Parameters().size() == 1) {
+            // Matrix constructor with single scalar.
+            auto fn = utils::GetOrCreate(matrix_scalar_ctors_, mat, [&]() -> std::string {
+                TextBuffer b;
+                TINT_DEFER(helpers_.Append(b));
+
+                auto name = UniqueIdentifier("build_mat" + std::to_string(mat->columns()) + "x" +
+                                             std::to_string(mat->rows()));
+                {
+                    auto l = line(&b);
+                    if (!EmitType(l, mat, ast::StorageClass::kNone, ast::Access::kUndefined, "")) {
+                        return "";
+                    }
+                    l << " " << name << "(";
+                    if (!EmitType(l, mat->type(), ast::StorageClass::kNone, ast::Access::kUndefined,
+                                  "")) {
+                        return "";
+                    }
+                    l << " value) {";
+                }
+                {
+                    ScopedIndent si(&b);
+                    auto l = line(&b);
+                    l << "return ";
+                    if (!EmitType(l, mat, ast::StorageClass::kNone, ast::Access::kUndefined, "")) {
+                        return "";
+                    }
+                    l << "(";
+                    for (uint32_t i = 0; i < mat->columns() * mat->rows(); i++) {
+                        l << ((i > 0) ? ", value" : "value");
+                    }
+                    l << ");";
+                }
+                line(&b) << "}";
+                return name;
+            });
+            if (fn.empty()) {
+                return false;
+            }
+            out << fn << "(";
+            if (!EmitExpression(out, call->Arguments()[0]->Declaration())) {
+                return false;
+            }
+            out << ")";
+            return true;
+        }
     }
 
     bool brackets = type->IsAnyOf<sem::Array, sem::Struct>();
@@ -1135,7 +1211,7 @@ bool GeneratorImpl::EmitUniformBufferAccess(
 
     if (auto val = offset_arg->ConstantValue()) {
         TINT_ASSERT(Writer, val.Type()->Is<sem::U32>());
-        scalar_offset_value = val.Elements()[0].u32;
+        scalar_offset_value = static_cast<uint32_t>(val.Element<AInt>(0).value);
         scalar_offset_value /= 4;  // bytes -> scalar index
         scalar_offset_constant = true;
     }
@@ -2031,6 +2107,34 @@ bool GeneratorImpl::EmitDataUnpackingCall(std::ostream& out,
         });
 }
 
+bool GeneratorImpl::EmitDP4aCall(std::ostream& out,
+                                 const ast::CallExpression* expr,
+                                 const sem::Builtin* builtin) {
+    // TODO(crbug.com/tint/1497): support the polyfill version of DP4a functions.
+    return CallBuiltinHelper(
+        out, expr, builtin, [&](TextBuffer* b, const std::vector<std::string>& params) {
+            std::string functionName;
+            switch (builtin->Type()) {
+                case sem::BuiltinType::kDot4I8Packed:
+                    line(b) << "int accumulator = 0;";
+                    functionName = "dot4add_i8packed";
+                    break;
+                case sem::BuiltinType::kDot4U8Packed:
+                    line(b) << "uint accumulator = 0u;";
+                    functionName = "dot4add_u8packed";
+                    break;
+                default:
+                    diagnostics_.add_error(diag::System::Writer,
+                                           "Internal error: unhandled DP4a builtin");
+                    return false;
+            }
+            line(b) << "return " << functionName << "(" << params[0] << ", " << params[1]
+                    << ", accumulator);";
+
+            return true;
+        });
+}
+
 bool GeneratorImpl::EmitBarrierCall(std::ostream& out, const sem::Builtin* builtin) {
     // TODO(crbug.com/tint/661): Combine sequential barriers to a single
     // instruction.
@@ -2245,8 +2349,9 @@ bool GeneratorImpl::EmitTextureCall(std::ostream& out,
             break;
     }
 
-    if (!EmitExpression(out, texture))
+    if (!EmitExpression(out, texture)) {
         return false;
+    }
 
     // If pack_level_in_coords is true, then the mip level will be appended as the
     // last value of the coordinates argument. If the WGSL builtin overload does
@@ -2287,7 +2392,7 @@ bool GeneratorImpl::EmitTextureCall(std::ostream& out,
         case sem::BuiltinType::kTextureGather:
             out << ".Gather";
             if (builtin->Parameters()[0]->Usage() == sem::ParameterUsage::kComponent) {
-                switch (call->Arguments()[0]->ConstantValue().Elements()[0].i32) {
+                switch (call->Arguments()[0]->ConstantValue().Element<AInt>(0).value) {
                     case 0:
                         out << "Red";
                         break;
@@ -2318,8 +2423,9 @@ bool GeneratorImpl::EmitTextureCall(std::ostream& out,
     }
 
     if (auto* sampler = arg(Usage::kSampler)) {
-        if (!EmitExpression(out, sampler))
+        if (!EmitExpression(out, sampler)) {
             return false;
+        }
         out << ", ";
     }
 
@@ -2459,7 +2565,7 @@ std::string GeneratorImpl::generate_builtin_name(const sem::Builtin* builtin) {
         case sem::BuiltinType::kTranspose:
         case sem::BuiltinType::kTrunc:
             return builtin->str();
-        case sem::BuiltinType::kCountOneBits:
+        case sem::BuiltinType::kCountOneBits:  // uint
             return "countbits";
         case sem::BuiltinType::kDpdx:
             return "ddx";
@@ -2487,7 +2593,7 @@ std::string GeneratorImpl::generate_builtin_name(const sem::Builtin* builtin) {
             return "rsqrt";
         case sem::BuiltinType::kMix:
             return "lerp";
-        case sem::BuiltinType::kReverseBits:
+        case sem::BuiltinType::kReverseBits:  // uint
             return "reversebits";
         case sem::BuiltinType::kSmoothstep:
         case sem::BuiltinType::kSmoothStep:
@@ -3481,6 +3587,11 @@ bool GeneratorImpl::EmitType(std::ostream& out,
         [&](const sem::F32*) {
             out << "float";
             return true;
+        },
+        [&](const sem::F16*) {
+            diagnostics_.add_error(diag::System::Writer,
+                                   "Type f16 is not completely implemented yet.");
+            return false;
         },
         [&](const sem::I32*) {
             out << "int";

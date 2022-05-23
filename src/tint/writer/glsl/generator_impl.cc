@@ -35,6 +35,7 @@
 #include "src/tint/sem/depth_multisampled_texture.h"
 #include "src/tint/sem/depth_texture.h"
 #include "src/tint/sem/function.h"
+#include "src/tint/sem/materialize.h"
 #include "src/tint/sem/member_accessor_expression.h"
 #include "src/tint/sem/module.h"
 #include "src/tint/sem/multisampled_texture.h"
@@ -52,6 +53,7 @@
 #include "src/tint/transform/canonicalize_entry_point_io.h"
 #include "src/tint/transform/combine_samplers.h"
 #include "src/tint/transform/decompose_memory_access.h"
+#include "src/tint/transform/disable_uniformity_analysis.h"
 #include "src/tint/transform/expand_compound_assignment.h"
 #include "src/tint/transform/fold_trivial_single_use_lets.h"
 #include "src/tint/transform/loop_to_for_loop.h"
@@ -156,6 +158,8 @@ SanitizedResult Sanitize(const Program* in,
                          const std::string& entry_point) {
     transform::Manager manager;
     transform::DataMap data;
+
+    manager.Add<transform::DisableUniformityAnalysis>();
 
     {  // Builtin polyfills
         transform::BuiltinPolyfill::Builtins polyfills;
@@ -687,7 +691,12 @@ bool GeneratorImpl::EmitBreak(const ast::BreakStatement*) {
 }
 
 bool GeneratorImpl::EmitCall(std::ostream& out, const ast::CallExpression* expr) {
-    auto* call = builder_.Sem().Get(expr);
+    auto* sem = builder_.Sem().Get(expr);
+    if (auto* m = sem->As<sem::Materialize>()) {
+        // TODO(crbug.com/tint/1504): Just emit the constant value.
+        sem = m->Expr();
+    }
+    auto* call = sem->As<sem::Call>();
     auto* target = call->Target();
 
     if (target->Is<sem::Function>()) {
@@ -1461,8 +1470,9 @@ bool GeneratorImpl::EmitTextureCall(std::ostream& out,
 
     out << "(";
 
-    if (!EmitExpression(out, texture))
+    if (!EmitExpression(out, texture)) {
         return false;
+    }
 
     out << ", ";
 
@@ -2562,6 +2572,9 @@ bool GeneratorImpl::EmitType(std::ostream& out,
         out << "bool";
     } else if (type->Is<sem::F32>()) {
         out << "float";
+    } else if (type->Is<sem::F16>()) {
+        diagnostics_.add_error(diag::System::Writer, "Type f16 is not completely implemented yet.");
+        return false;
     } else if (type->Is<sem::I32>()) {
         out << "int";
     } else if (auto* mat = type->As<sem::Matrix>()) {

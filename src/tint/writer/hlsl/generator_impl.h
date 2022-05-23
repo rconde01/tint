@@ -242,7 +242,7 @@ class GeneratorImpl : public TextGenerator {
     /// Handles generating a call to data packing builtin
     /// @param out the output of the expression stream
     /// @param expr the call expression
-    /// @param builtin the semantic information for the texture builtin
+    /// @param builtin the semantic information for the builtin
     /// @returns true if the call expression is emitted
     bool EmitDataPackingCall(std::ostream& out,
                              const ast::CallExpression* expr,
@@ -250,11 +250,19 @@ class GeneratorImpl : public TextGenerator {
     /// Handles generating a call to data unpacking builtin
     /// @param out the output of the expression stream
     /// @param expr the call expression
-    /// @param builtin the semantic information for the texture builtin
+    /// @param builtin the semantic information for the builtin
     /// @returns true if the call expression is emitted
     bool EmitDataUnpackingCall(std::ostream& out,
                                const ast::CallExpression* expr,
                                const sem::Builtin* builtin);
+    /// Handles generating a call to DP4a builtins (dot4I8Packed and dot4U8Packed)
+    /// @param out the output of the expression stream
+    /// @param expr the call expression
+    /// @param builtin the semantic information for the builtin
+    /// @returns true if the call expression is emitted
+    bool EmitDP4aCall(std::ostream& out,
+                      const ast::CallExpression* expr,
+                      const sem::Builtin* builtin);
     /// Handles a case statement
     /// @param s the switch statement
     /// @param case_idx the index of the switch case in the switch statement
@@ -504,6 +512,7 @@ class GeneratorImpl : public TextGenerator {
     TextBuffer helpers_;  // Helper functions emitted at the top of the output
     std::function<bool()> emit_continuing_;
     std::unordered_map<DMAIntrinsic, std::string, DMAIntrinsic::Hasher> dma_intrinsics_;
+    std::unordered_map<const sem::Matrix*, std::string> matrix_scalar_ctors_;
     std::unordered_map<const sem::Builtin*, std::string> builtins_;
     std::unordered_map<const sem::Struct*, std::string> structure_builders_;
     std::unordered_map<const sem::Vector*, std::string> dynamic_vector_write_;
