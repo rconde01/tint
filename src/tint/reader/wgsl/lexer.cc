@@ -24,6 +24,7 @@
 #include <utility>
 
 #include "src/tint/debug.h"
+#include "src/tint/number.h"
 #include "src/tint/text/unicode.h"
 
 namespace tint::reader::wgsl {
@@ -78,42 +79,6 @@ uint32_t hex_value(char c) {
         return 0xA + static_cast<uint32_t>(c - 'A');
     }
     return 0;
-}
-
-/// LimitCheck is the enumerator result of check_limits().
-enum class LimitCheck {
-    /// The value was within the limits of the data type.
-    kWithinLimits,
-    /// The value was too small to fit within the data type.
-    kTooSmall,
-    /// The value was too large to fit within the data type.
-    kTooLarge,
-};
-
-/// Checks whether the value fits within the integer type `T`
-template <typename T>
-LimitCheck check_limits(int64_t value) {
-    static_assert(std::is_integral_v<T>, "T must be an integer");
-    if (value < static_cast<int64_t>(std::numeric_limits<T>::lowest())) {
-        return LimitCheck::kTooSmall;
-    }
-    if (value > static_cast<int64_t>(std::numeric_limits<T>::max())) {
-        return LimitCheck::kTooLarge;
-    }
-    return LimitCheck::kWithinLimits;
-}
-
-/// Checks whether the value fits within the floating point type `T`
-template <typename T>
-LimitCheck check_limits(double value) {
-    static_assert(std::is_floating_point_v<T>, "T must be a floating point");
-    if (value < static_cast<double>(std::numeric_limits<T>::lowest())) {
-        return LimitCheck::kTooSmall;
-    }
-    if (value > static_cast<double>(std::numeric_limits<T>::max())) {
-        return LimitCheck::kTooLarge;
-    }
-    return LimitCheck::kWithinLimits;
 }
 
 }  // namespace
@@ -393,54 +358,38 @@ Token Lexer::try_float() {
     advance(end - start);
     end_source(source);
 
-    double value = strtod(&at(start), nullptr);
-    const double magnitude = std::abs(value);
+    double value = std::strtod(&at(start), nullptr);
 
     if (has_f_suffix) {
-        // This errors out if a non-zero magnitude is too small to represent in a
-        // float. It can't be represented faithfully in an f32.
-        if (0.0 < magnitude && magnitude < static_cast<double>(std::numeric_limits<float>::min())) {
-            return {Token::Type::kError, source, "magnitude too small to be represented as f32"};
-        }
-        switch (check_limits<float>(value)) {
-            case LimitCheck::kTooSmall:
-                return {Token::Type::kError, source, "value too small for f32"};
-            case LimitCheck::kTooLarge:
-                return {Token::Type::kError, source, "value too large for f32"};
-            default:
-                return {Token::Type::kFloatLiteral_F, source, value};
+        if (auto f = CheckedConvert<f32>(AFloat(value))) {
+            return {Token::Type::kFloatLiteral_F, source, static_cast<double>(f.Get())};
+        } else if (f.Failure() == ConversionFailure::kTooSmall) {
+            return {Token::Type::kFloatLiteral_F, source, 0.0};
+        } else {
+            return {Token::Type::kError, source, "value cannot be represented as 'f32'"};
         }
     }
 
-    // TODO(crbug.com/tint/1504): Properly support abstract float:
-    // Change `AbstractFloatType` to `double`, update errors to say 'abstract int'.
-    using AbstractFloatType = float;
-    if (0.0 < magnitude &&
-        magnitude < static_cast<double>(std::numeric_limits<AbstractFloatType>::min())) {
-        return {Token::Type::kError, source, "magnitude too small to be represented as f32"};
-    }
-    switch (check_limits<AbstractFloatType>(value)) {
-        case LimitCheck::kTooSmall:
-            return {Token::Type::kError, source, "value too small for f32"};
-        case LimitCheck::kTooLarge:
-            return {Token::Type::kError, source, "value too large for f32"};
-        default:
-            return {Token::Type::kFloatLiteral, source, value};
+    if (value == HUGE_VAL || -value == HUGE_VAL) {
+        return {Token::Type::kError, source, "value cannot be represented as 'abstract-float'"};
+    } else {
+        return {Token::Type::kFloatLiteral, source, value};
     }
 }
 
 Token Lexer::try_hex_float() {
-    constexpr uint32_t kTotalBits = 32;
-    constexpr uint32_t kTotalMsb = kTotalBits - 1;
-    constexpr uint32_t kMantissaBits = 23;
-    constexpr uint32_t kMantissaMsb = kMantissaBits - 1;
-    constexpr uint32_t kMantissaShiftRight = kTotalBits - kMantissaBits;
-    constexpr int32_t kExponentBias = 127;
-    constexpr int32_t kExponentMax = 255;
-    constexpr uint32_t kExponentBits = 8;
-    constexpr uint32_t kExponentMask = (1 << kExponentBits) - 1;
-    constexpr uint32_t kExponentLeftShift = kMantissaBits;
-    constexpr uint32_t kSignBit = 31;
+    constexpr uint64_t kExponentBits = 11;
+    constexpr uint64_t kMantissaBits = 52;
+    constexpr uint64_t kTotalBits = 1 + kExponentBits + kMantissaBits;
+    constexpr uint64_t kTotalMsb = kTotalBits - 1;
+    constexpr uint64_t kMantissaMsb = kMantissaBits - 1;
+    constexpr uint64_t kMantissaShiftRight = kTotalBits - kMantissaBits;
+    constexpr int64_t kExponentBias = 1023;
+    constexpr uint64_t kExponentMask = (1 << kExponentBits) - 1;
+    constexpr int64_t kExponentMax = kExponentMask;  // Including NaN / inf
+    constexpr uint64_t kExponentLeftShift = kMantissaBits;
+    constexpr uint64_t kSignBit = kTotalBits - 1;
+    constexpr uint64_t kOne = 1;
 
     auto start = pos();
     auto end = pos();
@@ -452,7 +401,7 @@ Token Lexer::try_hex_float() {
     // clang-format on
 
     // -?
-    int32_t sign_bit = 0;
+    int64_t sign_bit = 0;
     if (matches(end, "-")) {
         sign_bit = 1;
         end++;
@@ -464,8 +413,8 @@ Token Lexer::try_hex_float() {
         return {};
     }
 
-    uint32_t mantissa = 0;
-    uint32_t exponent = 0;
+    uint64_t mantissa = 0;
+    uint64_t exponent = 0;
 
     // TODO(dneto): Values in the normal range for the format do not explicitly
     // store the most significant bit.  The algorithm here works hard to eliminate
@@ -478,7 +427,7 @@ Token Lexer::try_hex_float() {
     // `set_next_mantissa_bit_to` sets next `mantissa` bit starting from msb to
     // lsb to value 1 if `set` is true, 0 otherwise. Returns true on success, i.e.
     // when the bit can be accommodated in the available space.
-    uint32_t mantissa_next_bit = kTotalMsb;
+    uint64_t mantissa_next_bit = kTotalMsb;
     auto set_next_mantissa_bit_to = [&](bool set, bool integer_part) -> bool {
         // If adding bits for the integer part, we can overflow whether we set the
         // bit or not. For the fractional part, we can only overflow when setting
@@ -490,7 +439,7 @@ Token Lexer::try_hex_float() {
             return false;  // Overflowed mantissa
         }
         if (set) {
-            mantissa |= (1 << mantissa_next_bit);
+            mantissa |= (kOne << mantissa_next_bit);
         }
         --mantissa_next_bit;
         return true;
@@ -546,7 +495,7 @@ Token Lexer::try_hex_float() {
             has_zero_integer = false;
         }
 
-        for (int32_t bit = 3; bit >= 0; --bit) {
+        for (int bit = 3; bit >= 0; --bit) {
             auto v = 1 & (nibble >> bit);
 
             // Skip leading 0s and the first 1
@@ -567,7 +516,7 @@ Token Lexer::try_hex_float() {
     // [0-9a-fA-F]*
     for (auto i = fractional_range.first; i < fractional_range.second; ++i) {
         auto nibble = hex_value(at(i));
-        for (int32_t bit = 3; bit >= 0; --bit) {
+        for (int bit = 3; bit >= 0; --bit) {
             auto v = 1 & (nibble >> bit);
 
             if (v == 1) {
@@ -595,8 +544,8 @@ Token Lexer::try_hex_float() {
 
     // Parse the optional exponent.
     // ((p|P)(\+|-)?[0-9]+)?
-    uint32_t input_exponent = 0;  // Defaults to 0 if not present
-    int32_t exponent_sign = 1;
+    uint64_t input_exponent = 0;  // Defaults to 0 if not present
+    int64_t exponent_sign = 1;
     // If the 'p' part is present, the rest of the exponent must exist.
     bool has_f_suffix = false;
     if (has_exponent) {
@@ -611,7 +560,7 @@ Token Lexer::try_hex_float() {
 
         // Parse exponent from input
         // [0-9]+
-        // Allow overflow (in uint32_t) when the floating point value magnitude is
+        // Allow overflow (in uint64_t) when the floating point value magnitude is
         // zero.
         bool has_exponent_digits = false;
         while (end < length() && isdigit(at(end))) {
@@ -648,14 +597,14 @@ Token Lexer::try_hex_float() {
     } else {
         // Ensure input exponent is not too large; i.e. that it won't overflow when
         // adding the exponent bias.
-        const uint32_t kIntMax = static_cast<uint32_t>(std::numeric_limits<int32_t>::max());
-        const uint32_t kMaxInputExponent = kIntMax - kExponentBias;
+        const uint64_t kIntMax = static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+        const uint64_t kMaxInputExponent = kIntMax - kExponentBias;
         if (input_exponent > kMaxInputExponent) {
             return {Token::Type::kError, source, "exponent is too large for hex float"};
         }
 
         // Compute exponent so far
-        exponent += static_cast<uint32_t>(static_cast<int32_t>(input_exponent) * exponent_sign);
+        exponent += static_cast<uint64_t>(static_cast<int64_t>(input_exponent) * exponent_sign);
 
         // Bias exponent if non-zero
         // After this, if exponent is <= 0, our value is a denormal
@@ -674,7 +623,7 @@ Token Lexer::try_hex_float() {
 
     // We can now safely work with exponent as a signed quantity, as there's no
     // chance to overflow
-    int32_t signed_exponent = static_cast<int32_t>(exponent);
+    int64_t signed_exponent = static_cast<int64_t>(exponent);
 
     // Shift mantissa to occupy the low 23 bits
     mantissa >>= kMantissaShiftRight;
@@ -685,7 +634,7 @@ Token Lexer::try_hex_float() {
         // then shift the mantissa to make exponent zero.
         if (signed_exponent <= 0) {
             mantissa >>= 1;
-            mantissa |= (1 << kMantissaMsb);
+            mantissa |= (kOne << kMantissaMsb);
         }
 
         while (signed_exponent < 0) {
@@ -699,24 +648,30 @@ Token Lexer::try_hex_float() {
         }
     }
 
-    if (signed_exponent > kExponentMax) {
-        // Overflow: set to infinity
-        signed_exponent = kExponentMax;
-        mantissa = 0;
-    } else if (signed_exponent == kExponentMax && mantissa != 0) {
-        // NaN: set to infinity
-        mantissa = 0;
+    if (signed_exponent >= kExponentMax || (signed_exponent == kExponentMax && mantissa != 0)) {
+        std::string type = has_f_suffix ? "f32" : "abstract-float";
+        return {Token::Type::kError, source, "value cannot be represented as '" + type + "'"};
     }
 
     // Combine sign, mantissa, and exponent
-    uint32_t result_u32 = sign_bit << kSignBit;
-    result_u32 |= mantissa;
-    result_u32 |= (static_cast<uint32_t>(signed_exponent) & kExponentMask) << kExponentLeftShift;
+    uint64_t result_u64 = sign_bit << kSignBit;
+    result_u64 |= mantissa;
+    result_u64 |= (static_cast<uint64_t>(signed_exponent) & kExponentMask) << kExponentLeftShift;
 
     // Reinterpret as float and return
-    float result_f32;
-    std::memcpy(&result_f32, &result_u32, sizeof(result_f32));
-    double result_f64 = static_cast<double>(result_f32);
+    double result_f64;
+    std::memcpy(&result_f64, &result_u64, 8);
+
+    if (has_f_suffix) {
+        // Quantize to f32
+        // TODO(crbug.com/tint/1564): If the hex-float value is not exactly representable then we
+        // should be erroring here.
+        result_f64 = static_cast<double>(static_cast<float>(result_f64));
+        if (std::isinf(result_f64)) {
+            return {Token::Type::kError, source, "value cannot be represented as 'f32'"};
+        }
+    }
+
     return {has_f_suffix ? Token::Type::kFloatLiteral_F : Token::Type::kFloatLiteral, source,
             result_f64};
 }
@@ -725,44 +680,31 @@ Token Lexer::build_token_from_int_if_possible(Source source, size_t start, int32
     int64_t res = strtoll(&at(start), nullptr, base);
 
     if (matches(pos(), "u")) {
-        switch (check_limits<uint32_t>(res)) {
-            case LimitCheck::kTooSmall:
-                return {Token::Type::kError, source, "unsigned literal cannot be negative"};
-            case LimitCheck::kTooLarge:
-                return {Token::Type::kError, source, "value too large for u32"};
-            default:
-                advance(1);
-                end_source(source);
-                return {Token::Type::kIntLiteral_U, source, res};
+        if (CheckedConvert<u32>(AInt(res))) {
+            advance(1);
+            end_source(source);
+            return {Token::Type::kIntLiteral_U, source, res};
         }
+        return {Token::Type::kError, source, "value cannot be represented as 'u32'"};
     }
 
     if (matches(pos(), "i")) {
-        switch (check_limits<int32_t>(res)) {
-            case LimitCheck::kTooSmall:
-                return {Token::Type::kError, source, "value too small for i32"};
-            case LimitCheck::kTooLarge:
-                return {Token::Type::kError, source, "value too large for i32"};
-            default:
-                break;
+        if (CheckedConvert<i32>(AInt(res))) {
+            advance(1);
+            end_source(source);
+            return {Token::Type::kIntLiteral_I, source, res};
         }
-        advance(1);
-        end_source(source);
-        return {Token::Type::kIntLiteral_I, source, res};
+        return {Token::Type::kError, source, "value cannot be represented as 'i32'"};
     }
 
     // TODO(crbug.com/tint/1504): Properly support abstract int:
     // Change `AbstractIntType` to `int64_t`, update errors to say 'abstract int'.
-    using AbstractIntType = int32_t;
-    switch (check_limits<AbstractIntType>(res)) {
-        case LimitCheck::kTooSmall:
-            return {Token::Type::kError, source, "value too small for i32"};
-        case LimitCheck::kTooLarge:
-            return {Token::Type::kError, source, "value too large for i32"};
-        default:
-            end_source(source);
-            return {Token::Type::kIntLiteral, source, res};
+    using AbstractIntType = i32;
+    if (CheckedConvert<AbstractIntType>(AInt(res))) {
+        end_source(source);
+        return {Token::Type::kIntLiteral, source, res};
     }
+    return {Token::Type::kError, source, "value cannot be represented as 'i32'"};
 }
 
 Token Lexer::try_hex_integer() {

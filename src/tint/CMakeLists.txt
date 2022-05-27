@@ -239,6 +239,7 @@ set(TINT_LIB_SRCS
   inspector/resource_binding.h
   inspector/scalar.cc
   inspector/scalar.h
+  number.cc
   number.h
   program_builder.cc
   program_builder.h
@@ -455,6 +456,8 @@ set(TINT_LIB_SRCS
   transform/zero_init_workgroup_memory.h
   utils/bitcast.h
   utils/block_allocator.h
+  utils/compiler_macros.h
+  utils/concat.h
   utils/crc32.h
   utils/enum_set.h
   utils/hash.h
@@ -748,21 +751,23 @@ if(TINT_BUILD_TESTS)
     diagnostic/diagnostic_test.cc
     diagnostic/formatter_test.cc
     diagnostic/printer_test.cc
+    number_test.cc
+    program_builder_test.cc
     program_test.cc
     resolver/array_accessor_test.cc
     resolver/assignment_validation_test.cc
     resolver/atomics_test.cc
     resolver/atomics_validation_test.cc
+    resolver/attribute_validation_test.cc
     resolver/bitcast_validation_test.cc
-    resolver/builtins_validation_test.cc
     resolver/builtin_test.cc
     resolver/builtin_validation_test.cc
+    resolver/builtins_validation_test.cc
     resolver/call_test.cc
     resolver/call_validation_test.cc
     resolver/compound_assignment_validation_test.cc
     resolver/compound_statement_test.cc
     resolver/control_block_validation_test.cc
-    resolver/attribute_validation_test.cc
     resolver/dependency_graph_test.cc
     resolver/entry_point_validation_test.cc
     resolver/function_validation_test.cc
@@ -798,6 +803,7 @@ if(TINT_BUILD_TESTS)
     sem/atomic.cc
     sem/bool_test.cc
     sem/builtin_test.cc
+    sem/constant_test.cc
     sem/depth_multisampled_texture_test.cc
     sem/depth_texture_test.cc
     sem/expression_test.cc
@@ -815,8 +821,8 @@ if(TINT_BUILD_TESTS)
     sem/sem_struct_test.cc
     sem/storage_texture_test.cc
     sem/texture_test.cc
-    sem/type_test.cc
     sem/type_manager_test.cc
+    sem/type_test.cc
     sem/u32_test.cc
     sem/vector_test.cc
     source_test.cc
@@ -836,6 +842,7 @@ if(TINT_BUILD_TESTS)
     utils/io/tmpfile_test.cc
     utils/map_test.cc
     utils/math_test.cc
+    utils/result_test.cc
     utils/reverse_test.cc
     utils/scoped_assignment_test.cc
     utils/string_test.cc

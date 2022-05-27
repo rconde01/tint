@@ -639,7 +639,6 @@ bool GeneratorImpl::EmitAssign(const ast::AssignmentStatement* stmt) {
 
 bool GeneratorImpl::EmitExpressionOrOneIfZero(std::ostream& out, const ast::Expression* expr) {
     // For constants, replace literal 0 with 1.
-    sem::Constant::Scalars elems;
     if (const auto& val = builder_.Sem().Get(expr)->ConstantValue()) {
         if (!val.AnyZero()) {
             return EmitExpression(out, expr);
@@ -657,7 +656,7 @@ bool GeneratorImpl::EmitExpressionOrOneIfZero(std::ostream& out, const ast::Expr
             }
 
             out << "(";
-            for (size_t i = 0; i < val.Elements().size(); ++i) {
+            for (size_t i = 0; i < val.ElementCount(); ++i) {
                 if (i != 0) {
                     out << ", ";
                 }
@@ -3140,13 +3139,14 @@ bool GeneratorImpl::EmitLiteral(std::ostream& out, const ast::LiteralExpression*
             out << (l->value ? "true" : "false");
             return true;
         },
-        [&](const ast::FloatLiteralExpression* fl) {
-            if (std::isinf(fl->value)) {
-                out << (fl->value >= 0 ? "asfloat(0x7f800000u)" : "asfloat(0xff800000u)");
-            } else if (std::isnan(fl->value)) {
+        [&](const ast::FloatLiteralExpression* l) {
+            auto f32 = static_cast<float>(l->value);
+            if (std::isinf(f32)) {
+                out << (f32 >= 0 ? "asfloat(0x7f800000u)" : "asfloat(0xff800000u)");
+            } else if (std::isnan(f32)) {
                 out << "asfloat(0x7fc00000u)";
             } else {
-                out << FloatToString(static_cast<float>(fl->value)) << "f";
+                out << FloatToString(f32) << "f";
             }
             return true;
         },
