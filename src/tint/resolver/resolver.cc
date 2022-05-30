@@ -319,11 +319,7 @@ sem::Variable* Resolver::Variable(const ast::Variable* var,
 
     // Does the variable have a constructor?
     if (var->constructor) {
-        auto* ctor = Expression(var->constructor);
-        if (!ctor) {
-            return nullptr;
-        }
-        rhs = Materialize(ctor, storage_ty);
+        rhs = Materialize(Expression(var->constructor), storage_ty);
         if (!rhs) {
             return nullptr;
         }
@@ -725,52 +721,61 @@ bool Resolver::WorkgroupSize(const ast::Function* func) {
     }
 
     auto values = attr->Values();
-    auto any_i32 = false;
-    auto any_u32 = false;
+    std::array<const sem::Expression*, 3> args = {};
+    std::array<const sem::Type*, 3> arg_tys = {};
+    size_t arg_count = 0;
+
+    constexpr const char* kErrBadType =
+        "workgroup_size argument must be either literal or module-scope constant of type i32 "
+        "or u32";
+
     for (int i = 0; i < 3; i++) {
-        // Each argument to this attribute can either be a literal, an
-        // identifier for a module-scope constants, or nullptr if not specified.
-
-        auto* expr = values[i];
+        // Each argument to this attribute can either be a literal, an identifier for a module-scope
+        // constants, or nullptr if not specified.
+        auto* value = values[i];
+        if (!value) {
+            break;
+        }
+        const auto* expr = Expression(value);
         if (!expr) {
-            // Not specified, just use the default.
-            continue;
+            return false;
         }
-
-        auto* expr_sem = Expression(expr);
-        if (!expr_sem) {
+        auto* ty = expr->Type();
+        if (!ty->IsAnyOf<sem::I32, sem::U32, sem::AbstractInt>()) {
+            AddError(kErrBadType, value->source);
             return false;
         }
 
-        constexpr const char* kErrBadType =
-            "workgroup_size argument must be either literal or module-scope "
-            "constant of type i32 or u32";
-        constexpr const char* kErrInconsistentType =
-            "workgroup_size arguments must be of the same type, either i32 "
-            "or u32";
+        args[i] = expr;
+        arg_tys[i] = ty;
+        arg_count++;
+    }
 
-        auto* ty = sem_.TypeOf(expr);
-        bool is_i32 = ty->UnwrapRef()->Is<sem::I32>();
-        bool is_u32 = ty->UnwrapRef()->Is<sem::U32>();
-        if (!is_i32 && !is_u32) {
-            AddError(kErrBadType, expr->source);
-            return false;
-        }
+    auto* common_ty = sem::Type::Common(arg_tys.data(), arg_count);
+    if (!common_ty) {
+        AddError("workgroup_size arguments must be of the same type, either i32 or u32",
+                 attr->source);
+        return false;
+    }
 
-        any_i32 = any_i32 || is_i32;
-        any_u32 = any_u32 || is_u32;
-        if (any_i32 && any_u32) {
-            AddError(kErrInconsistentType, expr->source);
+    // If all arguments are abstract-integers, then materialize to i32.
+    if (common_ty->Is<sem::AbstractInt>()) {
+        common_ty = builder_->create<sem::I32>();
+    }
+
+    for (size_t i = 0; i < arg_count; i++) {
+        auto* materialized = Materialize(args[i], common_ty);
+        if (!materialized) {
             return false;
         }
 
         sem::Constant value;
 
-        if (auto* user = sem_.Get(expr)->As<sem::VariableUser>()) {
+        if (auto* user = args[i]->As<sem::VariableUser>()) {
             // We have an variable of a module-scope constant.
             auto* decl = user->Variable()->Declaration();
             if (!decl->is_const) {
-                AddError(kErrBadType, expr->source);
+                AddError(kErrBadType, values[i]->source);
                 return false;
             }
             // Capture the constant if it is pipeline-overridable.
@@ -785,8 +790,8 @@ bool Resolver::WorkgroupSize(const ast::Function* func) {
                 ws[i].value = 0;
                 continue;
             }
-        } else if (expr->Is<ast::LiteralExpression>()) {
-            value = sem_.Get(expr)->ConstantValue();
+        } else if (values[i]->Is<ast::LiteralExpression>()) {
+            value = materialized->ConstantValue();
         } else {
             AddError(
                 "workgroup_size argument must be either a literal or a "
@@ -1107,6 +1112,10 @@ sem::Expression* Resolver::Expression(const ast::Expression* root) {
 
 const sem::Expression* Resolver::Materialize(const sem::Expression* expr,
                                              const sem::Type* target_type /* = nullptr */) {
+    if (!expr) {
+        return nullptr;  // Allow for Materialize(Expression(blah))
+    }
+
     // Helper for actually creating the the materialize node, performing the constant cast, updating
     // the ast -> sem binding, and performing validation.
     auto materialize = [&](const sem::Type* target_ty) -> sem::Materialize* {
@@ -1118,13 +1127,18 @@ const sem::Expression* Resolver::Materialize(const sem::Expression* expr,
         if (!expr_val->IsValid()) {
             TINT_ICE(Resolver, builder_->Diagnostics())
                 << decl->source
-                << " EvaluateConstantValue() returned invalid value for materialized "
-                   "value of type: "
-                << (expr->Type() ? expr->Type()->FriendlyName(builder_->Symbols()) : "<null>");
+                << "EvaluateConstantValue() returned invalid value for materialized value of type: "
+                << builder_->FriendlyName(expr->Type());
             return nullptr;
         }
         auto materialized_val = ConvertValue(expr_val.Get(), target_ty, decl->source);
         if (!materialized_val) {
+            return nullptr;
+        }
+        if (!materialized_val->IsValid()) {
+            TINT_ICE(Resolver, builder_->Diagnostics())
+                << decl->source << "ConvertValue(" << builder_->FriendlyName(expr_val->Type())
+                << " -> " << builder_->FriendlyName(target_ty) << ") returned invalid value";
             return nullptr;
         }
         auto* m =
@@ -1140,7 +1154,7 @@ const sem::Expression* Resolver::Materialize(const sem::Expression* expr,
     auto i32v = [&](uint32_t width) { return builder_->create<sem::Vector>(i32(), width); };
     auto f32v = [&](uint32_t width) { return builder_->create<sem::Vector>(f32(), width); };
     auto f32m = [&](uint32_t columns, uint32_t rows) {
-        return builder_->create<sem::Matrix>(f32v(columns), rows);
+        return builder_->create<sem::Matrix>(f32v(rows), columns);
     };
 
     // Type dispatch based on the expression type
@@ -1234,7 +1248,10 @@ sem::Expression* Resolver::IndexAccessor(const ast::IndexAccessorExpression* exp
 }
 
 sem::Expression* Resolver::Bitcast(const ast::BitcastExpression* expr) {
-    auto* inner = sem_.Get(expr->expr);
+    auto* inner = Materialize(sem_.Get(expr->expr));
+    if (!inner) {
+        return nullptr;
+    }
     auto* ty = Type(expr->type);
     if (!ty) {
         return nullptr;
@@ -1553,6 +1570,14 @@ sem::Call* Resolver::FunctionCall(const ast::CallExpression* expr,
     auto* call = builder_->create<sem::Call>(expr, target, std::move(args), current_statement_,
                                              sem::Constant{}, has_side_effects);
 
+    target->AddCallSite(call);
+
+    call->Behaviors() = arg_behaviors + target->Behaviors();
+
+    if (!validator_.FunctionCall(call, current_statement_)) {
+        return nullptr;
+    }
+
     if (current_function_) {
         // Note: Requires called functions to be resolved first.
         // This is currently guaranteed as functions must be declared before
@@ -1568,15 +1593,8 @@ sem::Call* Resolver::FunctionCall(const ast::CallExpression* expr,
             current_function_->AddTransitivelyReferencedGlobal(var);
         }
 
+        // Note: Validation *must* be performed before calling this method.
         CollectTextureSamplerPairs(target, call->Arguments());
-    }
-
-    target->AddCallSite(call);
-
-    call->Behaviors() = arg_behaviors + target->Behaviors();
-
-    if (!validator_.FunctionCall(call, current_statement_)) {
-        return nullptr;
     }
 
     return call;
@@ -2268,11 +2286,7 @@ sem::Statement* Resolver::ReturnStatement(const ast::ReturnStatement* stmt) {
 
         const sem::Type* value_ty = nullptr;
         if (auto* value = stmt->value) {
-            const auto* expr = Expression(value);
-            if (!expr) {
-                return false;
-            }
-            expr = Materialize(expr, current_function_->ReturnType());
+            const auto* expr = Materialize(Expression(value), current_function_->ReturnType());
             if (!expr) {
                 return false;
             }
