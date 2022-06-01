@@ -1205,7 +1205,10 @@ bool Resolver::ShouldMaterializeArgument(const sem::Type* parameter_ty) const {
 }
 
 sem::Expression* Resolver::IndexAccessor(const ast::IndexAccessorExpression* expr) {
-    auto* idx = sem_.Get(expr->index);
+    auto* idx = Materialize(sem_.Get(expr->index));
+    if (!idx) {
+        return nullptr;
+    }
     auto* obj = sem_.Get(expr->object);
     auto* obj_raw_ty = obj->Type();
     auto* obj_ty = obj_raw_ty->UnwrapRef();
@@ -2027,7 +2030,7 @@ sem::Array* Resolver::Array(const ast::Array* arr) {
     // sem::Array uses a size of 0 for a runtime-sized array.
     uint32_t count = 0;
     if (auto* count_expr = arr->count) {
-        auto* count_sem = Expression(count_expr);
+        const auto* count_sem = Materialize(Expression(count_expr));
         if (!count_sem) {
             return nullptr;
         }
@@ -2406,14 +2409,23 @@ sem::Statement* Resolver::AssignmentStatement(const ast::AssignmentStatement* st
             return false;
         }
 
-        auto* rhs = Expression(stmt->rhs);
+        const bool is_phony_assignment = stmt->lhs->Is<ast::PhonyExpression>();
+
+        const auto* rhs = Expression(stmt->rhs);
         if (!rhs) {
             return false;
         }
 
+        if (!is_phony_assignment) {
+            rhs = Materialize(rhs, lhs->Type()->UnwrapRef());
+            if (!rhs) {
+                return false;
+            }
+        }
+
         auto& behaviors = sem->Behaviors();
         behaviors = rhs->Behaviors();
-        if (!stmt->lhs->Is<ast::PhonyExpression>()) {
+        if (!is_phony_assignment) {
             behaviors.Add(lhs->Behaviors());
         }
 

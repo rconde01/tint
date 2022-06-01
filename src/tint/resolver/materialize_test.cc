@@ -81,6 +81,13 @@ enum class Method {
     // let a : target_type = abstract_expr;
     kLet,
 
+    // var a : target_type;
+    // a = abstract_expr;
+    kAssign,
+
+    // _ = abstract_expr;
+    kPhonyAssign,
+
     // fn F(v : target_type) {}
     // fn x() {
     //   F(abstract_expr);
@@ -147,6 +154,10 @@ static std::ostream& operator<<(std::ostream& o, Method m) {
             return o << "var";
         case Method::kLet:
             return o << "let";
+        case Method::kAssign:
+            return o << "assign";
+        case Method::kPhonyAssign:
+            return o << "phony-assign";
         case Method::kFnArg:
             return o << "fn-arg";
         case Method::kBuiltinArg:
@@ -250,6 +261,12 @@ TEST_P(MaterializeAbstractNumericToConcreteType, Test) {
             break;
         case Method::kLet:
             WrapInFunction(Decl(Let("a", target_ty(), abstract_expr)));
+            break;
+        case Method::kAssign:
+            WrapInFunction(Decl(Var("a", target_ty(), nullptr)), Assign("a", abstract_expr));
+            break;
+        case Method::kPhonyAssign:
+            WrapInFunction(Assign(Phony(), abstract_expr));
             break;
         case Method::kFnArg:
             Func("F", {Param("P", target_ty())}, ty.void_(), {});
@@ -364,20 +381,20 @@ TEST_P(MaterializeAbstractNumericToConcreteType, Test) {
 
 /// Methods that support scalar materialization
 constexpr Method kScalarMethods[] = {
-    Method::kLet,    Method::kVar,   Method::kFnArg,  Method::kBuiltinArg,
+    Method::kLet,    Method::kVar,   Method::kAssign, Method::kFnArg,    Method::kBuiltinArg,
     Method::kReturn, Method::kArray, Method::kStruct, Method::kBinaryOp,
 };
 
 /// Methods that support vector materialization
 constexpr Method kVectorMethods[] = {
-    Method::kLet,    Method::kVar,   Method::kFnArg,  Method::kBuiltinArg,
+    Method::kLet,    Method::kVar,   Method::kAssign, Method::kFnArg,    Method::kBuiltinArg,
     Method::kReturn, Method::kArray, Method::kStruct, Method::kBinaryOp,
 };
 
 /// Methods that support matrix materialization
 constexpr Method kMatrixMethods[] = {
-    Method::kLet,   Method::kVar,    Method::kFnArg,    Method::kReturn,
-    Method::kArray, Method::kStruct, Method::kBinaryOp,
+    Method::kLet,    Method::kVar,   Method::kAssign, Method::kFnArg,
+    Method::kReturn, Method::kArray, Method::kStruct, Method::kBinaryOp,
 };
 
 /// Methods that support materialization for switch cases
@@ -388,6 +405,12 @@ constexpr Method kSwitchMethods[] = {
     Method::kSwitchCaseWithAbstractCase,
 };
 
+/// Methods that do not materialize
+constexpr Method kNoMaterializeMethods[] = {
+    Method::kPhonyAssign,
+    // TODO(crbug.com/tint/1504): Enable once we have abstract overloads of builtins / binary ops:
+    // Method::kBuiltinArg, Method::kBinaryOp,
+};
 INSTANTIATE_TEST_SUITE_P(
     MaterializeScalar,
     MaterializeAbstractNumericToConcreteType,
@@ -486,18 +509,18 @@ INSTANTIATE_TEST_SUITE_P(MaterializeWorkgroupSize,
                                               Types<u32, AInt>(65535_a, 65535.0),  //
                                           })));
 
-// TODO(crbug.com/tint/1504): Enable once we have abstract overloads of builtins / binary ops.
-INSTANTIATE_TEST_SUITE_P(DISABLED_NoMaterialize,
+INSTANTIATE_TEST_SUITE_P(NoMaterialize,
                          MaterializeAbstractNumericToConcreteType,
                          testing::Combine(testing::Values(Expectation::kNoMaterialize),
-                                          testing::Values(Method::kBuiltinArg, Method::kBinaryOp),
+                                          testing::ValuesIn(kNoMaterializeMethods),
                                           testing::ValuesIn(std::vector<Data>{
-                                              Types<AInt, AInt>(),        //
-                                              Types<AFloat, AFloat>(),    //
-                                              Types<AIntV, AIntV>(),      //
-                                              Types<AFloatV, AFloatV>(),  //
-                                              Types<AFloatM, AFloatM>(),  //
+                                              Types<AInt, AInt>(1_a, 1_a),            //
+                                              Types<AIntV, AIntV>(1_a, 1_a),          //
+                                              Types<AFloat, AFloat>(1.0_a, 1.0_a),    //
+                                              Types<AFloatV, AFloatV>(1.0_a, 1.0_a),  //
+                                              Types<AFloatM, AFloatM>(1.0_a, 1.0_a),  //
                                           })));
+
 INSTANTIATE_TEST_SUITE_P(InvalidConversion,
                          MaterializeAbstractNumericToConcreteType,
                          testing::Combine(testing::Values(Expectation::kInvalidConversion),
@@ -566,16 +589,16 @@ enum class Method {
     // let a = abstract_expr;
     kLet,
 
-    // min(abstract_expr, abstract_expr);
+    // min(abstract_expr, abstract_expr)
     kBuiltinArg,
 
-    // bitcast<f32>(abstract_expr);
+    // bitcast<f32>(abstract_expr)
     kBitcastF32Arg,
 
-    // bitcast<vec3<f32>>(abstract_expr);
+    // bitcast<vec3<f32>>(abstract_expr)
     kBitcastVec3F32Arg,
 
-    // array<i32, abstract_expr>();
+    // array<i32, abstract_expr>()
     kArrayLength,
 
     // switch (abstract_expr) {
@@ -587,7 +610,10 @@ enum class Method {
     // @workgroup_size(abstract_expr)
     // @stage(compute)
     // fn f() {}
-    kWorkgroupSize
+    kWorkgroupSize,
+
+    // arr[abstract_expr]
+    kIndex,
 };
 
 static std::ostream& operator<<(std::ostream& o, Method m) {
@@ -608,6 +634,8 @@ static std::ostream& operator<<(std::ostream& o, Method m) {
             return o << "switch";
         case Method::kWorkgroupSize:
             return o << "workgroup-size";
+        case Method::kIndex:
+            return o << "index";
     }
     return o << "<unknown>";
 }
@@ -692,6 +720,10 @@ TEST_P(MaterializeAbstractNumericToDefaultType, Test) {
             Func("f", {}, ty.void_(), {},
                  {WorkgroupSize(abstract_expr()), Stage(ast::PipelineStage::kCompute)});
             break;
+        case Method::kIndex:
+            Global("arr", ty.array<i32, 4>(), ast::StorageClass::kPrivate);
+            WrapInFunction(IndexAccessor("arr", abstract_expr()));
+            break;
     }
 
     auto check_types_and_values = [&](const sem::Expression* expr) {
@@ -754,6 +786,14 @@ constexpr Method kScalarMethods[] = {
     Method::kVar,
     Method::kBuiltinArg,
     Method::kBitcastF32Arg,
+};
+
+/// Methods that support abstract-integer materialization
+/// Note: Doesn't contain kWorkgroupSize or kArrayLength as they have tighter constraints on the
+///       range of allowed integer values.
+constexpr Method kAIntMethods[] = {
+    Method::kSwitch,
+    Method::kIndex,
 };
 
 /// Methods that support vector materialization
@@ -826,15 +866,28 @@ INSTANTIATE_TEST_SUITE_P(
                          Types<f32M, AFloatM>(AFloat(-kSubnormalF32), -kSubnormalF32),  //
                      })));
 
-INSTANTIATE_TEST_SUITE_P(MaterializeSwitch,
+INSTANTIATE_TEST_SUITE_P(MaterializeAInt,
                          MaterializeAbstractNumericToDefaultType,
                          testing::Combine(testing::Values(Expectation::kMaterialize),
-                                          testing::Values(Method::kSwitch),
+                                          testing::ValuesIn(kAIntMethods),
                                           testing::ValuesIn(std::vector<Data>{
                                               Types<i32, AInt>(0_a, 0.0),                        //
+                                              Types<i32, AInt>(10_a, 10.0),                      //
                                               Types<i32, AInt>(AInt(kHighestI32), kHighestI32),  //
                                               Types<i32, AInt>(AInt(kLowestI32), kLowestI32),    //
                                           })));
+
+INSTANTIATE_TEST_SUITE_P(
+    MaterializeArrayLength,
+    MaterializeAbstractNumericToDefaultType,
+    testing::Combine(testing::Values(Expectation::kMaterialize),
+                     testing::Values(Method::kArrayLength),
+                     testing::ValuesIn(std::vector<Data>{
+                         Types<i32, AInt>(1_a, 1.0),        //
+                         Types<i32, AInt>(10_a, 10.0),      //
+                         Types<i32, AInt>(1000_a, 1000.0),  //
+                         // Note: kHighestI32 cannot be used due to max-byte-size validation
+                     })));
 
 INSTANTIATE_TEST_SUITE_P(MaterializeWorkgroupSize,
                          MaterializeAbstractNumericToDefaultType,
@@ -878,10 +931,10 @@ INSTANTIATE_TEST_SUITE_P(MatrixValueCannotBeRepresented,
                                               Types<f32M, AFloatM>(0.0_a, -kTooBigF32),  //
                                           })));
 
-INSTANTIATE_TEST_SUITE_P(SwitchValueCannotBeRepresented,
+INSTANTIATE_TEST_SUITE_P(AIntValueCannotBeRepresented,
                          MaterializeAbstractNumericToDefaultType,
                          testing::Combine(testing::Values(Expectation::kValueCannotBeRepresented),
-                                          testing::Values(Method::kSwitch),
+                                          testing::ValuesIn(kAIntMethods),
                                           testing::ValuesIn(std::vector<Data>{
                                               Types<i32, AInt>(0_a, kHighestI32 + 1),  //
                                               Types<i32, AInt>(0_a, kLowestI32 - 1),   //
@@ -894,6 +947,14 @@ INSTANTIATE_TEST_SUITE_P(WorkgroupSizeValueCannotBeRepresented,
                                           testing::ValuesIn(std::vector<Data>{
                                               Types<i32, AInt>(0_a, kHighestI32 + 1),  //
                                               Types<i32, AInt>(0_a, kLowestI32 - 1),   //
+                                          })));
+
+INSTANTIATE_TEST_SUITE_P(ArrayLengthValueCannotBeRepresented,
+                         MaterializeAbstractNumericToDefaultType,
+                         testing::Combine(testing::Values(Expectation::kValueCannotBeRepresented),
+                                          testing::Values(Method::kArrayLength),
+                                          testing::ValuesIn(std::vector<Data>{
+                                              Types<i32, AInt>(0_a, kHighestI32 + 1),  //
                                           })));
 
 }  // namespace materialize_abstract_numeric_to_default_type
