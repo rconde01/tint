@@ -1,4 +1,4 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2022 The Tint Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,14 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/tint/resolver/resolver_test_helper.h"
+#include "src/tint/resolver/const_eval.h"
 
-#include <memory>
+#include "src/tint/sem/constant.h"
 
-namespace tint::resolver {
-
-TestHelper::TestHelper() : resolver_(std::make_unique<Resolver>(this)) {}
-
-TestHelper::~TestHelper() = default;
-
-}  // namespace tint::resolver
+namespace tint::resolver::const_eval {}  // namespace tint::resolver::const_eval

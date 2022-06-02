@@ -85,13 +85,12 @@
 
 namespace tint::resolver {
 
-Resolver::Resolver(ProgramBuilder* builder, bool enable_abstract_numerics)
+Resolver::Resolver(ProgramBuilder* builder)
     : builder_(builder),
       diagnostics_(builder->Diagnostics()),
       intrinsic_table_(IntrinsicTable::Create(*builder)),
       sem_(builder, dependencies_),
-      validator_(builder, sem_),
-      enable_abstract_numerics_(enable_abstract_numerics) {}
+      validator_(builder, sem_) {}
 
 Resolver::~Resolver() = default;
 
@@ -1493,30 +1492,48 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
 sem::Call* Resolver::BuiltinCall(const ast::CallExpression* expr,
                                  sem::BuiltinType builtin_type,
                                  std::vector<const sem::Expression*> args) {
-    const sem::Builtin* builtin = nullptr;
+    IntrinsicTable::Builtin builtin;
     {
         auto arg_tys = utils::Transform(args, [](auto* arg) { return arg->Type(); });
         builtin = intrinsic_table_->Lookup(builtin_type, arg_tys, expr->source);
-        if (!builtin) {
+        if (!builtin.sem) {
             return nullptr;
         }
     }
 
-    if (!MaterializeArguments(args, builtin)) {
+    if (!MaterializeArguments(args, builtin.sem)) {
         return nullptr;
     }
 
-    if (builtin->IsDeprecated()) {
+    if (builtin.sem->IsDeprecated()) {
         AddWarning("use of deprecated builtin", expr->source);
     }
 
-    bool has_side_effects =
-        builtin->HasSideEffects() ||
-        std::any_of(args.begin(), args.end(), [](auto* e) { return e->HasSideEffects(); });
-    auto* call = builder_->create<sem::Call>(expr, builtin, std::move(args), current_statement_,
-                                             sem::Constant{}, has_side_effects);
+    // If the builtin is @const, and all arguments have constant values, evaluate the builtin now.
+    sem::Constant constant;
+    if (builtin.const_eval_fn) {
+        std::vector<sem::Constant> values(args.size());
+        bool is_const = true;  // all arguments have constant values
+        for (size_t i = 0; i < values.size(); i++) {
+            if (auto v = args[i]->ConstantValue()) {
+                values[i] = std::move(v);
+            } else {
+                is_const = false;
+                break;
+            }
+        }
+        if (is_const) {
+            constant = builtin.const_eval_fn(*builder_, values.data(), args.size());
+        }
+    }
 
-    current_function_->AddDirectlyCalledBuiltin(builtin);
+    bool has_side_effects =
+        builtin.sem->HasSideEffects() ||
+        std::any_of(args.begin(), args.end(), [](auto* e) { return e->HasSideEffects(); });
+    auto* call = builder_->create<sem::Call>(expr, builtin.sem, std::move(args), current_statement_,
+                                             constant, has_side_effects);
+
+    current_function_->AddDirectlyCalledBuiltin(builtin.sem);
 
     if (!validator_.RequiredExtensionForBuiltinFunction(call, enabled_extensions_)) {
         return nullptr;
@@ -1526,7 +1543,7 @@ sem::Call* Resolver::BuiltinCall(const ast::CallExpression* expr,
         if (!validator_.TextureBuiltinFunction(call)) {
             return nullptr;
         }
-        CollectTextureSamplerPairs(builtin, call->Arguments());
+        CollectTextureSamplerPairs(builtin.sem, call->Arguments());
     }
 
     if (!validator_.BuiltinCall(call)) {
@@ -1632,10 +1649,7 @@ sem::Expression* Resolver::Literal(const ast::LiteralExpression* literal) {
         [&](const ast::IntLiteralExpression* i) -> sem::Type* {
             switch (i->suffix) {
                 case ast::IntLiteralExpression::Suffix::kNone:
-                    if (enable_abstract_numerics_) {
-                        return builder_->create<sem::AbstractInt>();
-                    }
-                    return builder_->create<sem::I32>();
+                    return builder_->create<sem::AbstractInt>();
                 case ast::IntLiteralExpression::Suffix::kI:
                     return builder_->create<sem::I32>();
                 case ast::IntLiteralExpression::Suffix::kU:
@@ -1644,8 +1658,7 @@ sem::Expression* Resolver::Literal(const ast::LiteralExpression* literal) {
             return nullptr;
         },
         [&](const ast::FloatLiteralExpression* f) -> sem::Type* {
-            if (f->suffix == ast::FloatLiteralExpression::Suffix::kNone &&
-                enable_abstract_numerics_) {
+            if (f->suffix == ast::FloatLiteralExpression::Suffix::kNone) {
                 return builder_->create<sem::AbstractFloat>();
             }
             return builder_->create<sem::F32>();
