@@ -3018,6 +3018,10 @@ Maybe<const ast::LiteralExpression*> ParserImpl::const_literal() {
         return create<ast::FloatLiteralExpression>(t.source(), t.to_f64(),
                                                    ast::FloatLiteralExpression::Suffix::kF);
     }
+    if (match(Token::Type::kFloatLiteral_H)) {
+        return create<ast::FloatLiteralExpression>(t.source(), t.to_f64(),
+                                                   ast::FloatLiteralExpression::Suffix::kH);
+    }
     if (match(Token::Type::kTrue)) {
         return create<ast::BoolLiteralExpression>(t.source(), true);
     }
@@ -3251,6 +3255,7 @@ Maybe<const ast::Attribute*> ParserImpl::attribute() {
         });
     }
 
+    // TODO(crbug.com/tint/1503): Remove when deprecation period is over.
     if (t == kStageAttribute) {
         return expect_paren_block("stage attribute", [&]() -> Result {
             auto stage = expect_pipeline_stage();
@@ -3258,26 +3263,22 @@ Maybe<const ast::Attribute*> ParserImpl::attribute() {
                 return Failure::kErrored;
             }
 
-            // TODO(crbug.com/tint/1503): Enable this once all the Dawn and CTS
-            // tests are updated to use the new format so we can avoid spamming
-            // the log files.
-            if ((false)) {
-                std::string warning = "stage should use @";
-                switch (stage.value) {
-                    case ast::PipelineStage::kVertex:
-                        warning += "vertex";
-                        break;
-                    case ast::PipelineStage::kFragment:
-                        warning += "fragment";
-                        break;
-                    case ast::PipelineStage::kCompute:
-                        warning += "compute";
-                        break;
-                    case ast::PipelineStage::kNone:
-                        break;
-                }
-                deprecated(t.source(), warning);
+            std::string warning = "remove stage and use @";
+            switch (stage.value) {
+                case ast::PipelineStage::kVertex:
+                    warning += "vertex";
+                    break;
+                case ast::PipelineStage::kFragment:
+                    warning += "fragment";
+                    break;
+                case ast::PipelineStage::kCompute:
+                    warning += "compute";
+                    break;
+                case ast::PipelineStage::kNone:
+                    break;
             }
+            deprecated(t.source(), warning);
+
             return create<ast::StageAttribute>(t.source(), stage.value);
         });
     }
