@@ -433,7 +433,7 @@ Maybe<bool> ParserImpl::global_decl() {
         }
 
         if (gc.matched) {
-            if (!expect("let declaration", Token::Type::kSemicolon)) {
+            if (!expect("'let' declaration", Token::Type::kSemicolon)) {
                 return Failure::kErrored;
             }
 
@@ -562,7 +562,7 @@ Maybe<const ast::Variable*> ParserImpl::global_constant_decl(ast::AttributeList&
     bool is_overridable = false;
     const char* use = nullptr;
     if (match(Token::Type::kLet)) {
-        use = "let declaration";
+        use = "'let' declaration";
     } else if (match(Token::Type::kOverride)) {
         use = "override declaration";
         is_overridable = true;
@@ -575,8 +575,18 @@ Maybe<const ast::Variable*> ParserImpl::global_constant_decl(ast::AttributeList&
         return Failure::kErrored;
     }
 
+    bool has_initializer = false;
+    if (is_overridable) {
+        has_initializer = match(Token::Type::kEqual);
+    } else {
+        if (!expect(use, Token::Type::kEqual)) {
+            return Failure::kErrored;
+        }
+        has_initializer = true;
+    }
+
     const ast::Expression* initializer = nullptr;
-    if (match(Token::Type::kEqual)) {
+    if (has_initializer) {
         auto init = expect_const_expr();
         if (init.errored) {
             return Failure::kErrored;
@@ -1587,6 +1597,7 @@ Expect<ast::StatementList> ParserImpl::expect_statements() {
 //   | switch_stmt
 //   | loop_stmt
 //   | for_stmt
+//   | while_stmt
 //   | non_block_statement
 //      : return_stmt SEMICOLON
 //      | func_call_stmt SEMICOLON
@@ -1642,6 +1653,14 @@ Maybe<const ast::Statement*> ParserImpl::statement() {
     }
     if (stmt_for.matched) {
         return stmt_for.value;
+    }
+
+    auto stmt_while = while_stmt();
+    if (stmt_while.errored) {
+        return Failure::kErrored;
+    }
+    if (stmt_while.matched) {
+        return stmt_while.value;
     }
 
     if (peek_is(Token::Type::kBraceLeft)) {
@@ -1757,13 +1776,13 @@ Maybe<const ast::ReturnStatement*> ParserImpl::return_stmt() {
 //   | CONST variable_ident_decl EQUAL logical_or_expression
 Maybe<const ast::VariableDeclStatement*> ParserImpl::variable_stmt() {
     if (match(Token::Type::kLet)) {
-        auto decl = expect_variable_ident_decl("let declaration",
+        auto decl = expect_variable_ident_decl("'let' declaration",
                                                /*allow_inferred = */ true);
         if (decl.errored) {
             return Failure::kErrored;
         }
 
-        if (!expect("let declaration", Token::Type::kEqual)) {
+        if (!expect("'let' declaration", Token::Type::kEqual)) {
             return Failure::kErrored;
         }
 
@@ -1772,7 +1791,7 @@ Maybe<const ast::VariableDeclStatement*> ParserImpl::variable_stmt() {
             return Failure::kErrored;
         }
         if (!constructor.matched) {
-            return add_error(peek(), "missing constructor for let declaration");
+            return add_error(peek(), "missing constructor for 'let' declaration");
         }
 
         auto* var = create<ast::Variable>(decl->source,                             // source
@@ -1803,7 +1822,7 @@ Maybe<const ast::VariableDeclStatement*> ParserImpl::variable_stmt() {
             return Failure::kErrored;
         }
         if (!constructor_expr.matched) {
-            return add_error(peek(), "missing constructor for variable declaration");
+            return add_error(peek(), "missing constructor for 'var' declaration");
         }
 
         constructor = constructor_expr.value;
@@ -2179,6 +2198,30 @@ Maybe<const ast::ForLoopStatement*> ParserImpl::for_stmt() {
     return create<ast::ForLoopStatement>(source, header->initializer, header->condition,
                                          header->continuing,
                                          create<ast::BlockStatement>(stmts.value));
+}
+
+// while_statement
+//   :  WHILE expression compound_statement
+Maybe<const ast::WhileStatement*> ParserImpl::while_stmt() {
+    Source source;
+    if (!match(Token::Type::kWhile, &source)) {
+        return Failure::kNoMatch;
+    }
+
+    auto condition = logical_or_expression();
+    if (condition.errored) {
+        return Failure::kErrored;
+    }
+    if (!condition.matched) {
+        return add_error(peek(), "unable to parse while condition expression");
+    }
+
+    auto body = expect_body_stmt();
+    if (body.errored) {
+        return Failure::kErrored;
+    }
+
+    return create<ast::WhileStatement>(source, condition.value, body.value);
 }
 
 // func_call_stmt

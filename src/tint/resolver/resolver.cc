@@ -49,6 +49,7 @@
 #include "src/tint/ast/unary_op_expression.h"
 #include "src/tint/ast/variable_decl_statement.h"
 #include "src/tint/ast/vector.h"
+#include "src/tint/ast/while_statement.h"
 #include "src/tint/ast/workgroup_attribute.h"
 #include "src/tint/resolver/uniformity.h"
 #include "src/tint/sem/abstract_float.h"
@@ -77,6 +78,7 @@
 #include "src/tint/sem/type_constructor.h"
 #include "src/tint/sem/type_conversion.h"
 #include "src/tint/sem/variable.h"
+#include "src/tint/sem/while_statement.h"
 #include "src/tint/utils/defer.h"
 #include "src/tint/utils/math.h"
 #include "src/tint/utils/reverse.h"
@@ -326,19 +328,19 @@ sem::Variable* Resolver::Variable(const ast::Variable* var,
         // If the variable has no declared type, infer it from the RHS
         if (!storage_ty) {
             if (!var->is_const && kind == VariableKind::kGlobal) {
-                AddError("global var declaration must specify a type", var->source);
+                AddError("module-scope 'var' declaration must specify a type", var->source);
                 return nullptr;
             }
 
             storage_ty = rhs->Type()->UnwrapRef();  // Implicit load of RHS
         }
     } else if (var->is_const && !var->is_overridable && kind != VariableKind::kParameter) {
-        AddError("let declaration must have an initializer", var->source);
+        AddError("'let' declaration must have an initializer", var->source);
         return nullptr;
     } else if (!var->type) {
         AddError((kind == VariableKind::kGlobal)
-                     ? "module scope var declaration requires a type and initializer"
-                     : "function scope var declaration requires a type or initializer",
+                     ? "module-scope 'var' declaration requires a type or initializer"
+                     : "function-scope 'var' declaration requires a type or initializer",
                  var->source);
         return nullptr;
     }
@@ -368,7 +370,7 @@ sem::Variable* Resolver::Variable(const ast::Variable* var,
         storage_class != ast::StorageClass::kFunction &&
         validator_.IsValidationEnabled(var->attributes,
                                        ast::DisabledValidation::kIgnoreStorageClass)) {
-        AddError("function variable has a non-function storage class", var->source);
+        AddError("function-scope 'var' declaration must use 'function' storage class", var->source);
         return nullptr;
     }
 
@@ -519,11 +521,13 @@ sem::GlobalVariable* Resolver::GlobalVariable(const ast::Variable* var) {
 
     auto storage_class = sem->StorageClass();
     if (!var->is_const && storage_class == ast::StorageClass::kNone) {
-        AddError("global variables must have a storage class", var->source);
+        AddError("module-scope 'var' declaration must have a storage class", var->source);
         return nullptr;
     }
     if (var->is_const && storage_class != ast::StorageClass::kNone) {
-        AddError("global constants shouldn't have a storage class", var->source);
+        AddError(var->is_overridable ? "'override' declaration must not have a storage class"
+                                     : "'let' declaration must not have a storage class",
+                 var->source);
         return nullptr;
     }
 
@@ -852,6 +856,7 @@ sem::Statement* Resolver::Statement(const ast::Statement* stmt) {
         [&](const ast::BlockStatement* b) { return BlockStatement(b); },
         [&](const ast::ForLoopStatement* l) { return ForLoopStatement(l); },
         [&](const ast::LoopStatement* l) { return LoopStatement(l); },
+        [&](const ast::WhileStatement* w) { return WhileStatement(w); },
         [&](const ast::IfStatement* i) { return IfStatement(i); },
         [&](const ast::SwitchStatement* s) { return SwitchStatement(s); },
 
@@ -1034,6 +1039,39 @@ sem::ForLoopStatement* Resolver::ForLoopStatement(const ast::ForLoopStatement* s
         behaviors.Remove(sem::Behavior::kBreak, sem::Behavior::kContinue);
 
         return validator_.ForLoopStatement(sem);
+    });
+}
+
+sem::WhileStatement* Resolver::WhileStatement(const ast::WhileStatement* stmt) {
+    auto* sem =
+        builder_->create<sem::WhileStatement>(stmt, current_compound_statement_, current_function_);
+    return StatementScope(stmt, sem, [&] {
+        auto& behaviors = sem->Behaviors();
+
+        auto* cond = Expression(stmt->condition);
+        if (!cond) {
+            return false;
+        }
+        sem->SetCondition(cond);
+        behaviors.Add(cond->Behaviors());
+
+        Mark(stmt->body);
+
+        auto* body = builder_->create<sem::LoopBlockStatement>(
+            stmt->body, current_compound_statement_, current_function_);
+        if (!StatementScope(stmt->body, body, [&] { return Statements(stmt->body->statements); })) {
+            return false;
+        }
+
+        behaviors.Add(body->Behaviors());
+        // Always consider the while as having a 'next' behaviour because it has
+        // a condition. We don't check if the condition will terminate but it isn't
+        // valid to have an infinite loop in a WGSL program, so a non-terminating
+        // condition is already an invalid program.
+        behaviors.Add(sem::Behavior::kNext);
+        behaviors.Remove(sem::Behavior::kBreak, sem::Behavior::kContinue);
+
+        return validator_.WhileStatement(sem);
     });
 }
 
@@ -2069,21 +2107,16 @@ sem::Array* Resolver::Array(const ast::Array* arr) {
         if (auto* ident = count_expr->As<ast::IdentifierExpression>()) {
             // Make sure the identifier is a non-overridable module-scope constant.
             auto* var = sem_.ResolvedSymbol<sem::GlobalVariable>(ident);
-            if (!var || !var->Declaration()->is_const) {
-                AddError("array size identifier must be a module-scope constant", size_source);
-                return nullptr;
-            }
-            if (var->IsOverridable()) {
-                AddError("array size expression must not be pipeline-overridable", size_source);
+            if (!var || !var->Declaration()->is_const || var->IsOverridable()) {
+                AddError("array size identifier must be a literal or a module-scope 'let'",
+                         size_source);
                 return nullptr;
             }
 
             count_expr = var->Declaration()->constructor;
         } else if (!count_expr->Is<ast::LiteralExpression>()) {
-            AddError(
-                "array size expression must be either a literal or a module-scope "
-                "constant",
-                size_source);
+            AddError("array size identifier must be a literal or a module-scope 'let'",
+                     size_source);
             return nullptr;
         }
 

@@ -263,6 +263,12 @@ class DependencyScanner {
                 TraverseExpression(v->variable->constructor);
                 Declare(v->variable->symbol, v->variable);
             },
+            [&](const ast::WhileStatement* w) {
+                scope_stack_.Push();
+                TINT_DEFER(scope_stack_.Pop());
+                TraverseExpression(w->condition);
+                TraverseStatement(w->body);
+            },
             [&](Default) {
                 if (!stmt->IsAnyOf<ast::BreakStatement, ast::ContinueStatement,
                                    ast::DiscardStatement, ast::FallthroughStatement>()) {
@@ -569,8 +575,18 @@ struct DependencyAnalysis {
             return;  // This code assumes there are no undeclared identifiers.
         }
 
-        std::unordered_set<const Global*> visited;
+        // Make sure all 'enable' directives go before any other global declarations.
         for (auto* global : declaration_order_) {
+            if (auto* enable = global->node->As<ast::Enable>()) {
+                sorted_.add(enable);
+            }
+        }
+
+        for (auto* global : declaration_order_) {
+            if (global->node->Is<ast::Enable>()) {
+                // Skip 'enable' directives here, as they are already added.
+                continue;
+            }
             utils::UniqueVector<const Global*> stack;
             TraverseDependencies(
                 global,
