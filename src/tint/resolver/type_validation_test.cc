@@ -87,26 +87,6 @@ TEST_F(ResolverTypeValidationTest, GlobalVariableWithStorageClass_Pass) {
     EXPECT_TRUE(r()->Resolve()) << r()->error();
 }
 
-TEST_F(ResolverTypeValidationTest, GlobalLetWithStorageClass_Fail) {
-    // let<private> global_var: f32;
-    AST().AddGlobalVariable(create<ast::Variable>(
-        Source{{12, 34}}, Symbols().Register("global_let"), ast::StorageClass::kPrivate,
-        ast::Access::kUndefined, ty.f32(), true, false, Expr(1.23_f), ast::AttributeList{}));
-
-    EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), "12:34 error: 'let' declaration must not have a storage class");
-}
-
-TEST_F(ResolverTypeValidationTest, OverrideWithStorageClass_Fail) {
-    // let<private> global_var: f32;
-    AST().AddGlobalVariable(create<ast::Variable>(
-        Source{{12, 34}}, Symbols().Register("global_override"), ast::StorageClass::kPrivate,
-        ast::Access::kUndefined, ty.f32(), true, true, Expr(1.23_f), ast::AttributeList{}));
-
-    EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), "12:34 error: 'override' declaration must not have a storage class");
-}
-
 TEST_F(ResolverTypeValidationTest, GlobalConstNoStorageClass_Pass) {
     // let global_var: f32;
     GlobalConst(Source{{12, 34}}, "global_var", ty.f32(), Construct(ty.f32()));
@@ -787,7 +767,7 @@ INSTANTIATE_TEST_SUITE_P(ResolverTypeValidationTest,
 using MultisampledTextureDimensionTest = ResolverTestWithParam<DimensionParams>;
 TEST_P(MultisampledTextureDimensionTest, All) {
     auto& params = GetParam();
-    Global(Source{{12, 34}}, "a", ty.multisampled_texture(params.dim, ty.i32()),
+    Global("a", ty.multisampled_texture(Source{{12, 34}}, params.dim, ty.i32()),
            ast::StorageClass::kNone, nullptr, ast::AttributeList{GroupAndBinding(0, 0)});
 
     if (params.is_valid) {
@@ -838,17 +818,16 @@ static constexpr TypeParams type_cases[] = {
 using SampledTextureTypeTest = ResolverTestWithParam<TypeParams>;
 TEST_P(SampledTextureTypeTest, All) {
     auto& params = GetParam();
-    Global(Source{{12, 34}}, "a",
-           ty.sampled_texture(ast::TextureDimension::k2d, params.type_func(*this)),
-           ast::StorageClass::kNone, nullptr, ast::AttributeList{GroupAndBinding(0, 0)});
+    Global(
+        "a",
+        ty.sampled_texture(Source{{12, 34}}, ast::TextureDimension::k2d, params.type_func(*this)),
+        ast::StorageClass::kNone, nullptr, ast::AttributeList{GroupAndBinding(0, 0)});
 
     if (params.is_valid) {
         EXPECT_TRUE(r()->Resolve()) << r()->error();
     } else {
         EXPECT_FALSE(r()->Resolve());
-        EXPECT_EQ(r()->error(),
-                  "12:34 error: texture_2d<type>: type must be f32, "
-                  "i32 or u32");
+        EXPECT_EQ(r()->error(), "12:34 error: texture_2d<type>: type must be f32, i32 or u32");
     }
 }
 INSTANTIATE_TEST_SUITE_P(ResolverTypeValidationTest,
@@ -858,8 +837,9 @@ INSTANTIATE_TEST_SUITE_P(ResolverTypeValidationTest,
 using MultisampledTextureTypeTest = ResolverTestWithParam<TypeParams>;
 TEST_P(MultisampledTextureTypeTest, All) {
     auto& params = GetParam();
-    Global(Source{{12, 34}}, "a",
-           ty.multisampled_texture(ast::TextureDimension::k2d, params.type_func(*this)),
+    Global("a",
+           ty.multisampled_texture(Source{{12, 34}}, ast::TextureDimension::k2d,
+                                   params.type_func(*this)),
            ast::StorageClass::kNone, nullptr, ast::AttributeList{GroupAndBinding(0, 0)});
 
     if (params.is_valid) {
@@ -867,8 +847,7 @@ TEST_P(MultisampledTextureTypeTest, All) {
     } else {
         EXPECT_FALSE(r()->Resolve());
         EXPECT_EQ(r()->error(),
-                  "12:34 error: texture_multisampled_2d<type>: type must be f32, "
-                  "i32 or u32");
+                  "12:34 error: texture_multisampled_2d<type>: type must be f32, i32 or u32");
     }
 }
 INSTANTIATE_TEST_SUITE_P(ResolverTypeValidationTest,
@@ -907,8 +886,7 @@ TEST_P(StorageTextureDimensionTest, All) {
     } else {
         EXPECT_FALSE(r()->Resolve());
         EXPECT_EQ(r()->error(),
-                  "12:34 error: cube dimensions for storage textures are not "
-                  "supported");
+                  "12:34 error: cube dimensions for storage textures are not supported");
     }
 }
 INSTANTIATE_TEST_SUITE_P(ResolverTypeValidationTest,
@@ -968,9 +946,8 @@ TEST_P(StorageTextureFormatTest, All) {
     } else {
         EXPECT_FALSE(r()->Resolve());
         EXPECT_EQ(r()->error(),
-                  "12:34 error: image format must be one of the texel formats "
-                  "specified for storage textues in "
-                  "https://gpuweb.github.io/gpuweb/wgsl/#texel-formats");
+                  "12:34 error: image format must be one of the texel formats specified for "
+                  "storage textues in https://gpuweb.github.io/gpuweb/wgsl/#texel-formats");
     }
 }
 INSTANTIATE_TEST_SUITE_P(ResolverTypeValidationTest,

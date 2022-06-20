@@ -237,7 +237,7 @@ class Validator {
     /// @param atomic_composite_info atomic composite info in the module
     /// @returns true on success, false otherwise
     bool GlobalVariable(
-        const sem::Variable* var,
+        const sem::GlobalVariable* var,
         std::unordered_map<uint32_t, const sem::Variable*> constant_ids,
         std::unordered_map<const sem::Type*, const Source&> atomic_composite_info) const;
 
@@ -298,7 +298,7 @@ class Validator {
     /// @param func the function the variable is for
     /// @param var the variable to validate
     /// @returns true on success, false otherwise
-    bool FunctionParameter(const ast::Function* func, const sem::Variable* var) const;
+    bool Parameter(const ast::Function* func, const sem::Variable* var) const;
 
     /// Validates a return
     /// @param ret the return statement to validate
@@ -320,6 +320,18 @@ class Validator {
     /// @param t the texture to validate
     /// @returns true on success, false otherwise
     bool StorageTexture(const ast::StorageTexture* t) const;
+
+    /// Validates a sampled texture
+    /// @param t the texture to validate
+    /// @param source the source of the texture
+    /// @returns true on success, false otherwise
+    bool SampledTexture(const sem::SampledTexture* t, const Source& source) const;
+
+    /// Validates a multisampled texture
+    /// @param t the texture to validate
+    /// @param source the source of the texture
+    /// @returns true on success, false otherwise
+    bool MultisampledTexture(const sem::MultisampledTexture* t, const Source& source) const;
 
     /// Validates a structure
     /// @param str the structure to validate
@@ -345,12 +357,12 @@ class Validator {
     bool Variable(const sem::Variable* var) const;
 
     /// Validates a variable constructor or cast
-    /// @param var the variable to validate
+    /// @param v the variable to validate
     /// @param storage_class the storage class of the variable
     /// @param storage_type the type of the storage
     /// @param rhs_type the right hand side of the expression
     /// @returns true on succes, false otherwise
-    bool VariableConstructorOrCast(const ast::Variable* var,
+    bool VariableConstructorOrCast(const ast::Variable* v,
                                    ast::StorageClass storage_class,
                                    const sem::Type* storage_type,
                                    const sem::Type* rhs_type) const;
