@@ -22,12 +22,17 @@
 #include "src/tint/ast/extension.h"
 #include "src/tint/ast/float_literal_expression.h"
 #include "src/tint/ast/id_attribute.h"
+#include "src/tint/ast/int_literal_expression.h"
 #include "src/tint/ast/interpolate_attribute.h"
 #include "src/tint/ast/location_attribute.h"
 #include "src/tint/ast/module.h"
+#include "src/tint/ast/override.h"
+#include "src/tint/ast/var.h"
 #include "src/tint/sem/array.h"
 #include "src/tint/sem/call.h"
 #include "src/tint/sem/depth_multisampled_texture.h"
+#include "src/tint/sem/depth_texture.h"
+#include "src/tint/sem/external_texture.h"
 #include "src/tint/sem/f16.h"
 #include "src/tint/sem/f32.h"
 #include "src/tint/sem/function.h"
@@ -810,8 +815,8 @@ void Inspector::GenerateSamplerTargets() {
             continue;
         }
 
-        auto* t = c->args[texture_index];
-        auto* s = c->args[sampler_index];
+        auto* t = c->args[static_cast<size_t>(texture_index)];
+        auto* s = c->args[static_cast<size_t>(sampler_index)];
 
         GetOriginatingResources(
             std::array<const ast::Expression*, 2>{t, s},

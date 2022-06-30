@@ -65,6 +65,79 @@ constexpr double kLowestF16NextULP = -kHighestF16NextULP;
 // warning.
 TINT_BEGIN_DISABLE_WARNING(CONSTANT_OVERFLOW);
 
+TEST(NumberTest, Equality) {
+    EXPECT_TRUE(0_a == 0_a);
+    EXPECT_TRUE(10_a == 10_a);
+    EXPECT_TRUE(-10_a == -10_a);
+
+    EXPECT_TRUE(0_i == 0_i);
+    EXPECT_TRUE(10_i == 10_i);
+    EXPECT_TRUE(-10_i == -10_i);
+
+    EXPECT_TRUE(0_u == 0_u);
+    EXPECT_TRUE(10_u == 10_u);
+
+    EXPECT_TRUE(0._a == 0._a);
+    EXPECT_TRUE(-0._a == -0._a);
+    EXPECT_TRUE(10._a == 10._a);
+    EXPECT_TRUE(-10._a == -10._a);
+
+    EXPECT_TRUE(0_f == 0_f);
+    EXPECT_TRUE(-0_f == -0_f);
+    EXPECT_TRUE(10_f == 10_f);
+    EXPECT_TRUE(-10_f == -10_f);
+
+    EXPECT_TRUE(0_h == 0_h);
+    EXPECT_TRUE(-0_h == -0_h);
+    EXPECT_TRUE(10_h == 10_h);
+    EXPECT_TRUE(-10_h == -10_h);
+}
+
+TEST(NumberTest, Inequality) {
+    EXPECT_TRUE(0_a != 1_a);
+    EXPECT_TRUE(10_a != 11_a);
+    EXPECT_TRUE(11_a != 10_a);
+    EXPECT_TRUE(-10_a != -11_a);
+    EXPECT_TRUE(-11_a != -10_a);
+
+    EXPECT_TRUE(0_i != 1_i);
+    EXPECT_TRUE(1_i != 0_i);
+    EXPECT_TRUE(10_i != 11_i);
+    EXPECT_TRUE(11_i != 10_i);
+    EXPECT_TRUE(-10_i != -11_i);
+    EXPECT_TRUE(-11_i != -10_i);
+
+    EXPECT_TRUE(0_u != 1_u);
+    EXPECT_TRUE(1_u != 0_u);
+    EXPECT_TRUE(10_u != 11_u);
+    EXPECT_TRUE(11_u != 10_u);
+
+    EXPECT_TRUE(0._a != -0._a);
+    EXPECT_TRUE(-0._a != 0._a);
+    EXPECT_TRUE(10._a != 11._a);
+    EXPECT_TRUE(11._a != 10._a);
+    EXPECT_TRUE(-10._a != -11._a);
+    EXPECT_TRUE(-11._a != -10._a);
+
+    EXPECT_TRUE(0_f != -0_f);
+    EXPECT_TRUE(-0_f != 0_f);
+    EXPECT_TRUE(-0_f != -1_f);
+    EXPECT_TRUE(-1_f != -0_f);
+    EXPECT_TRUE(10_f != -10_f);
+    EXPECT_TRUE(-10_f != 10_f);
+    EXPECT_TRUE(10_f != 11_f);
+    EXPECT_TRUE(-10_f != -11_f);
+
+    EXPECT_TRUE(0_h != -0_h);
+    EXPECT_TRUE(-0_h != 0_h);
+    EXPECT_TRUE(-0_h != -1_h);
+    EXPECT_TRUE(-1_h != -0_h);
+    EXPECT_TRUE(10_h != -10_h);
+    EXPECT_TRUE(-10_h != 10_h);
+    EXPECT_TRUE(10_h != 11_h);
+    EXPECT_TRUE(-10_h != -11_h);
+}
+
 TEST(NumberTest, CheckedConvertIdentity) {
     EXPECT_EQ(CheckedConvert<AInt>(0_a), 0_a);
     EXPECT_EQ(CheckedConvert<AFloat>(0_a), 0.0_a);
@@ -84,6 +157,7 @@ TEST(NumberTest, CheckedConvertIdentity) {
 TEST(NumberTest, CheckedConvertLargestValue) {
     EXPECT_EQ(CheckedConvert<i32>(AInt(kHighestI32)), i32(kHighestI32));
     EXPECT_EQ(CheckedConvert<u32>(AInt(kHighestU32)), u32(kHighestU32));
+    EXPECT_EQ(CheckedConvert<u32>(i32(kHighestI32)), u32(kHighestI32));
     EXPECT_EQ(CheckedConvert<f32>(AFloat(kHighestF32)), f32(kHighestF32));
     EXPECT_EQ(CheckedConvert<f16>(AFloat(kHighestF16)), f16(kHighestF16));
 }
@@ -105,6 +179,14 @@ TEST(NumberTest, CheckedConvertSmallestValue) {
 TEST(NumberTest, CheckedConvertExceedsPositiveLimit) {
     EXPECT_EQ(CheckedConvert<i32>(AInt(kHighestI32 + 1)), ConversionFailure::kExceedsPositiveLimit);
     EXPECT_EQ(CheckedConvert<u32>(AInt(kHighestU32 + 1)), ConversionFailure::kExceedsPositiveLimit);
+    EXPECT_EQ(CheckedConvert<i32>(u32(kHighestU32)), ConversionFailure::kExceedsPositiveLimit);
+    EXPECT_EQ(CheckedConvert<i32>(u32(0x80000000)), ConversionFailure::kExceedsPositiveLimit);
+    EXPECT_EQ(CheckedConvert<u32>(f32(f32::kHighest)), ConversionFailure::kExceedsPositiveLimit);
+    EXPECT_EQ(CheckedConvert<i32>(f32(f32::kHighest)), ConversionFailure::kExceedsPositiveLimit);
+    EXPECT_EQ(CheckedConvert<u32>(AFloat(AFloat::kHighest)),
+              ConversionFailure::kExceedsPositiveLimit);
+    EXPECT_EQ(CheckedConvert<i32>(AFloat(AFloat::kHighest)),
+              ConversionFailure::kExceedsPositiveLimit);
     EXPECT_EQ(CheckedConvert<f32>(AFloat(kHighestF32NextULP)),
               ConversionFailure::kExceedsPositiveLimit);
     EXPECT_EQ(CheckedConvert<f16>(AFloat(kHighestF16NextULP)),
@@ -114,6 +196,14 @@ TEST(NumberTest, CheckedConvertExceedsPositiveLimit) {
 TEST(NumberTest, CheckedConvertExceedsNegativeLimit) {
     EXPECT_EQ(CheckedConvert<i32>(AInt(kLowestI32 - 1)), ConversionFailure::kExceedsNegativeLimit);
     EXPECT_EQ(CheckedConvert<u32>(AInt(kLowestU32 - 1)), ConversionFailure::kExceedsNegativeLimit);
+    EXPECT_EQ(CheckedConvert<u32>(i32(-1)), ConversionFailure::kExceedsNegativeLimit);
+    EXPECT_EQ(CheckedConvert<u32>(i32(kLowestI32)), ConversionFailure::kExceedsNegativeLimit);
+    EXPECT_EQ(CheckedConvert<u32>(f32(f32::kLowest)), ConversionFailure::kExceedsNegativeLimit);
+    EXPECT_EQ(CheckedConvert<i32>(f32(f32::kLowest)), ConversionFailure::kExceedsNegativeLimit);
+    EXPECT_EQ(CheckedConvert<u32>(AFloat(AFloat::kLowest)),
+              ConversionFailure::kExceedsNegativeLimit);
+    EXPECT_EQ(CheckedConvert<i32>(AFloat(AFloat::kLowest)),
+              ConversionFailure::kExceedsNegativeLimit);
     EXPECT_EQ(CheckedConvert<f32>(AFloat(kLowestF32NextULP)),
               ConversionFailure::kExceedsNegativeLimit);
     EXPECT_EQ(CheckedConvert<f16>(AFloat(kLowestF16NextULP)),
@@ -194,7 +284,7 @@ TEST(NumberTest, QuantizeF16) {
     EXPECT_EQ(f16(lowestNegativeSubnormalF16PlusULP), -0x0.ff8p-14);
     EXPECT_EQ(f16(highestNegativeSubnormalF16MinusULP), highestNegativeSubnormalF16);
     EXPECT_EQ(f16(highestNegativeSubnormalF16), highestNegativeSubnormalF16);
-    EXPECT_EQ(f16(highestNegativeSubnormalF16PlusULP), 0.0);
+    EXPECT_EQ(f16(highestNegativeSubnormalF16PlusULP), -0.0);
     // Test the mantissa discarding.
     EXPECT_EQ(f16(-0x0.064p-14), -0x0.064p-14);
     EXPECT_EQ(f16(-0x0.067fecp-14), -0x0.064p-14);

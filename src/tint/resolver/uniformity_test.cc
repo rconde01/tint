@@ -84,7 +84,7 @@ class BasicTest : public UniformityAnalysisTestBase,
         kTrue,
         kFalse,
         kLiteral,
-        kModuleLet,
+        kModuleConst,
         kPipelineOverridable,
         kFuncLetUniformRhs,
         kFuncVarUniform,
@@ -137,8 +137,8 @@ class BasicTest : public UniformityAnalysisTestBase,
                 return "false";
             case kLiteral:
                 return "7 == 7";
-            case kModuleLet:
-                return "module_let == 0";
+            case kModuleConst:
+                return "module_const == 0";
             case kPipelineOverridable:
                 return "pipeline_overridable == 0";
             case kFuncLetUniformRhs:
@@ -231,7 +231,7 @@ class BasicTest : public UniformityAnalysisTestBase,
             CASE(kTrue);
             CASE(kFalse);
             CASE(kLiteral);
-            CASE(kModuleLet);
+            CASE(kModuleConst);
             CASE(kPipelineOverridable);
             CASE(kFuncLetUniformRhs);
             CASE(kFuncVarUniform);
@@ -290,7 +290,7 @@ var<workgroup> w : i32;
 @group(1) @binding(2) var s : sampler;
 @group(1) @binding(3) var sc : sampler_comparison;
 
-let module_let : i32 = 42;
+const module_const : i32 = 42;
 @id(42) override pipeline_overridable : i32;
 
 fn user_no_restriction() {}
@@ -5327,7 +5327,7 @@ TEST_F(UniformityAnalysisTest, MaximumNumberOfPointerParameters) {
     //     workgroupBarrier();
     //   }
     // }
-    b.Global("non_uniform_global", ty.i32(), ast::StorageClass::kPrivate);
+    b.GlobalVar("non_uniform_global", ty.i32(), ast::StorageClass::kPrivate);
     ast::StatementList main_body;
     ast::ExpressionList args;
     for (int i = 0; i < 255; i++) {
@@ -6538,7 +6538,7 @@ TEST_F(UniformityAnalysisTest, StressGraphTraversalDepth) {
     //     workgroupBarrier();
     //   }
     // }
-    b.Global("v0", ty.i32(), ast::StorageClass::kPrivate, b.Expr(0_i));
+    b.GlobalVar("v0", ty.i32(), ast::StorageClass::kPrivate, b.Expr(0_i));
     ast::StatementList foo_body;
     std::string v_last = "v0";
     for (int i = 1; i < 100000; i++) {

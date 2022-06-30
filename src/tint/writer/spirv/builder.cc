@@ -103,12 +103,18 @@ uint32_t builtin_to_glsl_method(const sem::Builtin* builtin) {
     switch (builtin->Type()) {
         case BuiltinType::kAcos:
             return GLSLstd450Acos;
+        case BuiltinType::kAcosh:
+            return GLSLstd450Acosh;
         case BuiltinType::kAsin:
             return GLSLstd450Asin;
+        case BuiltinType::kAsinh:
+            return GLSLstd450Asinh;
         case BuiltinType::kAtan:
             return GLSLstd450Atan;
         case BuiltinType::kAtan2:
             return GLSLstd450Atan2;
+        case BuiltinType::kAtanh:
+            return GLSLstd450Atanh;
         case BuiltinType::kCeil:
             return GLSLstd450Ceil;
         case BuiltinType::kClamp:
@@ -527,7 +533,7 @@ bool Builder::GenerateExecutionModes(const ast::Function* func, uint32_t id) {
             wgsize_ops.push_back(wgsize_result);
 
             // Generate OpConstant instructions for each dimension.
-            for (int i = 0; i < 3; i++) {
+            for (size_t i = 0; i < 3; i++) {
                 auto constant = ScalarConstant::U32(wgsize[i].value);
                 if (wgsize[i].overridable_const) {
                     // Make the constant specializable.
@@ -693,6 +699,12 @@ uint32_t Builder::GenerateFunctionTypeIfNeeded(const sem::Function* func) {
 }
 
 bool Builder::GenerateFunctionVariable(const ast::Variable* v) {
+    if (v->Is<ast::Const>()) {
+        // Constants are generated at their use. This is required as the 'const' declaration may be
+        // abstract-numeric, which has no SPIR-V type.
+        return true;
+    }
+
     uint32_t init_id = 0;
     if (v->constructor) {
         init_id = GenerateExpressionWithLoadIfNeeded(v->constructor);
@@ -703,9 +715,9 @@ bool Builder::GenerateFunctionVariable(const ast::Variable* v) {
 
     auto* sem = builder_.Sem().Get(v);
 
-    if (auto* let = v->As<ast::Let>()) {
-        if (!let->constructor) {
-            error_ = "missing constructor for constant";
+    if (v->Is<ast::Let>()) {
+        if (!v->constructor) {
+            error_ = "missing constructor for let";
             return false;
         }
         RegisterVariable(sem, init_id);
@@ -748,20 +760,18 @@ bool Builder::GenerateStore(uint32_t to, uint32_t from) {
 }
 
 bool Builder::GenerateGlobalVariable(const ast::Variable* v) {
+    if (v->Is<ast::Const>()) {
+        // Constants are generated at their use. This is required as the 'const' declaration may be
+        // abstract-numeric, which has no SPIR-V type.
+        return true;
+    }
+
     auto* sem = builder_.Sem().Get(v);
     auto* type = sem->Type()->UnwrapRef();
 
     uint32_t init_id = 0;
     if (auto* ctor = v->constructor) {
-        if (!v->Is<ast::Override>()) {
-            auto* ctor_sem = builder_.Sem().Get(ctor);
-            if (auto constant = ctor_sem->ConstantValue()) {
-                init_id = GenerateConstantIfNeeded(std::move(constant));
-            }
-        }
-        if (init_id == 0) {
-            init_id = GenerateConstructorExpression(v, v->constructor);
-        }
+        init_id = GenerateConstructorExpression(v, ctor);
         if (init_id == 0) {
             return false;
         }
@@ -799,7 +809,7 @@ bool Builder::GenerateGlobalVariable(const ast::Variable* v) {
         }
     }
 
-    if (v->IsAnyOf<ast::Let, ast::Override>()) {
+    if (v->Is<ast::Override>()) {
         push_debug(spv::Op::OpName,
                    {Operand(init_id), Operand(builder_.Symbols().NameFor(v->symbol))});
 
@@ -949,7 +959,7 @@ bool Builder::GenerateIndexAccessor(const ast::IndexAccessorExpression* expr, Ac
                                     Operand(result_type_id),
                                     extract,
                                     Operand(info->source_id),
-                                    Operand(idx_constval.Element<uint32_t>(0)),
+                                    Operand(idx_constval->As<uint32_t>()),
                                 })) {
             return false;
         }
@@ -1280,8 +1290,16 @@ uint32_t Builder::GetGLSLstd450Import() {
 
 uint32_t Builder::GenerateConstructorExpression(const ast::Variable* var,
                                                 const ast::Expression* expr) {
-    if (auto* literal = expr->As<ast::LiteralExpression>()) {
-        return GenerateLiteralIfNeeded(var, literal);
+    if (Is<ast::Override>(var)) {
+        if (auto* literal = expr->As<ast::LiteralExpression>()) {
+            return GenerateLiteralIfNeeded(var, literal);
+        }
+    } else {
+        if (auto* sem = builder_.Sem().Get(expr)) {
+            if (auto constant = sem->ConstantValue()) {
+                return GenerateConstantIfNeeded(constant);
+            }
+        }
     }
     if (auto* call = builder_.Sem().Get<sem::Call>(expr)) {
         if (call->Target()->IsAnyOf<sem::TypeConstructor, sem::TypeConversion>()) {
@@ -1359,6 +1377,15 @@ uint32_t Builder::GenerateTypeConstructorOrConversion(const sem::Call* call,
                     can_cast_or_copy = res_vec->Width() == val_vec->Width();
                 }
             }
+        }
+    }
+
+    if (auto* res_mat = result_type->As<sem::Matrix>()) {
+        auto* value_type = args[0]->Type()->UnwrapRef();
+        if (auto* val_mat = value_type->As<sem::Matrix>()) {
+            // Generate passthrough for matrices of the same type
+            can_cast_or_copy =
+                (res_mat->columns() == val_mat->columns()) && (res_mat->rows() == val_mat->rows());
         }
     }
 
@@ -1607,6 +1634,8 @@ uint32_t Builder::GenerateCastOrCopyOrPassthrough(const sem::Type* to_type,
         }
 
         return result_id;
+    } else if (from_type->Is<sem::Matrix>()) {
+        return val_id;
     } else {
         TINT_ICE(Writer, builder_.Diagnostics()) << "Invalid from_type";
     }
@@ -1674,93 +1703,34 @@ uint32_t Builder::GenerateLiteralIfNeeded(const ast::Variable* var,
     return GenerateConstantIfNeeded(constant);
 }
 
-uint32_t Builder::GenerateConstantIfNeeded(const sem::Constant& constant) {
-    if (constant.AllZero()) {
-        return GenerateConstantNullIfNeeded(constant.Type());
+uint32_t Builder::GenerateConstantIfNeeded(const sem::Constant* constant) {
+    if (constant->AllZero()) {
+        return GenerateConstantNullIfNeeded(constant->Type());
     }
+    auto* ty = constant->Type();
 
-    static constexpr size_t kOpsResultIdx = 1;  // operand index of the result
-    auto& global_scope = scope_stack_[0];
-
-    auto gen_bool = [&](size_t element_idx) {
-        bool val = constant.Element<AInt>(element_idx);
-        return GenerateConstantIfNeeded(ScalarConstant::Bool(val));
-    };
-    auto gen_f32 = [&](size_t element_idx) {
-        auto val = f32(constant.Element<AFloat>(element_idx));
-        return GenerateConstantIfNeeded(ScalarConstant::F32(val.value));
-    };
-    auto gen_i32 = [&](size_t element_idx) {
-        auto val = i32(constant.Element<AInt>(element_idx));
-        return GenerateConstantIfNeeded(ScalarConstant::I32(val.value));
-    };
-    auto gen_u32 = [&](size_t element_idx) {
-        auto val = u32(constant.Element<AInt>(element_idx));
-        return GenerateConstantIfNeeded(ScalarConstant::U32(val.value));
-    };
-    auto gen_els = [&](std::vector<Operand>& ids, size_t start, size_t end, auto gen_el) {
-        for (size_t i = start; i < end; i++) {
-            auto id = gen_el(i);
-            if (!id) {
-                return false;
-            }
-            ids.emplace_back(id);
-        }
-        return true;
-    };
-    auto gen_vector = [&](const sem::Vector* ty, size_t start, size_t end) -> uint32_t {
+    auto composite = [&](size_t el_count) -> uint32_t {
         auto type_id = GenerateTypeIfNeeded(ty);
         if (!type_id) {
             return 0;
         }
 
+        static constexpr size_t kOpsResultIdx = 1;  // operand index of the result
+
         std::vector<Operand> ops;
-        ops.reserve(end - start + 2);
+        ops.reserve(el_count + 2);
         ops.emplace_back(type_id);
         ops.push_back(Operand(0u));  // Placeholder for the result ID
-        auto ok = Switch(
-            constant.ElementType(),                                                //
-            [&](const sem::Bool*) { return gen_els(ops, start, end, gen_bool); },  //
-            [&](const sem::F32*) { return gen_els(ops, start, end, gen_f32); },    //
-            [&](const sem::I32*) { return gen_els(ops, start, end, gen_i32); },    //
-            [&](const sem::U32*) { return gen_els(ops, start, end, gen_u32); },    //
-            [&](Default) {
-                error_ = "unhandled constant element type: " + builder_.FriendlyName(ty);
-                return false;
-            });
-        if (!ok) {
-            return 0;
-        }
 
-        return utils::GetOrCreate(global_scope.type_ctor_to_id_, OperandListKey{ops},
-                                  [&]() -> uint32_t {
-                                      auto result = result_op();
-                                      ops[kOpsResultIdx] = result;
-                                      push_type(spv::Op::OpConstantComposite, std::move(ops));
-                                      return std::get<uint32_t>(result);
-                                  });
-    };
-    auto gen_matrix = [&](const sem::Matrix* m) -> uint32_t {
-        auto mat_type_id = GenerateTypeIfNeeded(m);
-        if (!mat_type_id) {
-            return 0;
-        }
-
-        std::vector<Operand> ops;
-        ops.reserve(m->columns() + 2);
-        ops.emplace_back(mat_type_id);
-        ops.push_back(Operand(0u));  // Placeholder for the result ID
-
-        for (size_t column_idx = 0; column_idx < m->columns(); column_idx++) {
-            size_t start = m->rows() * column_idx;
-            size_t end = m->rows() * (column_idx + 1);
-            auto column_id = gen_vector(m->ColumnType(), start, end);
-            if (!column_id) {
+        for (size_t i = 0; i < el_count; i++) {
+            auto id = GenerateConstantIfNeeded(constant->Index(i));
+            if (!id) {
                 return 0;
             }
-            ops.emplace_back(column_id);
+            ops.emplace_back(id);
         }
 
+        auto& global_scope = scope_stack_[0];
         return utils::GetOrCreate(global_scope.type_ctor_to_id_, OperandListKey{ops},
                                   [&]() -> uint32_t {
                                       auto result = result_op();
@@ -1771,15 +1741,28 @@ uint32_t Builder::GenerateConstantIfNeeded(const sem::Constant& constant) {
     };
 
     return Switch(
-        constant.Type(),                                                                  //
-        [&](const sem::Bool*) { return gen_bool(0); },                                    //
-        [&](const sem::F32*) { return gen_f32(0); },                                      //
-        [&](const sem::I32*) { return gen_i32(0); },                                      //
-        [&](const sem::U32*) { return gen_u32(0); },                                      //
-        [&](const sem::Vector* v) { return gen_vector(v, 0, constant.ElementCount()); },  //
-        [&](const sem::Matrix* m) { return gen_matrix(m); },                              //
+        ty,  //
+        [&](const sem::Bool*) {
+            bool val = constant->As<bool>();
+            return GenerateConstantIfNeeded(ScalarConstant::Bool(val));
+        },
+        [&](const sem::F32*) {
+            auto val = constant->As<f32>();
+            return GenerateConstantIfNeeded(ScalarConstant::F32(val.value));
+        },
+        [&](const sem::I32*) {
+            auto val = constant->As<i32>();
+            return GenerateConstantIfNeeded(ScalarConstant::I32(val.value));
+        },
+        [&](const sem::U32*) {
+            auto val = constant->As<u32>();
+            return GenerateConstantIfNeeded(ScalarConstant::U32(val.value));
+        },
+        [&](const sem::Vector* v) { return composite(v->Width()); },
+        [&](const sem::Matrix* m) { return composite(m->columns()); },
+        [&](const sem::Array* a) { return composite(a->Count()); },
         [&](Default) {
-            error_ = "unhandled constant type: " + builder_.FriendlyName(constant.Type());
+            error_ = "unhandled constant type: " + builder_.FriendlyName(ty);
             return false;
         });
 }
@@ -2697,7 +2680,7 @@ bool Builder::GenerateTextureBuiltin(const sem::Call* call,
     // Returns the argument with the given usage
     auto arg = [&](Usage usage) {
         int idx = signature.IndexOf(usage);
-        return (idx >= 0) ? arguments[idx] : nullptr;
+        return (idx >= 0) ? arguments[static_cast<size_t>(idx)] : nullptr;
     };
 
     // Generates the argument with the given usage, returning the operand ID
@@ -3272,7 +3255,8 @@ bool Builder::GenerateAtomicBuiltin(const sem::Call* call,
                                                                      value,
                                                                  });
         case sem::BuiltinType::kAtomicCompareExchangeWeak: {
-            auto comparator = GenerateExpression(call->Arguments()[1]->Declaration());
+            auto comparator =
+                GenerateExpressionWithLoadIfNeeded(call->Arguments()[1]->Declaration());
             if (comparator == 0) {
                 return false;
             }

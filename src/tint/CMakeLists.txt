@@ -22,18 +22,6 @@ function(tint_spvtools_compile_options TARGET)
     ${spirv-tools_SOURCE_DIR}
     ${spirv-tools_BINARY_DIR}
   )
-
-  if (${CMAKE_CXX_COMPILER_ID} MATCHES Clang)
-    # The SPIRV-Tools code is conditioned against C++ and an older version of Clang.
-    # Suppress warnings triggered in our current compilation environment.
-    # TODO(dneto): Fix the issues upstream.
-    target_compile_options(${TARGET} PRIVATE
-      -Wno-newline-eof
-      -Wno-sign-conversion
-      -Wno-old-style-cast
-      -Wno-weak-vtables
-    )
-  endif()
 endfunction()
 
 ## Tint diagnostic utilities. Used by libtint and tint_utils_io.
@@ -99,6 +87,8 @@ set(TINT_LIB_SRCS
   ast/case_statement.h
   ast/compound_assignment_statement.cc
   ast/compound_assignment_statement.h
+  ast/const.cc
+  ast/const.h
   ast/continue_statement.cc
   ast/continue_statement.h
   ast/depth_multisampled_texture.cc
@@ -324,6 +314,8 @@ set(TINT_LIB_SRCS
   sem/i32.h
   sem/if_statement.cc
   sem/if_statement.h
+  sem/index_accessor_expression.cc
+  sem/index_accessor_expression.h
   sem/info.cc
   sem/info.h
   sem/loop_statement.cc
@@ -428,8 +420,8 @@ set(TINT_LIB_SRCS
   transform/multiplanar_external_texture.h
   transform/num_workgroups_from_uniform.cc
   transform/num_workgroups_from_uniform.h
-  transform/promote_initializers_to_const_var.cc
-  transform/promote_initializers_to_const_var.h
+  transform/promote_initializers_to_let.cc
+  transform/promote_initializers_to_let.h
   transform/promote_side_effects_to_decl.cc
   transform/promote_side_effects_to_decl.h
   transform/remove_continue_in_switch.cc
@@ -446,6 +438,8 @@ set(TINT_LIB_SRCS
   transform/simplify_pointers.h
   transform/single_entry_point.cc
   transform/single_entry_point.h
+  transform/spirv_atomic.cc
+  transform/spirv_atomic.h
   transform/transform.cc
   transform/transform.h
   transform/unshadow.cc
@@ -464,8 +458,6 @@ set(TINT_LIB_SRCS
   transform/vertex_pulling.h
   transform/while_to_loop.cc
   transform/while_to_loop.h
-  transform/wrap_arrays_in_structs.cc
-  transform/wrap_arrays_in_structs.h
   transform/zero_init_workgroup_memory.cc
   transform/zero_init_workgroup_memory.h
   utils/bitcast.h
@@ -812,13 +804,12 @@ if(TINT_BUILD_TESTS)
     resolver/type_validation_test.cc
     resolver/validation_test.cc
     resolver/validator_is_storeable_test.cc
-    resolver/var_let_test.cc
-    resolver/var_let_validation_test.cc
+    resolver/variable_test.cc
+    resolver/variable_validation_test.cc
     scope_stack_test.cc
     sem/atomic.cc
     sem/bool_test.cc
     sem/builtin_test.cc
-    sem/constant_test.cc
     sem/depth_multisampled_texture_test.cc
     sem/depth_texture_test.cc
     sem/expression_test.cc
@@ -940,7 +931,6 @@ if(TINT_BUILD_TESTS)
       reader/wgsl/parser_impl_bug_cases_test.cc
       reader/wgsl/parser_impl_call_stmt_test.cc
       reader/wgsl/parser_impl_case_body_test.cc
-      reader/wgsl/parser_impl_const_expr_test.cc
       reader/wgsl/parser_impl_const_literal_test.cc
       reader/wgsl/parser_impl_continue_stmt_test.cc
       reader/wgsl/parser_impl_continuing_stmt_test.cc
@@ -1103,7 +1093,7 @@ if(TINT_BUILD_TESTS)
       transform/module_scope_var_to_entry_point_param_test.cc
       transform/multiplanar_external_texture_test.cc
       transform/num_workgroups_from_uniform_test.cc
-      transform/promote_initializers_to_const_var_test.cc
+      transform/promote_initializers_to_let_test.cc
       transform/promote_side_effects_to_decl_test.cc
       transform/remove_continue_in_switch_test.cc
       transform/remove_phonies_test.cc
@@ -1112,6 +1102,7 @@ if(TINT_BUILD_TESTS)
       transform/robustness_test.cc
       transform/simplify_pointers_test.cc
       transform/single_entry_point_test.cc
+      transform/spirv_atomic_test.cc
       transform/test_helper.h
       transform/unshadow_test.cc
       transform/unwind_discard_functions_test.cc
@@ -1119,7 +1110,6 @@ if(TINT_BUILD_TESTS)
       transform/vectorize_scalar_matrix_constructors_test.cc
       transform/vertex_pulling_test.cc
       transform/while_to_loop_test.cc
-      transform/wrap_arrays_in_structs_test.cc
       transform/zero_init_workgroup_memory_test.cc
       transform/utils/get_insertion_point_test.cc
       transform/utils/hoist_to_decl_before_test.cc

@@ -307,31 +307,31 @@ bool Validator::MultisampledTexture(const sem::MultisampledTexture* t, const Sou
     return true;
 }
 
-bool Validator::Materialize(const sem::Materialize* m) const {
-    auto* from = m->Expr()->Type();
-    auto* to = m->Type();
-
+bool Validator::Materialize(const sem::Type* to,
+                            const sem::Type* from,
+                            const Source& source) const {
     if (sem::Type::ConversionRank(from, to) == sem::Type::kNoConversion) {
         AddError("cannot convert value of type '" + sem_.TypeNameOf(from) + "' to type '" +
                      sem_.TypeNameOf(to) + "'",
-                 m->Expr()->Declaration()->source);
+                 source);
         return false;
     }
     return true;
 }
 
-bool Validator::VariableConstructorOrCast(const ast::Variable* v,
-                                          ast::StorageClass storage_class,
-                                          const sem::Type* storage_ty,
-                                          const sem::Type* rhs_ty) const {
-    auto* value_type = rhs_ty->UnwrapRef();  // Implicit load of RHS
+bool Validator::VariableInitializer(const ast::Variable* v,
+                                    ast::StorageClass storage_class,
+                                    const sem::Type* storage_ty,
+                                    const sem::Expression* initializer) const {
+    auto* initializer_ty = initializer->Type();
+    auto* value_type = initializer_ty->UnwrapRef();  // Implicit load of RHS
 
     // Value type has to match storage type
     if (storage_ty != value_type) {
-        std::string decl = v->Is<ast::Let>() ? "let" : "var";
-        AddError("cannot initialize " + decl + " of type '" + sem_.TypeNameOf(storage_ty) +
-                     "' with value of type '" + sem_.TypeNameOf(rhs_ty) + "'",
-                 v->source);
+        std::stringstream s;
+        s << "cannot initialize " << v->Kind() << " of type '" << sem_.TypeNameOf(storage_ty)
+          << "' with value of type '" << sem_.TypeNameOf(initializer_ty) << "'";
+        AddError(s.str(), v->source);
         return false;
     }
 
@@ -529,12 +529,52 @@ bool Validator::GlobalVariable(
     std::unordered_map<uint32_t, const sem::Variable*> constant_ids,
     std::unordered_map<const sem::Type*, const Source&> atomic_composite_info) const {
     auto* decl = global->Declaration();
-    if (!NoDuplicateAttributes(decl->attributes)) {
-        return false;
-    }
-
     bool ok = Switch(
         decl,  //
+        [&](const ast::Var* var) {
+            if (global->StorageClass() == ast::StorageClass::kNone) {
+                AddError("module-scope 'var' declaration must have a storage class", decl->source);
+                return false;
+            }
+
+            for (auto* attr : decl->attributes) {
+                bool is_shader_io_attribute =
+                    attr->IsAnyOf<ast::BuiltinAttribute, ast::InterpolateAttribute,
+                                  ast::InvariantAttribute, ast::LocationAttribute>();
+                bool has_io_storage_class = global->StorageClass() == ast::StorageClass::kInput ||
+                                            global->StorageClass() == ast::StorageClass::kOutput;
+                if (!attr->IsAnyOf<ast::BindingAttribute, ast::GroupAttribute,
+                                   ast::InternalAttribute>() &&
+                    (!is_shader_io_attribute || !has_io_storage_class)) {
+                    AddError("attribute is not valid for module-scope 'var'", attr->source);
+                    return false;
+                }
+            }
+
+            // https://gpuweb.github.io/gpuweb/wgsl/#variable-declaration
+            // The access mode always has a default, and except for variables in the
+            // storage storage class, must not be written.
+            if (global->StorageClass() != ast::StorageClass::kStorage &&
+                var->declared_access != ast::Access::kUndefined) {
+                AddError("only variables in <storage> storage class may declare an access mode",
+                         var->source);
+                return false;
+            }
+
+            if (!AtomicVariable(global, atomic_composite_info)) {
+                return false;
+            }
+
+            return Var(global);
+        },
+        [&](const ast::Let*) {
+            if (!decl->attributes.empty()) {
+                AddError("attribute is not valid for module-scope 'let' declaration",
+                         decl->attributes[0]->source);
+                return false;
+            }
+            return Let(global);
+        },
         [&](const ast::Override*) {
             for (auto* attr : decl->attributes) {
                 if (auto* id_attr = attr->As<ast::IdAttribute>()) {
@@ -558,31 +598,21 @@ bool Validator::GlobalVariable(
                     return false;
                 }
             }
-            return true;
+            return Override(global);
         },
-        [&](const ast::Let*) {
+        [&](const ast::Const*) {
             if (!decl->attributes.empty()) {
-                AddError("attribute is not valid for module-scope 'let' declaration",
+                AddError("attribute is not valid for module-scope 'const' declaration",
                          decl->attributes[0]->source);
                 return false;
             }
-            return true;
+            return Const(global);
         },
-        [&](const ast::Var*) {
-            for (auto* attr : decl->attributes) {
-                bool is_shader_io_attribute =
-                    attr->IsAnyOf<ast::BuiltinAttribute, ast::InterpolateAttribute,
-                                  ast::InvariantAttribute, ast::LocationAttribute>();
-                bool has_io_storage_class = global->StorageClass() == ast::StorageClass::kInput ||
-                                            global->StorageClass() == ast::StorageClass::kOutput;
-                if (!attr->IsAnyOf<ast::BindingAttribute, ast::GroupAttribute,
-                                   ast::InternalAttribute>() &&
-                    (!is_shader_io_attribute || !has_io_storage_class)) {
-                    AddError("attribute is not valid for module-scope 'var'", attr->source);
-                    return false;
-                }
-            }
-            return true;
+        [&](Default) {
+            TINT_ICE(Resolver, diagnostics_)
+                << "Validator::GlobalVariable() called with a unknown variable type: "
+                << decl->TypeInfo().name;
+            return false;
         });
 
     if (!ok) {
@@ -618,23 +648,7 @@ bool Validator::GlobalVariable(
             }
     }
 
-    if (auto* var = decl->As<ast::Var>()) {
-        // https://gpuweb.github.io/gpuweb/wgsl/#variable-declaration
-        // The access mode always has a default, and except for variables in the
-        // storage storage class, must not be written.
-        if (global->StorageClass() != ast::StorageClass::kStorage &&
-            var->declared_access != ast::Access::kUndefined) {
-            AddError("only variables in <storage> storage class may declare an access mode",
-                     var->source);
-            return false;
-        }
-
-        if (!AtomicVariable(global, atomic_composite_info)) {
-            return false;
-        }
-    }
-
-    return Variable(global);
+    return true;
 }
 
 // https://gpuweb.github.io/gpuweb/wgsl/#atomic-types
@@ -680,62 +694,116 @@ bool Validator::AtomicVariable(
 
 bool Validator::Variable(const sem::Variable* v) const {
     auto* decl = v->Declaration();
+    return Switch(
+        decl,                                               //
+        [&](const ast::Var*) { return Var(v); },            //
+        [&](const ast::Let*) { return Let(v); },            //
+        [&](const ast::Override*) { return Override(v); },  //
+        [&](const ast::Const*) { return true; },            //
+        [&](Default) {
+            TINT_ICE(Resolver, diagnostics_)
+                << "Validator::Variable() called with a unknown variable type: "
+                << decl->TypeInfo().name;
+            return false;
+        });
+}
+
+bool Validator::Var(const sem::Variable* v) const {
+    auto* var = v->Declaration()->As<ast::Var>();
     auto* storage_ty = v->Type()->UnwrapRef();
 
-    auto* as_let = decl->As<ast::Let>();
-    auto* as_var = decl->As<ast::Var>();
-
     if (v->Is<sem::GlobalVariable>()) {
-        auto name = symbols_.NameFor(decl->symbol);
+        auto name = symbols_.NameFor(var->symbol);
         if (sem::ParseBuiltinType(name) != sem::BuiltinType::kNone) {
-            auto* kind = as_let ? "let" : "var";
-            AddError(
-                "'" + name + "' is a builtin and cannot be redeclared as a module-scope " + kind,
-                decl->source);
+            AddError("'" + name + "' is a builtin and cannot be redeclared as a module-scope 'var'",
+                     var->source);
             return false;
         }
     }
 
-    if (as_var && !IsStorable(storage_ty)) {
-        AddError(sem_.TypeNameOf(storage_ty) + " cannot be used as the type of a var",
-                 decl->source);
+    if (!IsStorable(storage_ty)) {
+        AddError(sem_.TypeNameOf(storage_ty) + " cannot be used as the type of a var", var->source);
         return false;
     }
 
-    if (as_let && !(storage_ty->IsConstructible() || storage_ty->Is<sem::Pointer>())) {
-        AddError(sem_.TypeNameOf(storage_ty) + " cannot be used as the type of a let",
-                 decl->source);
-        return false;
-    }
-
-    if (v->Is<sem::LocalVariable>() && as_var &&
-        IsValidationEnabled(decl->attributes, ast::DisabledValidation::kIgnoreStorageClass)) {
+    if (v->Is<sem::LocalVariable>() &&
+        IsValidationEnabled(var->attributes, ast::DisabledValidation::kIgnoreStorageClass)) {
         if (!v->Type()->UnwrapRef()->IsConstructible()) {
-            AddError("function variable must have a constructible type",
-                     decl->type ? decl->type->source : decl->source);
+            AddError("function-scope 'var' must have a constructible type",
+                     var->type ? var->type->source : var->source);
             return false;
         }
     }
 
-    if (as_var && storage_ty->is_handle() &&
-        as_var->declared_storage_class != ast::StorageClass::kNone) {
+    if (storage_ty->is_handle() && var->declared_storage_class != ast::StorageClass::kNone) {
         // https://gpuweb.github.io/gpuweb/wgsl/#module-scope-variables
         // If the store type is a texture type or a sampler type, then the
         // variable declaration must not have a storage class attribute. The
         // storage class will always be handle.
         AddError(
             "variables of type '" + sem_.TypeNameOf(storage_ty) + "' must not have a storage class",
-            decl->source);
+            var->source);
         return false;
     }
 
-    if (IsValidationEnabled(decl->attributes, ast::DisabledValidation::kIgnoreStorageClass) &&
-        as_var &&
-        (as_var->declared_storage_class == ast::StorageClass::kInput ||
-         as_var->declared_storage_class == ast::StorageClass::kOutput)) {
-        AddError("invalid use of input/output storage class", as_var->source);
+    if (IsValidationEnabled(var->attributes, ast::DisabledValidation::kIgnoreStorageClass) &&
+        (var->declared_storage_class == ast::StorageClass::kInput ||
+         var->declared_storage_class == ast::StorageClass::kOutput)) {
+        AddError("invalid use of input/output storage class", var->source);
         return false;
     }
+    return true;
+}
+
+bool Validator::Let(const sem::Variable* v) const {
+    auto* decl = v->Declaration();
+    auto* storage_ty = v->Type()->UnwrapRef();
+
+    if (v->Is<sem::GlobalVariable>()) {
+        auto name = symbols_.NameFor(decl->symbol);
+        if (sem::ParseBuiltinType(name) != sem::BuiltinType::kNone) {
+            AddError("'" + name + "' is a builtin and cannot be redeclared as a 'let'",
+                     decl->source);
+            return false;
+        }
+    }
+
+    if (!(storage_ty->IsConstructible() || storage_ty->Is<sem::Pointer>())) {
+        AddError(sem_.TypeNameOf(storage_ty) + " cannot be used as the type of a 'let'",
+                 decl->source);
+        return false;
+    }
+    return true;
+}
+
+bool Validator::Override(const sem::Variable* v) const {
+    auto* decl = v->Declaration();
+    auto* storage_ty = v->Type()->UnwrapRef();
+
+    auto name = symbols_.NameFor(decl->symbol);
+    if (sem::ParseBuiltinType(name) != sem::BuiltinType::kNone) {
+        AddError("'" + name + "' is a builtin and cannot be redeclared as a 'override'",
+                 decl->source);
+        return false;
+    }
+
+    if (!storage_ty->is_scalar()) {
+        AddError(sem_.TypeNameOf(storage_ty) + " cannot be used as the type of a 'override'",
+                 decl->source);
+        return false;
+    }
+    return true;
+}
+
+bool Validator::Const(const sem::Variable* v) const {
+    auto* decl = v->Declaration();
+
+    auto name = symbols_.NameFor(decl->symbol);
+    if (sem::ParseBuiltinType(name) != sem::BuiltinType::kNone) {
+        AddError("'" + name + "' is a builtin and cannot be redeclared as a 'const'", decl->source);
+        return false;
+    }
+
     return true;
 }
 
@@ -1536,16 +1604,16 @@ bool Validator::TextureBuiltinFunction(const sem::Call* call) const {
     auto& signature = builtin->Signature();
 
     auto check_arg_is_constexpr = [&](sem::ParameterUsage usage, int min, int max) {
-        auto index = signature.IndexOf(usage);
-        if (index < 0) {
+        auto signed_index = signature.IndexOf(usage);
+        if (signed_index < 0) {
             return true;
         }
+        auto index = static_cast<size_t>(signed_index);
         std::string name = sem::str(usage);
         auto* arg = call->Arguments()[index];
         if (auto values = arg->ConstantValue()) {
             // Assert that the constant values are of the expected type.
-            if (!values.Type()->IsAnyOf<sem::I32, sem::Vector>() ||
-                !values.ElementType()->Is<sem::I32>()) {
+            if (!values->Type()->is_integer_scalar_or_vector()) {
                 TINT_ICE(Resolver, diagnostics_)
                     << "failed to resolve '" + func_name + "' " << name << " parameter type";
                 return false;
@@ -1563,24 +1631,26 @@ bool Validator::TextureBuiltinFunction(const sem::Call* call) const {
                     return ast::TraverseAction::Stop;
                 });
             if (is_const_expr) {
-                auto vector = builtin->Parameters()[index]->Type()->Is<sem::Vector>();
-                for (size_t i = 0, n = values.ElementCount(); i < n; i++) {
-                    auto value = values.Element<AInt>(i).value;
-                    if (value < min || value > max) {
-                        if (vector) {
+                if (auto* vector = builtin->Parameters()[index]->Type()->As<sem::Vector>()) {
+                    for (size_t i = 0; i < vector->Width(); i++) {
+                        auto value = values->Index(i)->As<AInt>();
+                        if (value < min || value > max) {
                             AddError("each component of the " + name +
                                          " argument must be at least " + std::to_string(min) +
                                          " and at most " + std::to_string(max) + ". " + name +
                                          " component " + std::to_string(i) + " is " +
                                          std::to_string(value),
                                      arg->Declaration()->source);
-                        } else {
-                            AddError("the " + name + " argument must be at least " +
-                                         std::to_string(min) + " and at most " +
-                                         std::to_string(max) + ". " + name + " is " +
-                                         std::to_string(value),
-                                     arg->Declaration()->source);
+                            return false;
                         }
+                    }
+                } else {
+                    auto value = values->As<AInt>();
+                    if (value < min || value > max) {
+                        AddError("the " + name + " argument must be at least " +
+                                     std::to_string(min) + " and at most " + std::to_string(max) +
+                                     ". " + name + " is " + std::to_string(value),
+                                 arg->Declaration()->source);
                         return false;
                     }
                 }
@@ -1624,6 +1694,11 @@ bool Validator::FunctionCall(const sem::Call* call, sem::Statement* current_stat
     auto* target = call->Target()->As<sem::Function>();
     auto sym = decl->target.name->symbol;
     auto name = symbols_.NameFor(sym);
+
+    if (!current_statement) {  // Function call at module-scope.
+        AddError("functions cannot be called at module-scope", decl->source);
+        return false;
+    }
 
     if (target->Declaration()->IsEntryPoint()) {
         // https://www.w3.org/TR/WGSL/#function-restriction
@@ -1797,7 +1872,7 @@ bool Validator::ArrayConstructor(const ast::CallExpression* ctor,
 
 bool Validator::Vector(const sem::Vector* ty, const Source& source) const {
     if (!ty->type()->is_scalar()) {
-        AddError("vector element type must be 'bool', 'f32', 'i32' or 'u32'", source);
+        AddError("vector element type must be 'bool', 'f32', 'f16', 'i32' or 'u32'", source);
         return false;
     }
     return true;
@@ -1805,7 +1880,7 @@ bool Validator::Vector(const sem::Vector* ty, const Source& source) const {
 
 bool Validator::Matrix(const sem::Matrix* ty, const Source& source) const {
     if (!ty->is_float_matrix()) {
-        AddError("matrix element type must be 'f32'", source);
+        AddError("matrix element type must be 'f32' or 'f16'", source);
         return false;
     }
     return true;

@@ -60,7 +60,7 @@
 #include "src/tint/transform/loop_to_for_loop.h"
 #include "src/tint/transform/manager.h"
 #include "src/tint/transform/num_workgroups_from_uniform.h"
-#include "src/tint/transform/promote_initializers_to_const_var.h"
+#include "src/tint/transform/promote_initializers_to_let.h"
 #include "src/tint/transform/promote_side_effects_to_decl.h"
 #include "src/tint/transform/remove_continue_in_switch.h"
 #include "src/tint/transform/remove_phonies.h"
@@ -158,6 +158,9 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
 
     {  // Builtin polyfills
         transform::BuiltinPolyfill::Builtins polyfills;
+        polyfills.acosh = transform::BuiltinPolyfill::Level::kFull;
+        polyfills.asinh = true;
+        polyfills.atanh = transform::BuiltinPolyfill::Level::kFull;
         // TODO(crbug.com/tint/1449): Some of these can map to HLSL's `firstbitlow`
         // and `firstbithigh`.
         polyfills.count_leading_zeros = true;
@@ -231,7 +234,7 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
     // DecomposeMemoryAccess special-cases the arrayLength() intrinsic, which
     // will be transformed by CalculateArrayLength
     manager.Add<transform::CalculateArrayLength>();
-    manager.Add<transform::PromoteInitializersToConstVar>();
+    manager.Add<transform::PromoteInitializersToLet>();
 
     manager.Add<transform::RemoveContinueInSwitch>();
 
@@ -612,8 +615,7 @@ bool GeneratorImpl::EmitAssign(const ast::AssignmentStatement* stmt) {
             if (auto* mat = TypeOf(lhs_sub_access->object)->UnwrapRef()->As<sem::Matrix>()) {
                 auto* rhs_col_idx_sem = builder_.Sem().Get(lhs_access->index);
                 auto* rhs_row_idx_sem = builder_.Sem().Get(lhs_sub_access->index);
-                if (!rhs_col_idx_sem->ConstantValue().IsValid() ||
-                    !rhs_row_idx_sem->ConstantValue().IsValid()) {
+                if (!rhs_col_idx_sem->ConstantValue() || !rhs_row_idx_sem->ConstantValue()) {
                     return EmitDynamicMatrixScalarAssignment(stmt, mat);
                 }
             }
@@ -623,7 +625,7 @@ bool GeneratorImpl::EmitAssign(const ast::AssignmentStatement* stmt) {
         const auto* lhs_access_type = TypeOf(lhs_access->object)->UnwrapRef();
         if (auto* mat = lhs_access_type->As<sem::Matrix>()) {
             auto* lhs_index_sem = builder_.Sem().Get(lhs_access->index);
-            if (!lhs_index_sem->ConstantValue().IsValid()) {
+            if (!lhs_index_sem->ConstantValue()) {
                 return EmitDynamicMatrixVectorAssignment(stmt, mat);
             }
         }
@@ -631,7 +633,7 @@ bool GeneratorImpl::EmitAssign(const ast::AssignmentStatement* stmt) {
         // indices
         if (auto* vec = lhs_access_type->As<sem::Vector>()) {
             auto* rhs_sem = builder_.Sem().Get(lhs_access->index);
-            if (!rhs_sem->ConstantValue().IsValid()) {
+            if (!rhs_sem->ConstantValue()) {
                 return EmitDynamicVectorAssignment(stmt, vec);
             }
         }
@@ -651,28 +653,30 @@ bool GeneratorImpl::EmitAssign(const ast::AssignmentStatement* stmt) {
 
 bool GeneratorImpl::EmitExpressionOrOneIfZero(std::ostream& out, const ast::Expression* expr) {
     // For constants, replace literal 0 with 1.
-    if (const auto& val = builder_.Sem().Get(expr)->ConstantValue()) {
-        if (!val.AnyZero()) {
+    if (const auto* val = builder_.Sem().Get(expr)->ConstantValue()) {
+        if (!val->AnyZero()) {
             return EmitExpression(out, expr);
         }
 
-        if (val.Type()->IsAnyOf<sem::I32, sem::U32>()) {
-            return EmitValue(out, val.Type(), 1);
+        auto* ty = val->Type();
+
+        if (ty->IsAnyOf<sem::I32, sem::U32>()) {
+            return EmitValue(out, ty, 1);
         }
 
-        if (auto* vec = val.Type()->As<sem::Vector>()) {
+        if (auto* vec = ty->As<sem::Vector>()) {
             auto* elem_ty = vec->type();
 
-            if (!EmitType(out, val.Type(), ast::StorageClass::kNone, ast::Access::kUndefined, "")) {
+            if (!EmitType(out, ty, ast::StorageClass::kNone, ast::Access::kUndefined, "")) {
                 return false;
             }
 
             out << "(";
-            for (size_t i = 0; i < val.ElementCount(); ++i) {
+            for (size_t i = 0; i < vec->Width(); ++i) {
                 if (i != 0) {
                     out << ", ";
                 }
-                auto s = val.Element<AInt>(i).value;
+                auto s = val->Index(i)->As<AInt>();
                 if (!EmitValue(out, elem_ty, (s == 0) ? 1 : static_cast<int>(s))) {
                     return false;
                 }
@@ -1110,52 +1114,13 @@ bool GeneratorImpl::EmitTypeConstructor(std::ostream& out,
         return EmitZeroValue(out, type);
     }
 
-    if (auto* mat = call->Type()->As<sem::Matrix>()) {
-        if (ctor->Parameters().size() == 1) {
-            // Matrix constructor with single scalar.
-            auto fn = utils::GetOrCreate(matrix_scalar_ctors_, mat, [&]() -> std::string {
-                TextBuffer b;
-                TINT_DEFER(helpers_.Append(b));
-
-                auto name = UniqueIdentifier("build_mat" + std::to_string(mat->columns()) + "x" +
-                                             std::to_string(mat->rows()));
-                {
-                    auto l = line(&b);
-                    if (!EmitType(l, mat, ast::StorageClass::kNone, ast::Access::kUndefined, "")) {
-                        return "";
-                    }
-                    l << " " << name << "(";
-                    if (!EmitType(l, mat->type(), ast::StorageClass::kNone, ast::Access::kUndefined,
-                                  "")) {
-                        return "";
-                    }
-                    l << " value) {";
-                }
-                {
-                    ScopedIndent si(&b);
-                    auto l = line(&b);
-                    l << "return ";
-                    if (!EmitType(l, mat, ast::StorageClass::kNone, ast::Access::kUndefined, "")) {
-                        return "";
-                    }
-                    l << "(";
-                    for (uint32_t i = 0; i < mat->columns() * mat->rows(); i++) {
-                        l << ((i > 0) ? ", value" : "value");
-                    }
-                    l << ");";
-                }
-                line(&b) << "}";
-                return name;
-            });
-            if (fn.empty()) {
-                return false;
-            }
-            out << fn << "(";
-            if (!EmitExpression(out, call->Arguments()[0]->Declaration())) {
-                return false;
-            }
-            out << ")";
-            return true;
+    // Single parameter matrix initializers must be identity constructor.
+    // It could also be conversions between f16 and f32 matrix when f16 is properly supported.
+    if (type->Is<sem::Matrix>() && call->Arguments().size() == 1) {
+        if (!ctor->Parameters()[0]->Type()->UnwrapRef()->is_float_matrix()) {
+            TINT_UNREACHABLE(Writer, diagnostics_)
+                << "found a single-parameter matrix constructor that is not identity constructor";
+            return false;
         }
     }
 
@@ -1217,9 +1182,9 @@ bool GeneratorImpl::EmitUniformBufferAccess(
     // If true, use scalar_offset_value, otherwise use scalar_offset_expr
     bool scalar_offset_constant = false;
 
-    if (auto val = offset_arg->ConstantValue()) {
-        TINT_ASSERT(Writer, val.Type()->Is<sem::U32>());
-        scalar_offset_value = static_cast<uint32_t>(val.Element<AInt>(0).value);
+    if (auto* val = offset_arg->ConstantValue()) {
+        TINT_ASSERT(Writer, val->Type()->Is<sem::U32>());
+        scalar_offset_value = static_cast<uint32_t>(std::get<AInt>(val->Value()));
         scalar_offset_value /= 4;  // bytes -> scalar index
         scalar_offset_constant = true;
     }
@@ -1779,8 +1744,8 @@ bool GeneratorImpl::EmitWorkgroupAtomicCall(std::ostream& out,
 
             {  // T compare_value = <compare_value>;
                 auto pre = line();
-                if (!EmitTypeAndName(pre, TypeOf(compare_value), ast::StorageClass::kNone,
-                                     ast::Access::kUndefined, compare)) {
+                if (!EmitTypeAndName(pre, TypeOf(compare_value)->UnwrapRef(),
+                                     ast::StorageClass::kNone, ast::Access::kUndefined, compare)) {
                     return false;
                 }
                 pre << " = ";
@@ -2143,7 +2108,7 @@ bool GeneratorImpl::EmitTextureCall(std::ostream& out,
     // Returns the argument with the given usage
     auto arg = [&](Usage usage) {
         int idx = signature.IndexOf(usage);
-        return (idx >= 0) ? arguments[idx] : nullptr;
+        return (idx >= 0) ? arguments[static_cast<size_t>(idx)] : nullptr;
     };
 
     auto* texture = arg(Usage::kTexture);
@@ -2373,7 +2338,7 @@ bool GeneratorImpl::EmitTextureCall(std::ostream& out,
         case sem::BuiltinType::kTextureGather:
             out << ".Gather";
             if (builtin->Parameters()[0]->Usage() == sem::ParameterUsage::kComponent) {
-                switch (call->Arguments()[0]->ConstantValue().Element<AInt>(0).value) {
+                switch (call->Arguments()[0]->ConstantValue()->As<AInt>()) {
                     case 0:
                         out << "Red";
                         break;
@@ -2420,8 +2385,9 @@ bool GeneratorImpl::EmitTextureCall(std::ostream& out,
         auto* i32 = builder_.create<sem::I32>();
         auto* zero = builder_.Expr(0_i);
         auto* stmt = builder_.Sem().Get(vector)->Stmt();
-        builder_.Sem().Add(zero, builder_.create<sem::Expression>(zero, i32, stmt, sem::Constant{},
-                                                                  /* has_side_effects */ false));
+        builder_.Sem().Add(
+            zero, builder_.create<sem::Expression>(zero, i32, stmt, /* constant_value */ nullptr,
+                                                   /* has_side_effects */ false));
         auto* packed = AppendVector(&builder_, vector, zero);
         return EmitExpression(out, packed->Declaration());
     };
@@ -2650,7 +2616,7 @@ bool GeneratorImpl::EmitDiscard(const ast::DiscardStatement*) {
 
 bool GeneratorImpl::EmitExpression(std::ostream& out, const ast::Expression* expr) {
     if (auto* sem = builder_.Sem().Get(expr)) {
-        if (auto constant = sem->ConstantValue()) {
+        if (auto* constant = sem->ConstantValue()) {
             return EmitConstant(out, constant);
         }
     }
@@ -2882,8 +2848,10 @@ bool GeneratorImpl::EmitGlobalVariable(const ast::Variable* global) {
                     return false;
             }
         },
-        [&](const ast::Let* let) { return EmitProgramConstVariable(let); },
         [&](const ast::Override* override) { return EmitOverride(override); },
+        [&](const ast::Const*) {
+            return true;  // Constants are embedded at their use
+        },
         [&](Default) {
             TINT_ICE(Writer, diagnostics_)
                 << "unhandled global variable type " << global->TypeInfo().name;
@@ -3073,7 +3041,7 @@ bool GeneratorImpl::EmitEntryPointFunction(const ast::Function* func) {
             // Emit the workgroup_size attribute.
             auto wgsize = func_sem->WorkgroupSize();
             out << "[numthreads(";
-            for (int i = 0; i < 3; i++) {
+            for (size_t i = 0; i < 3; i++) {
                 if (i > 0) {
                     out << ", ";
                 }
@@ -3143,107 +3111,101 @@ bool GeneratorImpl::EmitEntryPointFunction(const ast::Function* func) {
     return true;
 }
 
-bool GeneratorImpl::EmitConstant(std::ostream& out, const sem::Constant& constant) {
-    auto emit_bool = [&](size_t element_idx) {
-        out << (constant.Element<AInt>(element_idx) ? "true" : "false");
-        return true;
-    };
-    auto emit_f32 = [&](size_t element_idx) {
-        PrintF32(out, static_cast<float>(constant.Element<AFloat>(element_idx)));
-        return true;
-    };
-    auto emit_i32 = [&](size_t element_idx) {
-        out << constant.Element<AInt>(element_idx).value;
-        return true;
-    };
-    auto emit_u32 = [&](size_t element_idx) {
-        out << constant.Element<AInt>(element_idx).value << "u";
-        return true;
-    };
-    auto emit_vector = [&](const sem::Vector* vec_ty, size_t start, size_t end) {
-        if (constant.AllEqual(start, end)) {
-            {
-                ScopedParen sp(out);
-                bool ok = Switch(
-                    vec_ty->type(),                                      //
-                    [&](const sem::Bool*) { return emit_bool(start); },  //
-                    [&](const sem::F32*) { return emit_f32(start); },    //
-                    [&](const sem::I32*) { return emit_i32(start); },    //
-                    [&](const sem::U32*) { return emit_u32(start); }     //
-                );
-                if (!ok) {
-                    return false;
-                }
-            }
-            out << ".";
-            for (size_t i = start; i < end; i++) {
-                out << "x";
-            }
+bool GeneratorImpl::EmitConstant(std::ostream& out, const sem::Constant* constant) {
+    return Switch(
+        constant->Type(),  //
+        [&](const sem::Bool*) {
+            out << (constant->As<AInt>() ? "true" : "false");
             return true;
-        }
+        },
+        [&](const sem::F32*) {
+            PrintF32(out, constant->As<float>());
+            return true;
+        },
+        [&](const sem::I32*) {
+            out << constant->As<AInt>();
+            return true;
+        },
+        [&](const sem::U32*) {
+            out << constant->As<AInt>() << "u";
+            return true;
+        },
+        [&](const sem::Vector* v) {
+            if (constant->AllEqual()) {
+                {
+                    ScopedParen sp(out);
+                    if (!EmitConstant(out, constant->Index(0))) {
+                        return false;
+                    }
+                }
+                out << ".";
+                for (size_t i = 0; i < v->Width(); i++) {
+                    out << "x";
+                }
+                return true;
+            }
 
-        if (!EmitType(out, vec_ty, ast::StorageClass::kNone, ast::Access::kUndefined, "")) {
-            return false;
-        }
+            if (!EmitType(out, v, ast::StorageClass::kNone, ast::Access::kUndefined, "")) {
+                return false;
+            }
 
-        ScopedParen sp(out);
+            ScopedParen sp(out);
 
-        auto emit_els = [&](auto emit_el) {
-            for (size_t i = start; i < end; i++) {
-                if (i > start) {
+            for (size_t i = 0; i < v->Width(); i++) {
+                if (i > 0) {
                     out << ", ";
                 }
-                if (!emit_el(i)) {
+                if (!EmitConstant(out, constant->Index(i))) {
                     return false;
                 }
             }
             return true;
-        };
-        return Switch(
-            vec_ty->type(),                                         //
-            [&](const sem::Bool*) { return emit_els(emit_bool); },  //
-            [&](const sem::F32*) { return emit_els(emit_f32); },    //
-            [&](const sem::I32*) { return emit_els(emit_i32); },    //
-            [&](const sem::U32*) { return emit_els(emit_u32); },    //
-            [&](Default) {
-                diagnostics_.add_error(diag::System::Writer,
-                                       "unhandled constant vector element type: " +
-                                           builder_.FriendlyName(vec_ty->type()));
-                return false;
-            });
-    };
-    auto emit_matrix = [&](const sem::Matrix* m) {
-        if (!EmitType(out, constant.Type(), ast::StorageClass::kNone, ast::Access::kUndefined,
-                      "")) {
-            return false;
-        }
-
-        ScopedParen sp(out);
-
-        for (size_t column_idx = 0; column_idx < m->columns(); column_idx++) {
-            if (column_idx > 0) {
-                out << ", ";
-            }
-            size_t start = m->rows() * column_idx;
-            size_t end = m->rows() * (column_idx + 1);
-            if (!emit_vector(m->ColumnType(), start, end)) {
+        },
+        [&](const sem::Matrix* m) {
+            if (!EmitType(out, m, ast::StorageClass::kNone, ast::Access::kUndefined, "")) {
                 return false;
             }
-        }
-        return true;
-    };
-    return Switch(
-        constant.Type(),                                                                   //
-        [&](const sem::Bool*) { return emit_bool(0); },                                    //
-        [&](const sem::F32*) { return emit_f32(0); },                                      //
-        [&](const sem::I32*) { return emit_i32(0); },                                      //
-        [&](const sem::U32*) { return emit_u32(0); },                                      //
-        [&](const sem::Vector* v) { return emit_vector(v, 0, constant.ElementCount()); },  //
-        [&](const sem::Matrix* m) { return emit_matrix(m); },
+
+            ScopedParen sp(out);
+
+            for (size_t i = 0; i < m->columns(); i++) {
+                if (i > 0) {
+                    out << ", ";
+                }
+                if (!EmitConstant(out, constant->Index(i))) {
+                    return false;
+                }
+            }
+            return true;
+        },
+        [&](const sem::Array* a) {
+            if (constant->AllZero()) {
+                out << "(";
+                if (!EmitType(out, a, ast::StorageClass::kNone, ast::Access::kUndefined, "")) {
+                    return false;
+                }
+                out << ")0";
+                return true;
+            }
+
+            out << "{";
+            TINT_DEFER(out << "}");
+
+            for (size_t i = 0; i < a->Count(); i++) {
+                if (i > 0) {
+                    out << ", ";
+                }
+                if (!EmitConstant(out, constant->Index(i))) {
+                    return false;
+                }
+            }
+
+            return true;
+        },
         [&](Default) {
             diagnostics_.add_error(
                 diag::System::Writer,
-                "unhandled constant type: " + builder_.FriendlyName(constant.Type()));
+                "unhandled constant type: " + builder_.FriendlyName(constant->Type()));
             return false;
         });
 }
@@ -3618,6 +3580,9 @@ bool GeneratorImpl::EmitStatement(const ast::Statement* stmt) {
                 v->variable,  //
                 [&](const ast::Var* var) { return EmitVar(var); },
                 [&](const ast::Let* let) { return EmitLet(let); },
+                [&](const ast::Const*) {
+                    return true;  // Constants are embedded at their use
+                },
                 [&](Default) {  //
                     TINT_ICE(Writer, diagnostics_)
                         << "unknown variable type: " << v->variable->TypeInfo().name;
@@ -3728,9 +3693,8 @@ bool GeneratorImpl::EmitType(std::ostream& out,
             while (auto* arr = base_type->As<sem::Array>()) {
                 if (arr->IsRuntimeSized()) {
                     TINT_ICE(Writer, diagnostics_)
-                        << "Runtime arrays may only exist in storage buffers, which "
-                           "should "
-                           "have been transformed into a ByteAddressBuffer";
+                        << "Runtime arrays may only exist in storage buffers, which should have "
+                           "been transformed into a ByteAddressBuffer";
                     return false;
                 }
                 sizes.push_back(arr->Count());
@@ -4061,25 +4025,6 @@ bool GeneratorImpl::EmitLet(const ast::Let* let) {
 
     auto out = line();
     out << "const ";
-    if (!EmitTypeAndName(out, type, ast::StorageClass::kNone, ast::Access::kUndefined,
-                         builder_.Symbols().NameFor(let->symbol))) {
-        return false;
-    }
-    out << " = ";
-    if (!EmitExpression(out, let->constructor)) {
-        return false;
-    }
-    out << ";";
-
-    return true;
-}
-
-bool GeneratorImpl::EmitProgramConstVariable(const ast::Let* let) {
-    auto* sem = builder_.Sem().Get(let);
-    auto* type = sem->Type();
-
-    auto out = line();
-    out << "static const ";
     if (!EmitTypeAndName(out, type, ast::StorageClass::kNone, ast::Access::kUndefined,
                          builder_.Symbols().NameFor(let->symbol))) {
         return false;

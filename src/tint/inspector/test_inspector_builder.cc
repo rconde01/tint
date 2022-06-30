@@ -121,15 +121,15 @@ void InspectorBuilder::AddUniformBuffer(const std::string& name,
                                         const ast::Type* type,
                                         uint32_t group,
                                         uint32_t binding) {
-    Global(name, type, ast::StorageClass::kUniform,
-           ast::AttributeList{
-               create<ast::BindingAttribute>(binding),
-               create<ast::GroupAttribute>(group),
-           });
+    GlobalVar(name, type, ast::StorageClass::kUniform,
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(binding),
+                  create<ast::GroupAttribute>(group),
+              });
 }
 
 void InspectorBuilder::AddWorkgroupStorage(const std::string& name, const ast::Type* type) {
-    Global(name, type, ast::StorageClass::kWorkgroup);
+    GlobalVar(name, type, ast::StorageClass::kWorkgroup);
 }
 
 void InspectorBuilder::AddStorageBuffer(const std::string& name,
@@ -137,11 +137,11 @@ void InspectorBuilder::AddStorageBuffer(const std::string& name,
                                         ast::Access access,
                                         uint32_t group,
                                         uint32_t binding) {
-    Global(name, type, ast::StorageClass::kStorage, access,
-           ast::AttributeList{
-               create<ast::BindingAttribute>(binding),
-               create<ast::GroupAttribute>(group),
-           });
+    GlobalVar(name, type, ast::StorageClass::kStorage, access,
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(binding),
+                  create<ast::GroupAttribute>(group),
+              });
 }
 
 void InspectorBuilder::MakeStructVariableReferenceBodyFunction(
@@ -173,36 +173,36 @@ void InspectorBuilder::MakeStructVariableReferenceBodyFunction(
 }
 
 void InspectorBuilder::AddSampler(const std::string& name, uint32_t group, uint32_t binding) {
-    Global(name, sampler_type(),
-           ast::AttributeList{
-               create<ast::BindingAttribute>(binding),
-               create<ast::GroupAttribute>(group),
-           });
+    GlobalVar(name, sampler_type(),
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(binding),
+                  create<ast::GroupAttribute>(group),
+              });
 }
 
 void InspectorBuilder::AddComparisonSampler(const std::string& name,
                                             uint32_t group,
                                             uint32_t binding) {
-    Global(name, comparison_sampler_type(),
-           ast::AttributeList{
-               create<ast::BindingAttribute>(binding),
-               create<ast::GroupAttribute>(group),
-           });
+    GlobalVar(name, comparison_sampler_type(),
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(binding),
+                  create<ast::GroupAttribute>(group),
+              });
 }
 
 void InspectorBuilder::AddResource(const std::string& name,
                                    const ast::Type* type,
                                    uint32_t group,
                                    uint32_t binding) {
-    Global(name, type,
-           ast::AttributeList{
-               create<ast::BindingAttribute>(binding),
-               create<ast::GroupAttribute>(group),
-           });
+    GlobalVar(name, type,
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(binding),
+                  create<ast::GroupAttribute>(group),
+              });
 }
 
 void InspectorBuilder::AddGlobalVariable(const std::string& name, const ast::Type* type) {
-    Global(name, type, ast::StorageClass::kPrivate);
+    GlobalVar(name, type, ast::StorageClass::kPrivate);
 }
 
 const ast::Function* InspectorBuilder::MakeSamplerReferenceBodyFunction(
@@ -285,11 +285,11 @@ const ast::Type* InspectorBuilder::GetCoordsType(ast::TextureDimension dim,
             return scalar;
         case ast::TextureDimension::k2d:
         case ast::TextureDimension::k2dArray:
-            return create<ast::Vector>(scalar, 2);
+            return create<ast::Vector>(scalar, 2u);
         case ast::TextureDimension::k3d:
         case ast::TextureDimension::kCube:
         case ast::TextureDimension::kCubeArray:
-            return create<ast::Vector>(scalar, 3);
+            return create<ast::Vector>(scalar, 3u);
         default:
             [=]() { FAIL() << "Unsupported texture dimension: " << dim; }();
     }
@@ -305,11 +305,11 @@ void InspectorBuilder::AddStorageTexture(const std::string& name,
                                          const ast::Type* type,
                                          uint32_t group,
                                          uint32_t binding) {
-    Global(name, type,
-           ast::AttributeList{
-               create<ast::BindingAttribute>(binding),
-               create<ast::GroupAttribute>(group),
-           });
+    GlobalVar(name, type,
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(binding),
+                  create<ast::GroupAttribute>(group),
+              });
 }
 
 const ast::Function* InspectorBuilder::MakeStorageTextureBodyFunction(

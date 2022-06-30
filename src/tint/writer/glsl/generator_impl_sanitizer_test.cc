@@ -26,11 +26,11 @@ using GlslSanitizerTest = TestHelper;
 
 TEST_F(GlslSanitizerTest, Call_ArrayLength) {
     auto* s = Structure("my_struct", {Member(0, "a", ty.array<f32>(4))});
-    Global("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
-           ast::AttributeList{
-               create<ast::BindingAttribute>(1),
-               create<ast::GroupAttribute>(2),
-           });
+    GlobalVar("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(1u),
+                  create<ast::GroupAttribute>(2u),
+              });
 
     Func("a_func", {}, ty.void_(),
          {
@@ -69,11 +69,11 @@ TEST_F(GlslSanitizerTest, Call_ArrayLength_OtherMembersInStruct) {
                                          Member(0, "z", ty.f32()),
                                          Member(4, "a", ty.array<f32>(4)),
                                      });
-    Global("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
-           ast::AttributeList{
-               create<ast::BindingAttribute>(1),
-               create<ast::GroupAttribute>(2),
-           });
+    GlobalVar("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(1u),
+                  create<ast::GroupAttribute>(2u),
+              });
 
     Func("a_func", {}, ty.void_(),
          {
@@ -111,11 +111,11 @@ void main() {
 
 TEST_F(GlslSanitizerTest, Call_ArrayLength_ViaLets) {
     auto* s = Structure("my_struct", {Member(0, "a", ty.array<f32>(4))});
-    Global("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
-           ast::AttributeList{
-               create<ast::BindingAttribute>(1),
-               create<ast::GroupAttribute>(2),
-           });
+    GlobalVar("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(1u),
+                  create<ast::GroupAttribute>(2u),
+              });
 
     auto* p = Let("p", nullptr, AddressOf("b"));
     auto* p2 = Let("p2", nullptr, AddressOf(MemberAccessor(Deref(p), "a")));
@@ -156,12 +156,11 @@ void main() {
 
 TEST_F(GlslSanitizerTest, PromoteArrayInitializerToConstVar) {
     auto* array_init = array<i32, 4>(1_i, 2_i, 3_i, 4_i);
-    auto* array_index = IndexAccessor(array_init, 3_i);
-    auto* pos = Var("pos", ty.i32(), ast::StorageClass::kNone, array_index);
 
     Func("main", {}, ty.void_(),
          {
-             Decl(pos),
+             Decl(Var("idx", nullptr, Expr(3_i))),
+             Decl(Var("pos", ty.i32(), IndexAccessor(array_init, "idx"))),
          },
          {
              Stage(ast::PipelineStage::kFragment),
@@ -176,8 +175,9 @@ TEST_F(GlslSanitizerTest, PromoteArrayInitializerToConstVar) {
 precision mediump float;
 
 void tint_symbol() {
+  int idx = 3;
   int tint_symbol_1[4] = int[4](1, 2, 3, 4);
-  int pos = tint_symbol_1[3];
+  int pos = tint_symbol_1[idx];
 }
 
 void main() {

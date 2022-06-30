@@ -412,7 +412,7 @@ Token Lexer::try_hex_float() {
     // clang-format on
 
     // -?
-    int64_t sign_bit = 0;
+    uint64_t sign_bit = 0;
     if (matches(end, "-")) {
         sign_bit = 1;
         end++;
@@ -794,7 +794,7 @@ Token Lexer::build_token_from_int_if_possible(Source source, size_t start, int32
     const bool overflow = errno == ERANGE;
 
     if (end_ptr) {
-        advance(end_ptr - start_ptr);
+        advance(static_cast<size_t>(end_ptr - start_ptr));
     }
 
     if (matches(pos(), "u")) {
@@ -1087,6 +1087,9 @@ Token Lexer::check_keyword(const Source& source, std::string_view str) {
     }
     if (str == "case") {
         return {Token::Type::kCase, source, "case"};
+    }
+    if (str == "const") {
+        return {Token::Type::kConst, source, "const"};
     }
     if (str == "continue") {
         return {Token::Type::kContinue, source, "continue"};

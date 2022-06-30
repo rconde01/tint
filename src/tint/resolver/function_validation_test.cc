@@ -39,7 +39,7 @@ TEST_F(ResolverFunctionValidationTest, DuplicateParameterName) {
 TEST_F(ResolverFunctionValidationTest, ParameterMayShadowGlobal) {
     // var<private> common_name : f32;
     // fn func(common_name : f32) { }
-    Global("common_name", ty.f32(), ast::StorageClass::kPrivate);
+    GlobalVar("common_name", ty.f32(), ast::StorageClass::kPrivate);
     Func("func", {Param("common_name", ty.f32())}, ty.void_(), {});
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -241,8 +241,8 @@ TEST_F(ResolverFunctionValidationTest, VoidFunctionReturnsAInt) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: return statement type must match its function return "
-              "type, returned 'abstract-int', expected 'void'");
+              "12:34 error: return statement type must match its function return type, returned "
+              "'abstract-int', expected 'void'");
 }
 
 TEST_F(ResolverFunctionValidationTest, VoidFunctionReturnsAFloat) {
@@ -251,8 +251,8 @@ TEST_F(ResolverFunctionValidationTest, VoidFunctionReturnsAFloat) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: return statement type must match its function return "
-              "type, returned 'abstract-float', expected 'void'");
+              "12:34 error: return statement type must match its function return type, returned "
+              "'abstract-float', expected 'void'");
 }
 
 TEST_F(ResolverFunctionValidationTest, VoidFunctionReturnsI32) {
@@ -261,8 +261,8 @@ TEST_F(ResolverFunctionValidationTest, VoidFunctionReturnsI32) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: return statement type must match its function return "
-              "type, returned 'i32', expected 'void'");
+              "12:34 error: return statement type must match its function return type, returned "
+              "'i32', expected 'void'");
 }
 
 TEST_F(ResolverFunctionValidationTest, FunctionTypeMustMatchReturnStatementType_void_fail) {
@@ -287,8 +287,8 @@ TEST_F(ResolverFunctionValidationTest, FunctionTypeMustMatchReturnStatementTypeM
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: return statement type must match its function return "
-              "type, returned 'void', expected 'f32'");
+              "12:34 error: return statement type must match its function return type, returned "
+              "'void', expected 'f32'");
 }
 
 TEST_F(ResolverFunctionValidationTest, FunctionTypeMustMatchReturnStatementTypeF32_pass) {
@@ -310,8 +310,8 @@ TEST_F(ResolverFunctionValidationTest, FunctionTypeMustMatchReturnStatementTypeF
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: return statement type must match its function return "
-              "type, returned 'i32', expected 'f32'");
+              "12:34 error: return statement type must match its function return type, returned "
+              "'i32', expected 'f32'");
 }
 
 TEST_F(ResolverFunctionValidationTest, FunctionTypeMustMatchReturnStatementTypeF32Alias_pass) {
@@ -337,8 +337,8 @@ TEST_F(ResolverFunctionValidationTest, FunctionTypeMustMatchReturnStatementTypeF
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: return statement type must match its function return "
-              "type, returned 'u32', expected 'f32'");
+              "12:34 error: return statement type must match its function return type, returned "
+              "'u32', expected 'f32'");
 }
 
 TEST_F(ResolverFunctionValidationTest, CannotCallEntryPoint) {
@@ -354,8 +354,17 @@ TEST_F(ResolverFunctionValidationTest, CannotCallEntryPoint) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-
               R"(12:34 error: entry point functions cannot be the target of a function call)");
+}
+
+TEST_F(ResolverFunctionValidationTest, CannotCallFunctionAtModuleScope) {
+    // fn F() -> i32 { return 1; }
+    // var x = F();
+    Func("F", {}, ty.i32(), {Return(1_i)});
+    GlobalVar("x", nullptr, Call(Source{{12, 34}}, "F"), ast::StorageClass::kPrivate);
+
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(), R"(12:34 error: functions cannot be called at module-scope)");
 }
 
 TEST_F(ResolverFunctionValidationTest, PipelineStage_MustBeUnique_Fail) {
@@ -424,13 +433,12 @@ TEST_F(ResolverFunctionValidationTest, FunctionParamsConst) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: cannot assign to function parameter\nnote: 'arg' is "
-              "declared here:");
+              "12:34 error: cannot assign to function parameter\nnote: 'arg' is declared here:");
 }
 
 TEST_F(ResolverFunctionValidationTest, WorkgroupSize_GoodType_ConstU32) {
-    // let x = 4u;
-    // let x = 8u;
+    // const x = 4u;
+    // const x = 8u;
     // @compute @workgroup_size(x, y, 16u)
     // fn main() {}
     auto* x = GlobalConst("x", ty.u32(), Expr(4_u));
@@ -517,7 +525,7 @@ TEST_F(ResolverFunctionValidationTest, WorkgroupSize_MismatchType_I32) {
 }
 
 TEST_F(ResolverFunctionValidationTest, WorkgroupSize_Const_TypeMismatch) {
-    // let x = 64u;
+    // const x = 64u;
     // @compute @workgroup_size(1i, x)
     // fn main() {}
     GlobalConst("x", ty.u32(), Expr(64_u));
@@ -530,8 +538,8 @@ TEST_F(ResolverFunctionValidationTest, WorkgroupSize_Const_TypeMismatch) {
 }
 
 TEST_F(ResolverFunctionValidationTest, WorkgroupSize_Const_TypeMismatch2) {
-    // let x = 64u;
-    // let y = 32i;
+    // const x = 64u;
+    // const y = 32i;
     // @compute @workgroup_size(x, y)
     // fn main() {}
     GlobalConst("x", ty.u32(), Expr(64_u));
@@ -543,9 +551,10 @@ TEST_F(ResolverFunctionValidationTest, WorkgroupSize_Const_TypeMismatch2) {
     EXPECT_EQ(r()->error(),
               "12:34 error: workgroup_size arguments must be of the same type, either i32 or u32");
 }
+
 TEST_F(ResolverFunctionValidationTest, WorkgroupSize_Mismatch_ConstU32) {
-    // let x = 4u;
-    // let x = 8u;
+    // const x = 4u;
+    // const x = 8u;
     // @compute @workgroup_size(x, y, 16i)
     // fn main() {}
     GlobalConst("x", ty.u32(), Expr(4_u));
@@ -567,8 +576,8 @@ TEST_F(ResolverFunctionValidationTest, WorkgroupSize_Literal_BadType) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: workgroup_size argument must be either literal or "
-              "module-scope constant of type i32 or u32");
+              "12:34 error: workgroup_size argument must be either a literal, constant, or "
+              "overridable of type abstract-integer, i32 or u32");
 }
 
 TEST_F(ResolverFunctionValidationTest, WorkgroupSize_Literal_Negative) {
@@ -594,7 +603,7 @@ TEST_F(ResolverFunctionValidationTest, WorkgroupSize_Literal_Zero) {
 }
 
 TEST_F(ResolverFunctionValidationTest, WorkgroupSize_Const_BadType) {
-    // let x = 64.0;
+    // const x = 64.0;
     // @compute @workgroup_size(x)
     // fn main() {}
     GlobalConst("x", ty.f32(), Expr(64_f));
@@ -603,12 +612,12 @@ TEST_F(ResolverFunctionValidationTest, WorkgroupSize_Const_BadType) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: workgroup_size argument must be either literal or "
-              "module-scope constant of type i32 or u32");
+              "12:34 error: workgroup_size argument must be either a literal, constant, or "
+              "overridable of type abstract-integer, i32 or u32");
 }
 
 TEST_F(ResolverFunctionValidationTest, WorkgroupSize_Const_Negative) {
-    // let x = -2i;
+    // const x = -2i;
     // @compute @workgroup_size(x)
     // fn main() {}
     GlobalConst("x", ty.i32(), Expr(-2_i));
@@ -620,7 +629,7 @@ TEST_F(ResolverFunctionValidationTest, WorkgroupSize_Const_Negative) {
 }
 
 TEST_F(ResolverFunctionValidationTest, WorkgroupSize_Const_Zero) {
-    // let x = 0i;
+    // const x = 0i;
     // @compute @workgroup_size(x)
     // fn main() {}
     GlobalConst("x", ty.i32(), Expr(0_i));
@@ -632,7 +641,7 @@ TEST_F(ResolverFunctionValidationTest, WorkgroupSize_Const_Zero) {
 }
 
 TEST_F(ResolverFunctionValidationTest, WorkgroupSize_Const_NestedZeroValueConstructor) {
-    // let x = i32(i32(i32()));
+    // const x = i32(i32(i32()));
     // @compute @workgroup_size(x)
     // fn main() {}
     GlobalConst("x", ty.i32(), Construct(ty.i32(), Construct(ty.i32(), Construct(ty.i32()))));
@@ -647,14 +656,14 @@ TEST_F(ResolverFunctionValidationTest, WorkgroupSize_NonConst) {
     // var<private> x = 64i;
     // @compute @workgroup_size(x)
     // fn main() {}
-    Global("x", ty.i32(), ast::StorageClass::kPrivate, Expr(64_i));
+    GlobalVar("x", ty.i32(), ast::StorageClass::kPrivate, Expr(64_i));
     Func("main", {}, ty.void_(), {},
          {Stage(ast::PipelineStage::kCompute), WorkgroupSize(Expr(Source{{12, 34}}, "x"))});
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: workgroup_size argument must be either literal or "
-              "module-scope constant of type i32 or u32");
+              "12:34 error: workgroup_size argument must be either a literal, constant, or "
+              "overridable of type abstract-integer, i32 or u32");
 }
 
 TEST_F(ResolverFunctionValidationTest, WorkgroupSize_InvalidExpr) {
@@ -666,8 +675,8 @@ TEST_F(ResolverFunctionValidationTest, WorkgroupSize_InvalidExpr) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: workgroup_size argument must be either a literal or "
-              "a module-scope constant");
+              "12:34 error: workgroup_size argument must be either a literal, constant, or "
+              "overridable of type abstract-integer, i32 or u32");
 }
 
 TEST_F(ResolverFunctionValidationTest, ReturnIsConstructible_NonPlain) {
@@ -754,7 +763,7 @@ TEST_F(ResolverFunctionValidationTest, ParametersOverLimit) {
 TEST_F(ResolverFunctionValidationTest, ParameterVectorNoType) {
     // fn f(p : vec3) {}
 
-    Func(Source{{12, 34}}, "f", {Param("p", create<ast::Vector>(Source{{12, 34}}, nullptr, 3))},
+    Func(Source{{12, 34}}, "f", {Param("p", create<ast::Vector>(Source{{12, 34}}, nullptr, 3u))},
          ty.void_(), {});
 
     EXPECT_FALSE(r()->Resolve());
@@ -764,8 +773,8 @@ TEST_F(ResolverFunctionValidationTest, ParameterVectorNoType) {
 TEST_F(ResolverFunctionValidationTest, ParameterMatrixNoType) {
     // fn f(p : vec3) {}
 
-    Func(Source{{12, 34}}, "f", {Param("p", create<ast::Matrix>(Source{{12, 34}}, nullptr, 3, 3))},
-         ty.void_(), {});
+    Func(Source{{12, 34}}, "f",
+         {Param("p", create<ast::Matrix>(Source{{12, 34}}, nullptr, 3u, 3u))}, ty.void_(), {});
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(), "12:34 error: missing matrix element type");

@@ -17,8 +17,8 @@ group("default") {
   testonly = true
   deps = [
     "src/tint:libtint",
+    "src/tint:tint_unittests",
     "src/tint/cmd:tint",
     "src/tint/fuzzers",
-    "test/tint:tint_unittests",
   ]
 }

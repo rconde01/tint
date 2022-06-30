@@ -645,14 +645,6 @@ bool GeneratorImpl::EmitVariable(std::ostream& out, const ast::Variable* v) {
 
     bool ok = Switch(
         v,  //
-        [&](const ast::Let* ) {
-            out << "let";
-            return true;
-        },
-        [&](const ast::Override* ) {
-            out << "override";
-            return true;
-        },
         [&](const ast::Var* var) {
             out << "var";
             auto sc = var->declared_storage_class;
@@ -667,6 +659,18 @@ bool GeneratorImpl::EmitVariable(std::ostream& out, const ast::Variable* v) {
                 }
                 out << ">";
             }
+            return true;
+        },
+        [&](const ast::Let*) {
+            out << "let";
+            return true;
+        },
+        [&](const ast::Override*) {
+            out << "override";
+            return true;
+        },
+        [&](const ast::Const*) {
+            out << "const";
             return true;
         },
         [&](Default) {
@@ -710,7 +714,7 @@ bool GeneratorImpl::EmitAttributes(std::ostream& out, const ast::AttributeList& 
             [&](const ast::WorkgroupAttribute* workgroup) {
                 auto values = workgroup->Values();
                 out << "workgroup_size(";
-                for (int i = 0; i < 3; i++) {
+                for (size_t i = 0; i < 3; i++) {
                     if (values[i]) {
                         if (i > 0) {
                             out << ", ";

@@ -71,12 +71,12 @@ TEST_F(DecomposeStridedMatrixTest, ReadUniformMatrix) {
         "S", {
                  b.Member("m", b.ty.mat2x2<f32>(),
                           {
-                              b.create<ast::StructMemberOffsetAttribute>(16),
-                              b.create<ast::StrideAttribute>(32),
+                              b.create<ast::StructMemberOffsetAttribute>(16u),
+                              b.create<ast::StrideAttribute>(32u),
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.Global("s", b.ty.Of(S), ast::StorageClass::kUniform, b.GroupAndBinding(0, 0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kUniform, b.GroupAndBinding(0, 0));
     b.Func("f", {}, b.ty.void_(),
            {
                b.Decl(b.Let("x", b.ty.mat2x2<f32>(), b.MemberAccessor("s", "m"))),
@@ -127,12 +127,12 @@ TEST_F(DecomposeStridedMatrixTest, ReadUniformColumn) {
         "S", {
                  b.Member("m", b.ty.mat2x2<f32>(),
                           {
-                              b.create<ast::StructMemberOffsetAttribute>(16),
-                              b.create<ast::StrideAttribute>(32),
+                              b.create<ast::StructMemberOffsetAttribute>(16u),
+                              b.create<ast::StrideAttribute>(32u),
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.Global("s", b.ty.Of(S), ast::StorageClass::kUniform, b.GroupAndBinding(0, 0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kUniform, b.GroupAndBinding(0, 0));
     b.Func(
         "f", {}, b.ty.void_(),
         {
@@ -180,12 +180,12 @@ TEST_F(DecomposeStridedMatrixTest, ReadUniformMatrix_DefaultStride) {
         "S", {
                  b.Member("m", b.ty.mat2x2<f32>(),
                           {
-                              b.create<ast::StructMemberOffsetAttribute>(16),
-                              b.create<ast::StrideAttribute>(8),
+                              b.create<ast::StructMemberOffsetAttribute>(16u),
+                              b.create<ast::StrideAttribute>(8u),
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.Global("s", b.ty.Of(S), ast::StorageClass::kUniform, b.GroupAndBinding(0, 0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kUniform, b.GroupAndBinding(0, 0));
     b.Func("f", {}, b.ty.void_(),
            {
                b.Decl(b.Let("x", b.ty.mat2x2<f32>(), b.MemberAccessor("s", "m"))),
@@ -233,13 +233,13 @@ TEST_F(DecomposeStridedMatrixTest, ReadStorageMatrix) {
         "S", {
                  b.Member("m", b.ty.mat2x2<f32>(),
                           {
-                              b.create<ast::StructMemberOffsetAttribute>(8),
-                              b.create<ast::StrideAttribute>(32),
+                              b.create<ast::StructMemberOffsetAttribute>(8u),
+                              b.create<ast::StrideAttribute>(32u),
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.Global("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite,
-             b.GroupAndBinding(0, 0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite,
+                b.GroupAndBinding(0, 0));
     b.Func("f", {}, b.ty.void_(),
            {
                b.Decl(b.Let("x", b.ty.mat2x2<f32>(), b.MemberAccessor("s", "m"))),
@@ -290,13 +290,13 @@ TEST_F(DecomposeStridedMatrixTest, ReadStorageColumn) {
         "S", {
                  b.Member("m", b.ty.mat2x2<f32>(),
                           {
-                              b.create<ast::StructMemberOffsetAttribute>(16),
-                              b.create<ast::StrideAttribute>(32),
+                              b.create<ast::StructMemberOffsetAttribute>(16u),
+                              b.create<ast::StrideAttribute>(32u),
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.Global("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite,
-             b.GroupAndBinding(0, 0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite,
+                b.GroupAndBinding(0, 0));
     b.Func(
         "f", {}, b.ty.void_(),
         {
@@ -344,13 +344,13 @@ TEST_F(DecomposeStridedMatrixTest, WriteStorageMatrix) {
         "S", {
                  b.Member("m", b.ty.mat2x2<f32>(),
                           {
-                              b.create<ast::StructMemberOffsetAttribute>(8),
-                              b.create<ast::StrideAttribute>(32),
+                              b.create<ast::StructMemberOffsetAttribute>(8u),
+                              b.create<ast::StrideAttribute>(32u),
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.Global("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite,
-             b.GroupAndBinding(0, 0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite,
+                b.GroupAndBinding(0, 0));
     b.Func("f", {}, b.ty.void_(),
            {
                b.Assign(b.MemberAccessor("s", "m"),
@@ -402,13 +402,13 @@ TEST_F(DecomposeStridedMatrixTest, WriteStorageColumn) {
         "S", {
                  b.Member("m", b.ty.mat2x2<f32>(),
                           {
-                              b.create<ast::StructMemberOffsetAttribute>(8),
-                              b.create<ast::StrideAttribute>(32),
+                              b.create<ast::StructMemberOffsetAttribute>(8u),
+                              b.create<ast::StrideAttribute>(32u),
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.Global("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite,
-             b.GroupAndBinding(0, 0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite,
+                b.GroupAndBinding(0, 0));
     b.Func("f", {}, b.ty.void_(),
            {
                b.Assign(b.IndexAccessor(b.MemberAccessor("s", "m"), 1_i), b.vec2<f32>(1_f, 2_f)),
@@ -461,13 +461,13 @@ TEST_F(DecomposeStridedMatrixTest, ReadWriteViaPointerLets) {
         "S", {
                  b.Member("m", b.ty.mat2x2<f32>(),
                           {
-                              b.create<ast::StructMemberOffsetAttribute>(8),
-                              b.create<ast::StrideAttribute>(32),
+                              b.create<ast::StructMemberOffsetAttribute>(8u),
+                              b.create<ast::StrideAttribute>(32u),
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.Global("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite,
-             b.GroupAndBinding(0, 0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite,
+                b.GroupAndBinding(0, 0));
     b.Func("f", {}, b.ty.void_(),
            {
                b.Decl(b.Let("a", nullptr, b.AddressOf(b.MemberAccessor("s", "m")))),
@@ -532,12 +532,12 @@ TEST_F(DecomposeStridedMatrixTest, ReadPrivateMatrix) {
         "S", {
                  b.Member("m", b.ty.mat2x2<f32>(),
                           {
-                              b.create<ast::StructMemberOffsetAttribute>(8),
-                              b.create<ast::StrideAttribute>(32),
+                              b.create<ast::StructMemberOffsetAttribute>(8u),
+                              b.create<ast::StrideAttribute>(32u),
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.Global("s", b.ty.Of(S), ast::StorageClass::kPrivate);
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kPrivate);
     b.Func("f", {}, b.ty.void_(),
            {
                b.Decl(b.Let("x", b.ty.mat2x2<f32>(), b.MemberAccessor("s", "m"))),
@@ -585,12 +585,12 @@ TEST_F(DecomposeStridedMatrixTest, WritePrivateMatrix) {
         "S", {
                  b.Member("m", b.ty.mat2x2<f32>(),
                           {
-                              b.create<ast::StructMemberOffsetAttribute>(8),
-                              b.create<ast::StrideAttribute>(32),
+                              b.create<ast::StructMemberOffsetAttribute>(8u),
+                              b.create<ast::StrideAttribute>(32u),
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.Global("s", b.ty.Of(S), ast::StorageClass::kPrivate);
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kPrivate);
     b.Func("f", {}, b.ty.void_(),
            {
                b.Assign(b.MemberAccessor("s", "m"),

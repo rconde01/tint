@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "src/tint/ast/binary_expression.h"
 #include "src/tint/program_builder.h"
 #include "src/tint/sem/abstract_float.h"
 #include "src/tint/sem/abstract_int.h"
@@ -339,6 +340,14 @@ bool match_ai(const sem::Type* ty) {
 
 const sem::Bool* build_bool(MatchState& state) {
     return state.builder.create<sem::Bool>();
+}
+
+const sem::F16* build_f16(MatchState& state) {
+    return state.builder.create<sem::F16>();
+}
+
+bool match_f16(const sem::Type* ty) {
+    return ty->IsAnyOf<Any, sem::F16, sem::AbstractNumeric>();
 }
 
 const sem::F32* build_f32(MatchState& state) {
@@ -1291,8 +1300,8 @@ const sem::CallTarget* Impl::Lookup(CtorConvIntrinsic type,
     // Conversion.
     return utils::GetOrCreate(converters, match, [&]() {
         auto param = builder.create<sem::Parameter>(
-            nullptr, 0, match.parameters[0].type, ast::StorageClass::kNone, ast::Access::kUndefined,
-            match.parameters[0].usage);
+            nullptr, 0u, match.parameters[0].type, ast::StorageClass::kNone,
+            ast::Access::kUndefined, match.parameters[0].usage);
         return builder.create<sem::TypeConversion>(match.return_type, param);
     });
 }

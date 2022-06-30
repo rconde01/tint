@@ -93,7 +93,8 @@ class GeneratorImpl : public TextGenerator {
     /// @param stmt the statement to emit
     /// @returns true if the statement was emitted successfully
     bool EmitAssign(const ast::AssignmentStatement* stmt);
-    /// Emits code such that if `expr` is zero, it emits one, else `expr`
+    /// Emits code such that if `expr` is zero, it emits one, else `expr`.
+    /// Used to avoid divide-by-zeros by substituting constant zeros with ones.
     /// @param out the output of the expression stream
     /// @param expr the expression
     /// @returns true if the expression was emitted, false otherwise
@@ -342,7 +343,7 @@ class GeneratorImpl : public TextGenerator {
     /// @param out the output stream
     /// @param constant the constant value to emit
     /// @returns true if the constant value was successfully emitted
-    bool EmitConstant(std::ostream& out, const sem::Constant& constant);
+    bool EmitConstant(std::ostream& out, const sem::Constant* constant);
     /// Handles a literal
     /// @param out the output stream
     /// @param lit the literal to emit
@@ -448,10 +449,6 @@ class GeneratorImpl : public TextGenerator {
     /// @param let the variable to generate
     /// @returns true if the variable was emitted
     bool EmitLet(const ast::Let* let);
-    /// Handles generating a module-scope 'let' declaration
-    /// @param let the 'let' to emit
-    /// @returns true if the variable was emitted
-    bool EmitProgramConstVariable(const ast::Let* let);
     /// Handles generating a module-scope 'override' declaration
     /// @param override the 'override' to emit
     /// @returns true if the variable was emitted

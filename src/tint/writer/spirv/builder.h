@@ -554,7 +554,7 @@ class Builder {
     /// Generates a constant value if needed
     /// @param constant the constant to generate.
     /// @returns the ID on success or 0 on failure
-    uint32_t GenerateConstantIfNeeded(const sem::Constant& constant);
+    uint32_t GenerateConstantIfNeeded(const sem::Constant* constant);
 
     /// Generates a scalar constant if needed
     /// @param constant the constant to generate.

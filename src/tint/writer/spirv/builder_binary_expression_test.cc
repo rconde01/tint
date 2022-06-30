@@ -287,7 +287,7 @@ TEST_P(BinaryOperatorBoolTest, Vector) {
     EXPECT_EQ(b.GenerateBinaryExpression(expr), 7u) << b.error();
     EXPECT_EQ(DumpInstructions(b.types()), R"(%2 = OpTypeBool
 %1 = OpTypeVector %2 3
-%3 = OpConstantFalse %2
+%3 = OpConstantNull %2
 %4 = OpConstantTrue %2
 %5 = OpConstantComposite %1 %3 %4 %3
 %6 = OpConstantComposite %1 %4 %3 %4
@@ -704,8 +704,8 @@ OpBranch %7
 }
 
 TEST_F(BuilderTest, Binary_LogicalAnd_WithLoads) {
-    auto* a_var = Global("a", ty.bool_(), ast::StorageClass::kPrivate, Expr(true));
-    auto* b_var = Global("b", ty.bool_(), ast::StorageClass::kPrivate, Expr(false));
+    auto* a_var = GlobalVar("a", ty.bool_(), ast::StorageClass::kPrivate, Expr(true));
+    auto* b_var = GlobalVar("b", ty.bool_(), ast::StorageClass::kPrivate, Expr(false));
 
     auto* expr = create<ast::BinaryExpression>(ast::BinaryOp::kLogicalAnd, Expr("a"), Expr("b"));
 
@@ -857,8 +857,8 @@ OpBranch %7
 }
 
 TEST_F(BuilderTest, Binary_LogicalOr_WithLoads) {
-    auto* a_var = Global("a", ty.bool_(), ast::StorageClass::kPrivate, Expr(true));
-    auto* b_var = Global("b", ty.bool_(), ast::StorageClass::kPrivate, Expr(false));
+    auto* a_var = GlobalVar("a", ty.bool_(), ast::StorageClass::kPrivate, Expr(true));
+    auto* b_var = GlobalVar("b", ty.bool_(), ast::StorageClass::kPrivate, Expr(false));
 
     auto* expr = create<ast::BinaryExpression>(ast::BinaryOp::kLogicalOr, Expr("a"), Expr("b"));
 

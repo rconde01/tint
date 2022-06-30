@@ -33,6 +33,7 @@
 #include "src/tint/ast/call_statement.h"
 #include "src/tint/ast/case_statement.h"
 #include "src/tint/ast/compound_assignment_statement.h"
+#include "src/tint/ast/const.h"
 #include "src/tint/ast/continue_statement.h"
 #include "src/tint/ast/depth_multisampled_texture.h"
 #include "src/tint/ast/depth_texture.h"
@@ -87,6 +88,7 @@
 #include "src/tint/program_id.h"
 #include "src/tint/sem/array.h"
 #include "src/tint/sem/bool.h"
+#include "src/tint/sem/constant.h"
 #include "src/tint/sem/depth_texture.h"
 #include "src/tint/sem/external_texture.h"
 #include "src/tint/sem/f16.h"
@@ -128,7 +130,7 @@ class ProgramBuilder {
         traits::EnableIfIsNotType<traits::Decay<traits::NthTypeOf<0, TYPES..., void>>, Source>;
 
     /// VarOptionals is a helper for accepting a number of optional, extra
-    /// arguments for Var() and Global().
+    /// arguments for Var() and GlobalVar().
     struct VarOptionals {
         template <typename... ARGS>
         explicit VarOptionals(ARGS&&... args) {
@@ -161,6 +163,9 @@ class ProgramBuilder {
 
     /// SemNodeAllocator is an alias to BlockAllocator<sem::Node>
     using SemNodeAllocator = utils::BlockAllocator<sem::Node>;
+
+    /// ConstantAllocator is an alias to BlockAllocator<sem::Constant>
+    using ConstantAllocator = utils::BlockAllocator<sem::Constant>;
 
     /// Constructor
     ProgramBuilder();
@@ -226,6 +231,12 @@ class ProgramBuilder {
     const SemNodeAllocator& SemNodes() const {
         AssertNotMoved();
         return sem_nodes_;
+    }
+
+    /// @returns a reference to the program's semantic constant storage
+    ConstantAllocator& ConstantNodes() {
+        AssertNotMoved();
+        return constant_nodes_;
     }
 
     /// @returns a reference to the program's AST root Module
@@ -331,9 +342,8 @@ class ProgramBuilder {
     }
 
     /// Creates a new sem::Node owned by the ProgramBuilder.
-    /// When the ProgramBuilder is destructed, the sem::Node will also be
-    /// destructed.
-    /// @param args the arguments to pass to the type constructor
+    /// When the ProgramBuilder is destructed, the sem::Node will also be destructed.
+    /// @param args the arguments to pass to the constructor
     /// @returns the node pointer
     template <typename T, typename... ARGS>
     traits::EnableIf<traits::IsTypeOrDerived<T, sem::Node> &&
@@ -342,6 +352,16 @@ class ProgramBuilder {
     create(ARGS&&... args) {
         AssertNotMoved();
         return sem_nodes_.Create<T>(std::forward<ARGS>(args)...);
+    }
+
+    /// Creates a new sem::Constant owned by the ProgramBuilder.
+    /// When the ProgramBuilder is destructed, the sem::Node will also be destructed.
+    /// @param args the arguments to pass to the constructor
+    /// @returns the node pointer
+    template <typename T, typename... ARGS>
+    traits::EnableIf<traits::IsTypeOrDerived<T, sem::Constant>, T>* create(ARGS&&... args) {
+        AssertNotMoved();
+        return constant_nodes_.Create<T>(std::forward<ARGS>(args)...);
     }
 
     /// Creates a new sem::Type owned by the ProgramBuilder.
@@ -1367,6 +1387,35 @@ class ProgramBuilder {
     /// @param type the variable type
     /// @param constructor constructor expression
     /// @param attributes optional variable attributes
+    /// @returns an `ast::Const` with the given name and type
+    template <typename NAME>
+    const ast::Const* Const(NAME&& name,
+                            const ast::Type* type,
+                            const ast::Expression* constructor,
+                            ast::AttributeList attributes = {}) {
+        return create<ast::Const>(Sym(std::forward<NAME>(name)), type, constructor, attributes);
+    }
+
+    /// @param source the variable source
+    /// @param name the variable name
+    /// @param type the variable type
+    /// @param constructor constructor expression
+    /// @param attributes optional variable attributes
+    /// @returns an `ast::Const` with the given name and type
+    template <typename NAME>
+    const ast::Const* Const(const Source& source,
+                            NAME&& name,
+                            const ast::Type* type,
+                            const ast::Expression* constructor,
+                            ast::AttributeList attributes = {}) {
+        return create<ast::Const>(source, Sym(std::forward<NAME>(name)), type, constructor,
+                                  attributes);
+    }
+
+    /// @param name the variable name
+    /// @param type the variable type
+    /// @param constructor constructor expression
+    /// @param attributes optional variable attributes
     /// @returns an `ast::Let` with the given name and type
     template <typename NAME>
     const ast::Let* Let(NAME&& name,
@@ -1429,7 +1478,7 @@ class ProgramBuilder {
     /// @returns a new `ast::Var`, which is automatically registered as a global variable with the
     /// ast::Module.
     template <typename NAME, typename... OPTIONAL, typename = DisableIfSource<NAME>>
-    const ast::Var* Global(NAME&& name, const ast::Type* type, OPTIONAL&&... optional) {
+    const ast::Var* GlobalVar(NAME&& name, const ast::Type* type, OPTIONAL&&... optional) {
         auto* var = Var(std::forward<NAME>(name), type, std::forward<OPTIONAL>(optional)...);
         AST().AddGlobalVariable(var);
         return var;
@@ -1449,10 +1498,10 @@ class ProgramBuilder {
     /// @returns a new `ast::Var`, which is automatically registered as a global variable with the
     /// ast::Module.
     template <typename NAME, typename... OPTIONAL>
-    const ast::Var* Global(const Source& source,
-                           NAME&& name,
-                           const ast::Type* type,
-                           OPTIONAL&&... optional) {
+    const ast::Var* GlobalVar(const Source& source,
+                              NAME&& name,
+                              const ast::Type* type,
+                              OPTIONAL&&... optional) {
         auto* var =
             Var(source, std::forward<NAME>(name), type, std::forward<OPTIONAL>(optional)...);
         AST().AddGlobalVariable(var);
@@ -1463,14 +1512,14 @@ class ProgramBuilder {
     /// @param type the variable type
     /// @param constructor constructor expression
     /// @param attributes optional variable attributes
-    /// @returns an `ast::Let` constructed by calling Let() with the arguments of `args`, which is
-    /// automatically registered as a global variable with the ast::Module.
+    /// @returns an `ast::Const` constructed by calling Const() with the arguments of `args`, which
+    /// is automatically registered as a global variable with the ast::Module.
     template <typename NAME>
-    const ast::Let* GlobalConst(NAME&& name,
-                                const ast::Type* type,
-                                const ast::Expression* constructor,
-                                ast::AttributeList attributes = {}) {
-        auto* var = Let(std::forward<NAME>(name), type, constructor, std::move(attributes));
+    const ast::Const* GlobalConst(NAME&& name,
+                                  const ast::Type* type,
+                                  const ast::Expression* constructor,
+                                  ast::AttributeList attributes = {}) {
+        auto* var = Const(std::forward<NAME>(name), type, constructor, std::move(attributes));
         AST().AddGlobalVariable(var);
         return var;
     }
@@ -1480,16 +1529,17 @@ class ProgramBuilder {
     /// @param type the variable type
     /// @param constructor constructor expression
     /// @param attributes optional variable attributes
-    /// @returns a const `ast::Let` constructed by calling Var() with the
+    /// @returns a const `ast::Const` constructed by calling Var() with the
     /// arguments of `args`, which is automatically registered as a global
     /// variable with the ast::Module.
     template <typename NAME>
-    const ast::Let* GlobalConst(const Source& source,
-                                NAME&& name,
-                                const ast::Type* type,
-                                const ast::Expression* constructor,
-                                ast::AttributeList attributes = {}) {
-        auto* var = Let(source, std::forward<NAME>(name), type, constructor, std::move(attributes));
+    const ast::Const* GlobalConst(const Source& source,
+                                  NAME&& name,
+                                  const ast::Type* type,
+                                  const ast::Expression* constructor,
+                                  ast::AttributeList attributes = {}) {
+        auto* var =
+            Const(source, std::forward<NAME>(name), type, constructor, std::move(attributes));
         AST().AddGlobalVariable(var);
         return var;
     }
@@ -2716,6 +2766,7 @@ class ProgramBuilder {
     sem::Manager types_;
     ASTNodeAllocator ast_nodes_;
     SemNodeAllocator sem_nodes_;
+    ConstantAllocator constant_nodes_;
     ast::Module* ast_;
     sem::Info sem_;
     SymbolTable symbols_{id_};

@@ -33,6 +33,7 @@ using f16V = builder::vec<3, f16>;
 using i32V = builder::vec<3, i32>;
 using u32V = builder::vec<3, u32>;
 using f32M = builder::mat<3, 2, f32>;
+using i32Varr = builder::array<3, i32>;
 
 constexpr double kHighestU32 = static_cast<double>(u32::kHighest);
 constexpr double kLowestU32 = static_cast<double>(u32::kLowest);
@@ -40,11 +41,16 @@ constexpr double kHighestI32 = static_cast<double>(i32::kHighest);
 constexpr double kLowestI32 = static_cast<double>(i32::kLowest);
 constexpr double kHighestF32 = static_cast<double>(f32::kHighest);
 constexpr double kLowestF32 = static_cast<double>(f32::kLowest);
+// constexpr double kHighestF16 = static_cast<double>(f16::kHighest);
+// constexpr double kLowestF16 = static_cast<double>(f16::kLowest);
 constexpr double kTooBigF32 = static_cast<double>(3.5e+38);
+// constexpr double kTooBigF16 = static_cast<double>(6.6e+4);
 constexpr double kPiF64 = 3.141592653589793;
 constexpr double kPiF32 = 3.1415927410125732;  // kPiF64 quantized to f32
+// constexpr double kPiF16 = 3.140625;         // kPiF64 quantized to f16
 
 constexpr double kSubnormalF32 = 0x1.0p-128;
+// constexpr double kSubnormalF16 = 0x1.0p-16;
 
 enum class Expectation {
     kMaterialize,
@@ -67,12 +73,61 @@ static std::ostream& operator<<(std::ostream& o, Expectation m) {
     return o << "<unknown>";
 }
 
+template <typename CASE>
+class MaterializeTest : public resolver::ResolverTestWithParam<CASE> {
+  protected:
+    using ProgramBuilder::FriendlyName;
+
+    void CheckTypesAndValues(const sem::Expression* expr,
+                             const tint::sem::Type* expected_sem_ty,
+                             const std::variant<AInt, AFloat>& expected_value) {
+        std::visit([&](auto v) { CheckTypesAndValuesImpl(expr, expected_sem_ty, v); },
+                   expected_value);
+    }
+
+  private:
+    template <typename T>
+    void CheckTypesAndValuesImpl(const sem::Expression* expr,
+                                 const tint::sem::Type* expected_sem_ty,
+                                 T expected_value) {
+        EXPECT_TYPE(expr->Type(), expected_sem_ty);
+
+        auto* value = expr->ConstantValue();
+        ASSERT_NE(value, nullptr);
+        EXPECT_TYPE(expr->Type(), value->Type());
+
+        tint::Switch(
+            expected_sem_ty,  //
+            [&](const sem::Vector* v) {
+                for (uint32_t i = 0; i < v->Width(); i++) {
+                    auto* el = value->Index(i);
+                    ASSERT_NE(el, nullptr);
+                    EXPECT_TYPE(el->Type(), v->type());
+                    EXPECT_EQ(std::get<T>(el->Value()), expected_value);
+                }
+            },
+            [&](const sem::Matrix* m) {
+                for (uint32_t c = 0; c < m->columns(); c++) {
+                    auto* column = value->Index(c);
+                    ASSERT_NE(column, nullptr);
+                    EXPECT_TYPE(column->Type(), m->ColumnType());
+                    for (uint32_t r = 0; r < m->rows(); r++) {
+                        auto* el = column->Index(r);
+                        ASSERT_NE(el, nullptr);
+                        EXPECT_TYPE(el->Type(), m->type());
+                        EXPECT_EQ(std::get<T>(el->Value()), expected_value);
+                    }
+                }
+            },
+            [&](Default) { EXPECT_EQ(std::get<T>(value->Value()), expected_value); });
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // MaterializeAbstractNumericToConcreteType
 // Tests that an abstract-numeric will materialize to the expected concrete type
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 namespace materialize_abstract_numeric_to_concrete_type {
-
 // How should the materialization occur?
 enum class Method {
     // var a : target_type = abstract_expr;
@@ -241,10 +296,10 @@ static std::ostream& operator<<(std::ostream& o, const Data& c) {
 }
 
 using MaterializeAbstractNumericToConcreteType =
-    resolver::ResolverTestWithParam<std::tuple<Expectation, Method, Data>>;
+    MaterializeTest<std::tuple<Expectation, Method, Data>>;
 
 TEST_P(MaterializeAbstractNumericToConcreteType, Test) {
-    // Once F16 is properly supported, we'll need to enable this:
+    // Once built-in and ops using f16 is properly supported, we'll need to enable this:
     // Enable(ast::Extension::kF16);
 
     const auto& param = GetParam();
@@ -317,30 +372,12 @@ TEST_P(MaterializeAbstractNumericToConcreteType, Test) {
             break;
     }
 
-    auto check_types_and_values = [&](const sem::Expression* expr) {
-        auto* target_sem_ty = data.target_sem_ty(*this);
-
-        EXPECT_TYPE(expr->Type(), target_sem_ty);
-        EXPECT_TYPE(expr->ConstantValue().Type(), target_sem_ty);
-
-        uint32_t num_elems = 0;
-        const sem::Type* target_sem_el_ty = sem::Type::ElementOf(target_sem_ty, &num_elems);
-        EXPECT_TYPE(expr->ConstantValue().ElementType(), target_sem_el_ty);
-        expr->ConstantValue().WithElements([&](auto&& vec) {
-            using VEC_TY = std::decay_t<decltype(vec)>;
-            using EL_TY = typename VEC_TY::value_type;
-            ASSERT_TRUE(std::holds_alternative<EL_TY>(data.materialized_value));
-            VEC_TY expected(num_elems, std::get<EL_TY>(data.materialized_value));
-            EXPECT_EQ(vec, expected);
-        });
-    };
-
     switch (expectation) {
         case Expectation::kMaterialize: {
             ASSERT_TRUE(r()->Resolve()) << r()->error();
             auto* materialize = Sem().Get<sem::Materialize>(abstract_expr);
             ASSERT_NE(materialize, nullptr);
-            check_types_and_values(materialize);
+            CheckTypesAndValues(materialize, data.target_sem_ty(*this), data.materialized_value);
             break;
         }
         case Expectation::kNoMaterialize: {
@@ -348,7 +385,7 @@ TEST_P(MaterializeAbstractNumericToConcreteType, Test) {
             auto* sem = Sem().Get(abstract_expr);
             ASSERT_NE(sem, nullptr);
             EXPECT_FALSE(sem->Is<sem::Materialize>());
-            check_types_and_values(sem);
+            CheckTypesAndValues(sem, data.target_sem_ty(*this), data.materialized_value);
             break;
         }
         case Expectation::kInvalidConversion: {
@@ -408,8 +445,8 @@ constexpr Method kSwitchMethods[] = {
 /// Methods that do not materialize
 constexpr Method kNoMaterializeMethods[] = {
     Method::kPhonyAssign,
-    // TODO(crbug.com/tint/1504): Enable once we have abstract overloads of builtins / binary ops:
-    // Method::kBuiltinArg, Method::kBinaryOp,
+    // TODO(crbug.com/tint/1504): Enable once we have abstract overloads of builtins / binary
+    // ops: Method::kBuiltinArg, Method::kBinaryOp,
 };
 INSTANTIATE_TEST_SUITE_P(
     MaterializeScalar,
@@ -417,23 +454,28 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(testing::Values(Expectation::kMaterialize),
                      testing::ValuesIn(kScalarMethods),
                      testing::ValuesIn(std::vector<Data>{
-                         Types<i32, AInt>(0_a, 0.0),                                  //
-                         Types<i32, AInt>(1_a, 1.0),                                  //
-                         Types<i32, AInt>(-1_a, -1.0),                                //
-                         Types<i32, AInt>(AInt(kHighestI32), kHighestI32),            //
-                         Types<i32, AInt>(AInt(kLowestI32), kLowestI32),              //
-                         Types<u32, AInt>(0_a, 0.0),                                  //
-                         Types<u32, AInt>(1_a, 1.0),                                  //
-                         Types<u32, AInt>(AInt(kHighestU32), kHighestU32),            //
-                         Types<u32, AInt>(AInt(kLowestU32), kLowestU32),              //
-                         Types<f32, AFloat>(0.0_a, 0.0),                              //
-                         Types<f32, AFloat>(AFloat(kHighestF32), kHighestF32),        //
-                         Types<f32, AFloat>(AFloat(kLowestF32), kLowestF32),          //
-                         Types<f32, AFloat>(AFloat(kPiF32), kPiF64),                  //
-                         Types<f32, AFloat>(AFloat(kSubnormalF32), kSubnormalF32),    //
-                         Types<f32, AFloat>(AFloat(-kSubnormalF32), -kSubnormalF32),  //
-                         /* Types<f16, AFloat>(1.0_a), */                             //
-                         /* Types<f16, AFloat>(1.0_a), */                             //
+                         Types<i32, AInt>(0_a, 0.0),                                        //
+                         Types<i32, AInt>(1_a, 1.0),                                        //
+                         Types<i32, AInt>(-1_a, -1.0),                                      //
+                         Types<i32, AInt>(AInt(kHighestI32), kHighestI32),                  //
+                         Types<i32, AInt>(AInt(kLowestI32), kLowestI32),                    //
+                         Types<u32, AInt>(0_a, 0.0),                                        //
+                         Types<u32, AInt>(1_a, 1.0),                                        //
+                         Types<u32, AInt>(AInt(kHighestU32), kHighestU32),                  //
+                         Types<u32, AInt>(AInt(kLowestU32), kLowestU32),                    //
+                         Types<f32, AFloat>(0.0_a, 0.0),                                    //
+                         Types<f32, AFloat>(AFloat(kHighestF32), kHighestF32),              //
+                         Types<f32, AFloat>(AFloat(kLowestF32), kLowestF32),                //
+                         Types<f32, AFloat>(AFloat(kPiF32), kPiF64),                        //
+                         Types<f32, AFloat>(AFloat(kSubnormalF32), kSubnormalF32),          //
+                         Types<f32, AFloat>(AFloat(-kSubnormalF32), -kSubnormalF32),        //
+                         /* Types<f16, AFloat>(0.0_a, 0.0),                             */  //
+                         /* Types<f16, AFloat>(1.0_a, 1.0),                             */  //
+                         /* Types<f16, AFloat>(AFloat(kHighestF16), kHighestF16),       */  //
+                         /* Types<f16, AFloat>(AFloat(kLowestF16), kLowestF16),         */  //
+                         /* Types<f16, AFloat>(AFloat(kPiF16), kPiF64),                 */  //
+                         /* Types<f16, AFloat>(AFloat(kSubnormalF16), kSubnormalF16),   */  //
+                         /* Types<f16, AFloat>(AFloat(-kSubnormalF16), -kSubnormalF16), */  //
                      })));
 
 INSTANTIATE_TEST_SUITE_P(
@@ -442,25 +484,31 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(testing::Values(Expectation::kMaterialize),
                      testing::ValuesIn(kVectorMethods),
                      testing::ValuesIn(std::vector<Data>{
-                         Types<i32V, AIntV>(0_a, 0.0),                                  //
-                         Types<i32V, AIntV>(1_a, 1.0),                                  //
-                         Types<i32V, AIntV>(-1_a, -1.0),                                //
-                         Types<i32V, AIntV>(AInt(kHighestI32), kHighestI32),            //
-                         Types<i32V, AIntV>(AInt(kLowestI32), kLowestI32),              //
-                         Types<u32V, AIntV>(0_a, 0.0),                                  //
-                         Types<u32V, AIntV>(1_a, 1.0),                                  //
-                         Types<u32V, AIntV>(AInt(kHighestU32), kHighestU32),            //
-                         Types<u32V, AIntV>(AInt(kLowestU32), kLowestU32),              //
-                         Types<f32V, AFloatV>(0.0_a, 0.0),                              //
-                         Types<f32V, AFloatV>(1.0_a, 1.0),                              //
-                         Types<f32V, AFloatV>(-1.0_a, -1.0),                            //
-                         Types<f32V, AFloatV>(AFloat(kHighestF32), kHighestF32),        //
-                         Types<f32V, AFloatV>(AFloat(kLowestF32), kLowestF32),          //
-                         Types<f32V, AFloatV>(AFloat(kPiF32), kPiF64),                  //
-                         Types<f32V, AFloatV>(AFloat(kSubnormalF32), kSubnormalF32),    //
-                         Types<f32V, AFloatV>(AFloat(-kSubnormalF32), -kSubnormalF32),  //
-                         /* Types<f16V, AFloatV>(1.0_a), */                             //
-                         /* Types<f16V, AFloatV>(1.0_a), */                             //
+                         Types<i32V, AIntV>(0_a, 0.0),                                        //
+                         Types<i32V, AIntV>(1_a, 1.0),                                        //
+                         Types<i32V, AIntV>(-1_a, -1.0),                                      //
+                         Types<i32V, AIntV>(AInt(kHighestI32), kHighestI32),                  //
+                         Types<i32V, AIntV>(AInt(kLowestI32), kLowestI32),                    //
+                         Types<u32V, AIntV>(0_a, 0.0),                                        //
+                         Types<u32V, AIntV>(1_a, 1.0),                                        //
+                         Types<u32V, AIntV>(AInt(kHighestU32), kHighestU32),                  //
+                         Types<u32V, AIntV>(AInt(kLowestU32), kLowestU32),                    //
+                         Types<f32V, AFloatV>(0.0_a, 0.0),                                    //
+                         Types<f32V, AFloatV>(1.0_a, 1.0),                                    //
+                         Types<f32V, AFloatV>(-1.0_a, -1.0),                                  //
+                         Types<f32V, AFloatV>(AFloat(kHighestF32), kHighestF32),              //
+                         Types<f32V, AFloatV>(AFloat(kLowestF32), kLowestF32),                //
+                         Types<f32V, AFloatV>(AFloat(kPiF32), kPiF64),                        //
+                         Types<f32V, AFloatV>(AFloat(kSubnormalF32), kSubnormalF32),          //
+                         Types<f32V, AFloatV>(AFloat(-kSubnormalF32), -kSubnormalF32),        //
+                         /* Types<f16V, AFloatV>(0.0_a, 0.0),                             */  //
+                         /* Types<f16V, AFloatV>(1.0_a, 1.0),                             */  //
+                         /* Types<f16V, AFloatV>(-1.0_a, -1.0),                           */  //
+                         /* Types<f16V, AFloatV>(AFloat(kHighestF16), kHighestF16),       */  //
+                         /* Types<f16V, AFloatV>(AFloat(kLowestF16), kLowestF16),         */  //
+                         /* Types<f16V, AFloatV>(AFloat(kPiF16), kPiF64),                 */  //
+                         /* Types<f16V, AFloatV>(AFloat(kSubnormalF16), kSubnormalF16),   */  //
+                         /* Types<f16V, AFloatV>(AFloat(-kSubnormalF16), -kSubnormalF16), */  //
                      })));
 
 INSTANTIATE_TEST_SUITE_P(
@@ -469,15 +517,22 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(testing::Values(Expectation::kMaterialize),
                      testing::ValuesIn(kMatrixMethods),
                      testing::ValuesIn(std::vector<Data>{
-                         Types<f32M, AFloatM>(0.0_a, 0.0),                              //
-                         Types<f32M, AFloatM>(1.0_a, 1.0),                              //
-                         Types<f32M, AFloatM>(-1.0_a, -1.0),                            //
-                         Types<f32M, AFloatM>(AFloat(kHighestF32), kHighestF32),        //
-                         Types<f32M, AFloatM>(AFloat(kLowestF32), kLowestF32),          //
-                         Types<f32M, AFloatM>(AFloat(kPiF32), kPiF64),                  //
-                         Types<f32M, AFloatM>(AFloat(kSubnormalF32), kSubnormalF32),    //
-                         Types<f32M, AFloatM>(AFloat(-kSubnormalF32), -kSubnormalF32),  //
-                         /* Types<f16V, AFloatM>(1.0_a), */                             //
+                         Types<f32M, AFloatM>(0.0_a, 0.0),                                    //
+                         Types<f32M, AFloatM>(1.0_a, 1.0),                                    //
+                         Types<f32M, AFloatM>(-1.0_a, -1.0),                                  //
+                         Types<f32M, AFloatM>(AFloat(kHighestF32), kHighestF32),              //
+                         Types<f32M, AFloatM>(AFloat(kLowestF32), kLowestF32),                //
+                         Types<f32M, AFloatM>(AFloat(kPiF32), kPiF64),                        //
+                         Types<f32M, AFloatM>(AFloat(kSubnormalF32), kSubnormalF32),          //
+                         Types<f32M, AFloatM>(AFloat(-kSubnormalF32), -kSubnormalF32),        //
+                         /* Types<f16M, AFloatM>(0.0_a, 0.0),                             */  //
+                         /* Types<f16M, AFloatM>(1.0_a, 1.0),                             */  //
+                         /* Types<f16M, AFloatM>(-1.0_a, -1.0),                           */  //
+                         /* Types<f16M, AFloatM>(AFloat(kHighestF16), kHighestF16),       */  //
+                         /* Types<f16M, AFloatM>(AFloat(kLowestF16), kLowestF16),         */  //
+                         /* Types<f16M, AFloatM>(AFloat(kPiF16), kPiF64),                 */  //
+                         /* Types<f16M, AFloatM>(AFloat(kSubnormalF16), kSubnormalF16),   */  //
+                         /* Types<f16M, AFloatM>(AFloat(-kSubnormalF16), -kSubnormalF16), */  //
                      })));
 
 INSTANTIATE_TEST_SUITE_P(MaterializeSwitch,
@@ -526,10 +581,14 @@ INSTANTIATE_TEST_SUITE_P(InvalidConversion,
                          testing::Combine(testing::Values(Expectation::kInvalidConversion),
                                           testing::ValuesIn(kScalarMethods),
                                           testing::ValuesIn(std::vector<Data>{
-                                              Types<i32, AFloat>(),    //
-                                              Types<u32, AFloat>(),    //
-                                              Types<i32V, AFloatV>(),  //
-                                              Types<u32V, AFloatV>(),  //
+                                              Types<i32, AFloat>(),       //
+                                              Types<u32, AFloat>(),       //
+                                              Types<i32V, AFloatV>(),     //
+                                              Types<u32V, AFloatV>(),     //
+                                              Types<i32Varr, AInt>(),     //
+                                              Types<i32Varr, AIntV>(),    //
+                                              Types<i32Varr, AFloat>(),   //
+                                              Types<i32Varr, AFloatV>(),  //
                                           })));
 
 INSTANTIATE_TEST_SUITE_P(ScalarValueCannotBeRepresented,
@@ -537,14 +596,14 @@ INSTANTIATE_TEST_SUITE_P(ScalarValueCannotBeRepresented,
                          testing::Combine(testing::Values(Expectation::kValueCannotBeRepresented),
                                           testing::ValuesIn(kScalarMethods),
                                           testing::ValuesIn(std::vector<Data>{
-                                              Types<i32, AInt>(0_a, kHighestI32 + 1),  //
-                                              Types<i32, AInt>(0_a, kLowestI32 - 1),   //
-                                              Types<u32, AInt>(0_a, kHighestU32 + 1),  //
-                                              Types<u32, AInt>(0_a, kLowestU32 - 1),   //
-                                              Types<f32, AFloat>(0.0_a, kTooBigF32),   //
-                                              Types<f32, AFloat>(0.0_a, -kTooBigF32),  //
-                                              /* Types<f16, AFloat>(), */              //
-                                              /* Types<f16, AFloat>(), */              //
+                                              Types<i32, AInt>(0_a, kHighestI32 + 1),        //
+                                              Types<i32, AInt>(0_a, kLowestI32 - 1),         //
+                                              Types<u32, AInt>(0_a, kHighestU32 + 1),        //
+                                              Types<u32, AInt>(0_a, kLowestU32 - 1),         //
+                                              Types<f32, AFloat>(0.0_a, kTooBigF32),         //
+                                              Types<f32, AFloat>(0.0_a, -kTooBigF32),        //
+                                              /* Types<f16, AFloat>(0.0_a, kTooBigF16),  */  //
+                                              /* Types<f16, AFloat>(0.0_a, -kTooBigF16), */  //
                                           })));
 
 INSTANTIATE_TEST_SUITE_P(VectorValueCannotBeRepresented,
@@ -552,14 +611,14 @@ INSTANTIATE_TEST_SUITE_P(VectorValueCannotBeRepresented,
                          testing::Combine(testing::Values(Expectation::kValueCannotBeRepresented),
                                           testing::ValuesIn(kVectorMethods),
                                           testing::ValuesIn(std::vector<Data>{
-                                              Types<i32V, AIntV>(0_a, kHighestI32 + 1),  //
-                                              Types<i32V, AIntV>(0_a, kLowestI32 - 1),   //
-                                              Types<u32V, AIntV>(0_a, kHighestU32 + 1),  //
-                                              Types<u32V, AIntV>(0_a, kLowestU32 - 1),   //
-                                              Types<f32V, AFloatV>(0.0_a, kTooBigF32),   //
-                                              Types<f32V, AFloatV>(0.0_a, -kTooBigF32),  //
-                                              /* Types<f16V, AFloatV>(), */              //
-                                              /* Types<f16V, AFloatV>(), */              //
+                                              Types<i32V, AIntV>(0_a, kHighestI32 + 1),        //
+                                              Types<i32V, AIntV>(0_a, kLowestI32 - 1),         //
+                                              Types<u32V, AIntV>(0_a, kHighestU32 + 1),        //
+                                              Types<u32V, AIntV>(0_a, kLowestU32 - 1),         //
+                                              Types<f32V, AFloatV>(0.0_a, kTooBigF32),         //
+                                              Types<f32V, AFloatV>(0.0_a, -kTooBigF32),        //
+                                              /* Types<f16V, AFloatV>(0.0_a, kTooBigF16),  */  //
+                                              /* Types<f16V, AFloatV>(0.0_a, -kTooBigF16), */  //
                                           })));
 
 INSTANTIATE_TEST_SUITE_P(MatrixValueCannotBeRepresented,
@@ -567,10 +626,10 @@ INSTANTIATE_TEST_SUITE_P(MatrixValueCannotBeRepresented,
                          testing::Combine(testing::Values(Expectation::kValueCannotBeRepresented),
                                           testing::ValuesIn(kMatrixMethods),
                                           testing::ValuesIn(std::vector<Data>{
-                                              Types<f32M, AFloatM>(0.0_a, kTooBigF32),   //
-                                              Types<f32M, AFloatM>(0.0_a, -kTooBigF32),  //
-                                              /* Types<f16M, AFloatM>(), */              //
-                                              /* Types<f16M, AFloatM>(), */              //
+                                              Types<f32M, AFloatM>(0.0_a, kTooBigF32),         //
+                                              Types<f32M, AFloatM>(0.0_a, -kTooBigF32),        //
+                                              /* Types<f16M, AFloatM>(0.0_a, kTooBigF16),  */  //
+                                              /* Types<f16M, AFloatM>(0.0_a, -kTooBigF16), */  //
                                           })));
 
 }  // namespace materialize_abstract_numeric_to_concrete_type
@@ -675,12 +734,9 @@ static std::ostream& operator<<(std::ostream& o, const Data& c) {
 }
 
 using MaterializeAbstractNumericToDefaultType =
-    resolver::ResolverTestWithParam<std::tuple<Expectation, Method, Data>>;
+    MaterializeTest<std::tuple<Expectation, Method, Data>>;
 
 TEST_P(MaterializeAbstractNumericToDefaultType, Test) {
-    // Once F16 is properly supported, we'll need to enable this:
-    // Enable(ast::Extension::kF16);
-
     const auto& param = GetParam();
     const auto& expectation = std::get<0>(param);
     const auto& method = std::get<1>(param);
@@ -721,28 +777,10 @@ TEST_P(MaterializeAbstractNumericToDefaultType, Test) {
                  {WorkgroupSize(abstract_expr()), Stage(ast::PipelineStage::kCompute)});
             break;
         case Method::kIndex:
-            Global("arr", ty.array<i32, 4>(), ast::StorageClass::kPrivate);
+            GlobalVar("arr", ty.array<i32, 4>(), ast::StorageClass::kPrivate);
             WrapInFunction(IndexAccessor("arr", abstract_expr()));
             break;
     }
-
-    auto check_types_and_values = [&](const sem::Expression* expr) {
-        auto* expected_sem_ty = data.expected_sem_ty(*this);
-
-        EXPECT_TYPE(expr->Type(), expected_sem_ty);
-        EXPECT_TYPE(expr->ConstantValue().Type(), expected_sem_ty);
-
-        uint32_t num_elems = 0;
-        const sem::Type* expected_sem_el_ty = sem::Type::ElementOf(expected_sem_ty, &num_elems);
-        EXPECT_TYPE(expr->ConstantValue().ElementType(), expected_sem_el_ty);
-        expr->ConstantValue().WithElements([&](auto&& vec) {
-            using VEC_TY = std::decay_t<decltype(vec)>;
-            using EL_TY = typename VEC_TY::value_type;
-            ASSERT_TRUE(std::holds_alternative<EL_TY>(data.materialized_value));
-            VEC_TY expected(num_elems, std::get<EL_TY>(data.materialized_value));
-            EXPECT_EQ(vec, expected);
-        });
-    };
 
     switch (expectation) {
         case Expectation::kMaterialize: {
@@ -750,7 +788,8 @@ TEST_P(MaterializeAbstractNumericToDefaultType, Test) {
             for (auto* expr : abstract_exprs) {
                 auto* materialize = Sem().Get<sem::Materialize>(expr);
                 ASSERT_NE(materialize, nullptr);
-                check_types_and_values(materialize);
+                CheckTypesAndValues(materialize, data.expected_sem_ty(*this),
+                                    data.materialized_value);
             }
             break;
         }
@@ -958,6 +997,26 @@ INSTANTIATE_TEST_SUITE_P(ArrayLengthValueCannotBeRepresented,
                                           })));
 
 }  // namespace materialize_abstract_numeric_to_default_type
+
+using MaterializeAbstractNumericToUnrelatedType = resolver::ResolverTest;
+
+TEST_F(MaterializeAbstractNumericToUnrelatedType, AIntToStructVarCtor) {
+    Structure("S", {Member("a", ty.i32())});
+    WrapInFunction(Decl(Var("v", ty.type_name("S"), Expr(Source{{12, 34}}, 1_a))));
+    ASSERT_FALSE(r()->Resolve());
+    EXPECT_THAT(
+        r()->error(),
+        testing::HasSubstr("error: cannot convert value of type 'abstract-int' to type 'S'"));
+}
+
+TEST_F(MaterializeAbstractNumericToUnrelatedType, AIntToStructLetCtor) {
+    Structure("S", {Member("a", ty.i32())});
+    WrapInFunction(Decl(Let("v", ty.type_name("S"), Expr(Source{{12, 34}}, 1_a))));
+    ASSERT_FALSE(r()->Resolve());
+    EXPECT_THAT(
+        r()->error(),
+        testing::HasSubstr("error: cannot convert value of type 'abstract-int' to type 'S'"));
+}
 
 }  // namespace
 }  // namespace tint::resolver

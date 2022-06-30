@@ -85,20 +85,21 @@ TEST_F(ResolverBuiltinValidationTest, BuiltinRedeclaredAsFunction) {
               R"(12:34 error: 'mix' is a builtin and cannot be redeclared as a function)");
 }
 
-TEST_F(ResolverBuiltinValidationTest, BuiltinRedeclaredAsGlobalLet) {
+TEST_F(ResolverBuiltinValidationTest, BuiltinRedeclaredAsGlobalConst) {
     GlobalConst(Source{{12, 34}}, "mix", ty.i32(), Expr(1_i));
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: 'mix' is a builtin and cannot be redeclared as a module-scope let)");
+              R"(12:34 error: 'mix' is a builtin and cannot be redeclared as a 'const')");
 }
 
 TEST_F(ResolverBuiltinValidationTest, BuiltinRedeclaredAsGlobalVar) {
-    Global(Source{{12, 34}}, "mix", ty.i32(), Expr(1_i), ast::StorageClass::kPrivate);
+    GlobalVar(Source{{12, 34}}, "mix", ty.i32(), Expr(1_i), ast::StorageClass::kPrivate);
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              R"(12:34 error: 'mix' is a builtin and cannot be redeclared as a module-scope var)");
+    EXPECT_EQ(
+        r()->error(),
+        R"(12:34 error: 'mix' is a builtin and cannot be redeclared as a module-scope 'var')");
 }
 
 TEST_F(ResolverBuiltinValidationTest, BuiltinRedeclaredAsAlias) {
@@ -256,11 +257,11 @@ TEST_P(BuiltinTextureConstExprArgValidationTest, Immediate) {
             err << "12:34 error: each component of the " << param.name
                 << " argument must be at least " << param.min << " and at most " << param.max
                 << ". " << param.name << " component " << expr.invalid_index << " is "
-                << std::to_string(expr.values[expr.invalid_index]);
+                << std::to_string(expr.values[static_cast<size_t>(expr.invalid_index)]);
         } else {
             err << "12:34 error: the " << param.name << " argument must be at least " << param.min
                 << " and at most " << param.max << ". " << param.name << " is "
-                << std::to_string(expr.values[expr.invalid_index]);
+                << std::to_string(expr.values[static_cast<size_t>(expr.invalid_index)]);
         }
         EXPECT_EQ(r()->error(), err.str());
     }
@@ -276,7 +277,7 @@ TEST_P(BuiltinTextureConstExprArgValidationTest, GlobalConst) {
     overload.BuildTextureVariable(this);
     overload.BuildSamplerVariable(this);
 
-    // Build the module-scope let 'G' with the offset value
+    // Build the module-scope const 'G' with the offset value
     GlobalConst("G", nullptr, expr({}, *this));
 
     auto args = overload.args(this);
@@ -297,7 +298,6 @@ TEST_P(BuiltinTextureConstExprArgValidationTest, GlobalConst) {
     err << "12:34 error: the " << param.name << " argument must be a const_expression";
     EXPECT_EQ(r()->error(), err.str());
 }
-
 INSTANTIATE_TEST_SUITE_P(
     Offset2D,
     BuiltinTextureConstExprArgValidationTest,

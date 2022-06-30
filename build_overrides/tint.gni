@@ -13,3 +13,4 @@
 # limitations under the License.
 
 # This file contains Tint-related overrides.
+tint_build_unittests = true

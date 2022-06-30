@@ -27,11 +27,11 @@ using MslSanitizerTest = TestHelper;
 
 TEST_F(MslSanitizerTest, Call_ArrayLength) {
     auto* s = Structure("my_struct", {Member(0, "a", ty.array<f32>(4))});
-    Global("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
-           ast::AttributeList{
-               create<ast::BindingAttribute>(1),
-               create<ast::GroupAttribute>(2),
-           });
+    GlobalVar("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(1u),
+                  create<ast::GroupAttribute>(2u),
+              });
 
     Func("a_func", {}, ty.void_(),
          {
@@ -50,12 +50,25 @@ TEST_F(MslSanitizerTest, Call_ArrayLength) {
     auto* expect = R"(#include <metal_stdlib>
 
 using namespace metal;
+
+template<typename T, size_t N>
+struct tint_array {
+    const constant T& operator[](size_t i) const constant { return elements[i]; }
+    device T& operator[](size_t i) device { return elements[i]; }
+    const device T& operator[](size_t i) const device { return elements[i]; }
+    thread T& operator[](size_t i) thread { return elements[i]; }
+    const thread T& operator[](size_t i) const thread { return elements[i]; }
+    threadgroup T& operator[](size_t i) threadgroup { return elements[i]; }
+    const threadgroup T& operator[](size_t i) const threadgroup { return elements[i]; }
+    T elements[N];
+};
+
 struct tint_symbol {
-  /* 0x0000 */ uint4 buffer_size[1];
+  /* 0x0000 */ tint_array<uint4, 1> buffer_size;
 };
 
 struct my_struct {
-  float a[1];
+  tint_array<float, 1> a;
 };
 
 fragment void a_func(const constant tint_symbol* tint_symbol_2 [[buffer(30)]]) {
@@ -72,11 +85,11 @@ TEST_F(MslSanitizerTest, Call_ArrayLength_OtherMembersInStruct) {
                                          Member(0, "z", ty.f32()),
                                          Member(4, "a", ty.array<f32>(4)),
                                      });
-    Global("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
-           ast::AttributeList{
-               create<ast::BindingAttribute>(1),
-               create<ast::GroupAttribute>(2),
-           });
+    GlobalVar("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(1u),
+                  create<ast::GroupAttribute>(2u),
+              });
 
     Func("a_func", {}, ty.void_(),
          {
@@ -95,13 +108,26 @@ TEST_F(MslSanitizerTest, Call_ArrayLength_OtherMembersInStruct) {
     auto* expect = R"(#include <metal_stdlib>
 
 using namespace metal;
+
+template<typename T, size_t N>
+struct tint_array {
+    const constant T& operator[](size_t i) const constant { return elements[i]; }
+    device T& operator[](size_t i) device { return elements[i]; }
+    const device T& operator[](size_t i) const device { return elements[i]; }
+    thread T& operator[](size_t i) thread { return elements[i]; }
+    const thread T& operator[](size_t i) const thread { return elements[i]; }
+    threadgroup T& operator[](size_t i) threadgroup { return elements[i]; }
+    const threadgroup T& operator[](size_t i) const threadgroup { return elements[i]; }
+    T elements[N];
+};
+
 struct tint_symbol {
-  /* 0x0000 */ uint4 buffer_size[1];
+  /* 0x0000 */ tint_array<uint4, 1> buffer_size;
 };
 
 struct my_struct {
   float z;
-  float a[1];
+  tint_array<float, 1> a;
 };
 
 fragment void a_func(const constant tint_symbol* tint_symbol_2 [[buffer(30)]]) {
@@ -116,11 +142,11 @@ fragment void a_func(const constant tint_symbol* tint_symbol_2 [[buffer(30)]]) {
 
 TEST_F(MslSanitizerTest, Call_ArrayLength_ViaLets) {
     auto* s = Structure("my_struct", {Member(0, "a", ty.array<f32>(4))});
-    Global("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
-           ast::AttributeList{
-               create<ast::BindingAttribute>(1),
-               create<ast::GroupAttribute>(2),
-           });
+    GlobalVar("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(1u),
+                  create<ast::GroupAttribute>(2u),
+              });
 
     auto* p = Let("p", nullptr, AddressOf("b"));
     auto* p2 = Let("p2", nullptr, AddressOf(MemberAccessor(Deref(p), "a")));
@@ -143,12 +169,25 @@ TEST_F(MslSanitizerTest, Call_ArrayLength_ViaLets) {
     auto* expect = R"(#include <metal_stdlib>
 
 using namespace metal;
+
+template<typename T, size_t N>
+struct tint_array {
+    const constant T& operator[](size_t i) const constant { return elements[i]; }
+    device T& operator[](size_t i) device { return elements[i]; }
+    const device T& operator[](size_t i) const device { return elements[i]; }
+    thread T& operator[](size_t i) thread { return elements[i]; }
+    const thread T& operator[](size_t i) const thread { return elements[i]; }
+    threadgroup T& operator[](size_t i) threadgroup { return elements[i]; }
+    const threadgroup T& operator[](size_t i) const threadgroup { return elements[i]; }
+    T elements[N];
+};
+
 struct tint_symbol {
-  /* 0x0000 */ uint4 buffer_size[1];
+  /* 0x0000 */ tint_array<uint4, 1> buffer_size;
 };
 
 struct my_struct {
-  float a[1];
+  tint_array<float, 1> a;
 };
 
 fragment void a_func(const constant tint_symbol* tint_symbol_2 [[buffer(30)]]) {
@@ -163,16 +202,16 @@ fragment void a_func(const constant tint_symbol* tint_symbol_2 [[buffer(30)]]) {
 
 TEST_F(MslSanitizerTest, Call_ArrayLength_ArrayLengthFromUniform) {
     auto* s = Structure("my_struct", {Member(0, "a", ty.array<f32>(4))});
-    Global("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
-           ast::AttributeList{
-               create<ast::BindingAttribute>(1),
-               create<ast::GroupAttribute>(0),
-           });
-    Global("c", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
-           ast::AttributeList{
-               create<ast::BindingAttribute>(2),
-               create<ast::GroupAttribute>(0),
-           });
+    GlobalVar("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(1u),
+                  create<ast::GroupAttribute>(0u),
+              });
+    GlobalVar("c", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(2u),
+                  create<ast::GroupAttribute>(0u),
+              });
 
     Func("a_func", {}, ty.void_(),
          {
@@ -196,12 +235,25 @@ TEST_F(MslSanitizerTest, Call_ArrayLength_ArrayLengthFromUniform) {
     auto* expect = R"(#include <metal_stdlib>
 
 using namespace metal;
+
+template<typename T, size_t N>
+struct tint_array {
+    const constant T& operator[](size_t i) const constant { return elements[i]; }
+    device T& operator[](size_t i) device { return elements[i]; }
+    const device T& operator[](size_t i) const device { return elements[i]; }
+    thread T& operator[](size_t i) thread { return elements[i]; }
+    const thread T& operator[](size_t i) const thread { return elements[i]; }
+    threadgroup T& operator[](size_t i) threadgroup { return elements[i]; }
+    const threadgroup T& operator[](size_t i) const threadgroup { return elements[i]; }
+    T elements[N];
+};
+
 struct tint_symbol {
-  /* 0x0000 */ uint4 buffer_size[2];
+  /* 0x0000 */ tint_array<uint4, 2> buffer_size;
 };
 
 struct my_struct {
-  float a[1];
+  tint_array<float, 1> a;
 };
 
 fragment void a_func(const constant tint_symbol* tint_symbol_2 [[buffer(29)]]) {
@@ -215,16 +267,16 @@ fragment void a_func(const constant tint_symbol* tint_symbol_2 [[buffer(29)]]) {
 
 TEST_F(MslSanitizerTest, Call_ArrayLength_ArrayLengthFromUniformMissingBinding) {
     auto* s = Structure("my_struct", {Member(0, "a", ty.array<f32>(4))});
-    Global("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
-           ast::AttributeList{
-               create<ast::BindingAttribute>(1),
-               create<ast::GroupAttribute>(0),
-           });
-    Global("c", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
-           ast::AttributeList{
-               create<ast::BindingAttribute>(2),
-               create<ast::GroupAttribute>(0),
-           });
+    GlobalVar("b", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(1u),
+                  create<ast::GroupAttribute>(0u),
+              });
+    GlobalVar("c", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead,
+              ast::AttributeList{
+                  create<ast::BindingAttribute>(2u),
+                  create<ast::GroupAttribute>(0u),
+              });
 
     Func("a_func", {}, ty.void_(),
          {

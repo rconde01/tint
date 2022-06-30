@@ -283,10 +283,12 @@ class Validator {
     /// @returns true on success, false otherwise.
     bool LoopStatement(const sem::LoopStatement* stmt) const;
 
-    /// Validates a materialize of an abstract numeric value
-    /// @param m the materialize to validate
+    /// Validates a materialize of an abstract numeric value from the type `from` to the type `to`.
+    /// @param to the target type
+    /// @param from the abstract numeric type
+    /// @param source the source of the materialization
     /// @returns true on success, false otherwise
-    bool Materialize(const sem::Materialize* m) const;
+    bool Materialize(const sem::Type* to, const sem::Type* from, const Source& source) const;
 
     /// Validates a matrix
     /// @param ty the matrix to validate
@@ -352,20 +354,40 @@ class Validator {
     bool SwitchStatement(const ast::SwitchStatement* s);
 
     /// Validates a variable
-    /// @param var the variable to validate
+    /// @param v the variable to validate
     /// @returns true on success, false otherwise.
-    bool Variable(const sem::Variable* var) const;
+    bool Variable(const sem::Variable* v) const;
 
-    /// Validates a variable constructor or cast
+    /// Validates a 'var' variable declaration
+    /// @param v the variable to validate
+    /// @returns true on success, false otherwise.
+    bool Var(const sem::Variable* v) const;
+
+    /// Validates a 'let' variable declaration
+    /// @param v the variable to validate
+    /// @returns true on success, false otherwise.
+    bool Let(const sem::Variable* v) const;
+
+    /// Validates a 'override' variable declaration
+    /// @param v the variable to validate
+    /// @returns true on success, false otherwise.
+    bool Override(const sem::Variable* v) const;
+
+    /// Validates a 'const' variable declaration
+    /// @param v the variable to validate
+    /// @returns true on success, false otherwise.
+    bool Const(const sem::Variable* v) const;
+
+    /// Validates a variable initializer
     /// @param v the variable to validate
     /// @param storage_class the storage class of the variable
     /// @param storage_type the type of the storage
-    /// @param rhs_type the right hand side of the expression
+    /// @param initializer the RHS initializer expression
     /// @returns true on succes, false otherwise
-    bool VariableConstructorOrCast(const ast::Variable* v,
-                                   ast::StorageClass storage_class,
-                                   const sem::Type* storage_type,
-                                   const sem::Type* rhs_type) const;
+    bool VariableInitializer(const ast::Variable* v,
+                             ast::StorageClass storage_class,
+                             const sem::Type* storage_type,
+                             const sem::Expression* initializer) const;
 
     /// Validates a vector
     /// @param ty the vector to validate
