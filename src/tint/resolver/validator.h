@@ -239,8 +239,8 @@ class Validator {
     /// @returns true on success, false otherwise
     bool GlobalVariable(
         const sem::GlobalVariable* var,
-        std::unordered_map<uint32_t, const sem::Variable*> constant_ids,
-        std::unordered_map<const sem::Type*, const Source&> atomic_composite_info) const;
+        const std::unordered_map<uint32_t, const sem::Variable*>& constant_ids,
+        const std::unordered_map<const sem::Type*, const Source&>& atomic_composite_info) const;
 
     /// Validates an if statement
     /// @param stmt the statement to validate
@@ -263,6 +263,11 @@ class Validator {
     /// @param call the builtin call to validate
     /// @returns true on success, false otherwise.
     bool BuiltinCall(const sem::Call* call) const;
+
+    /// Validates a local variable
+    /// @param v the variable to validate
+    /// @returns true on success, false otherwise.
+    bool LocalVariable(const sem::Variable* v) const;
 
     /// Validates a location attribute
     /// @param location the location attribute to validate
@@ -354,11 +359,6 @@ class Validator {
     /// @returns true on success, false otherwise
     bool SwitchStatement(const ast::SwitchStatement* s);
 
-    /// Validates a variable
-    /// @param v the variable to validate
-    /// @returns true on success, false otherwise.
-    bool Variable(const sem::Variable* v) const;
-
     /// Validates a 'var' variable declaration
     /// @param v the variable to validate
     /// @returns true on success, false otherwise.
@@ -371,8 +371,10 @@ class Validator {
 
     /// Validates a 'override' variable declaration
     /// @param v the variable to validate
+    /// @param constant_ids the set of constant ids in the module
     /// @returns true on success, false otherwise.
-    bool Override(const sem::Variable* v) const;
+    bool Override(const sem::Variable* v,
+                  const std::unordered_map<uint32_t, const sem::Variable*>& constant_ids) const;
 
     /// Validates a 'const' variable declaration
     /// @param v the variable to validate

@@ -854,7 +854,7 @@ struct OverloadInfo {
     /// The flags for the overload
     OverloadFlags flags;
     /// The function used to evaluate the overload at shader-creation time.
-    const_eval::Function* const const_eval_fn;
+    ConstEval::Function const const_eval_fn;
 };
 
 /// IntrinsicInfo describes a builtin function or operator overload
@@ -928,10 +928,10 @@ class Impl : public IntrinsicTable {
                           const Source& source,
                           bool is_compound) override;
 
-    const sem::CallTarget* Lookup(CtorConvIntrinsic type,
-                                  const sem::Type* template_arg,
-                                  const std::vector<const sem::Type*>& args,
-                                  const Source& source) override;
+    CtorOrConv Lookup(CtorConvIntrinsic type,
+                      const sem::Type* template_arg,
+                      const std::vector<const sem::Type*>& args,
+                      const Source& source) override;
 
   private:
     /// Candidate holds information about an overload evaluated for resolution.
@@ -1119,8 +1119,10 @@ Impl::Builtin Impl::Lookup(sem::BuiltinType builtin_type,
         if (match.overload->flags.Contains(OverloadFlag::kSupportsComputePipeline)) {
             supported_stages.Add(ast::PipelineStage::kCompute);
         }
+        auto eval_stage = match.overload->const_eval_fn ? sem::EvaluationStage::kConstant
+                                                        : sem::EvaluationStage::kRuntime;
         return builder.create<sem::Builtin>(
-            builtin_type, match.return_type, std::move(params), supported_stages,
+            builtin_type, match.return_type, std::move(params), eval_stage, supported_stages,
             match.overload->flags.Contains(OverloadFlag::kIsDeprecated));
     });
     return Builtin{sem, match.overload->const_eval_fn};
@@ -1162,7 +1164,11 @@ IntrinsicTable::UnaryOperator Impl::Lookup(ast::UnaryOp op,
         return {};
     }
 
-    return UnaryOperator{match.return_type, match.parameters[0].type};
+    return UnaryOperator{
+        match.return_type,
+        match.parameters[0].type,
+        match.overload->const_eval_fn,
+    };
 }
 
 IntrinsicTable::BinaryOperator Impl::Lookup(ast::BinaryOp op,
@@ -1233,13 +1239,18 @@ IntrinsicTable::BinaryOperator Impl::Lookup(ast::BinaryOp op,
         return {};
     }
 
-    return BinaryOperator{match.return_type, match.parameters[0].type, match.parameters[1].type};
+    return BinaryOperator{
+        match.return_type,
+        match.parameters[0].type,
+        match.parameters[1].type,
+        match.overload->const_eval_fn,
+    };
 }
 
-const sem::CallTarget* Impl::Lookup(CtorConvIntrinsic type,
-                                    const sem::Type* template_arg,
-                                    const std::vector<const sem::Type*>& args,
-                                    const Source& source) {
+IntrinsicTable::CtorOrConv Impl::Lookup(CtorConvIntrinsic type,
+                                        const sem::Type* template_arg,
+                                        const std::vector<const sem::Type*>& args,
+                                        const Source& source) {
     auto name = str(type);
 
     // Generates an error when no overloads match the provided arguments
@@ -1292,18 +1303,25 @@ const sem::CallTarget* Impl::Lookup(CtorConvIntrinsic type,
                 nullptr, static_cast<uint32_t>(params.size()), p.type, ast::StorageClass::kNone,
                 ast::Access::kUndefined, p.usage));
         }
-        return utils::GetOrCreate(constructors, match, [&]() {
-            return builder.create<sem::TypeConstructor>(match.return_type, std::move(params));
+        auto eval_stage = match.overload->const_eval_fn ? sem::EvaluationStage::kConstant
+                                                        : sem::EvaluationStage::kRuntime;
+        auto* target = utils::GetOrCreate(constructors, match, [&]() {
+            return builder.create<sem::TypeConstructor>(match.return_type, std::move(params),
+                                                        eval_stage);
         });
+        return CtorOrConv{target, match.overload->const_eval_fn};
     }
 
     // Conversion.
-    return utils::GetOrCreate(converters, match, [&]() {
+    auto* target = utils::GetOrCreate(converters, match, [&]() {
         auto param = builder.create<sem::Parameter>(
             nullptr, 0u, match.parameters[0].type, ast::StorageClass::kNone,
             ast::Access::kUndefined, match.parameters[0].usage);
-        return builder.create<sem::TypeConversion>(match.return_type, param);
+        auto eval_stage = match.overload->const_eval_fn ? sem::EvaluationStage::kConstant
+                                                        : sem::EvaluationStage::kRuntime;
+        return builder.create<sem::TypeConversion>(match.return_type, param, eval_stage);
     });
+    return CtorOrConv{target, match.overload->const_eval_fn};
 }
 
 IntrinsicPrototype Impl::MatchIntrinsic(const IntrinsicInfo& intrinsic,

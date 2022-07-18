@@ -258,7 +258,6 @@ set(TINT_LIB_SRCS
   resolver/intrinsic_table.cc
   resolver/intrinsic_table.h
   resolver/intrinsic_table.inl
-  resolver/resolver_constants.cc
   resolver/resolver.cc
   resolver/resolver.h
   resolver/sem_helper.cc
@@ -299,6 +298,7 @@ set(TINT_LIB_SRCS
   sem/depth_multisampled_texture.h
   sem/depth_texture.cc
   sem/depth_texture.h
+  sem/evaluation_stage.h
   sem/expression.cc
   sem/expression.h
   sem/external_texture.cc
@@ -774,9 +774,11 @@ if(TINT_BUILD_TESTS)
     resolver/call_validation_test.cc
     resolver/compound_assignment_validation_test.cc
     resolver/compound_statement_test.cc
+    resolver/const_eval_test.cc
     resolver/control_block_validation_test.cc
     resolver/dependency_graph_test.cc
     resolver/entry_point_validation_test.cc
+    resolver/evaluation_stage_test.cc
     resolver/function_validation_test.cc
     resolver/host_shareable_validation_test.cc
     resolver/increment_decrement_validation_test.cc
@@ -789,7 +791,6 @@ if(TINT_BUILD_TESTS)
     resolver/ptr_ref_test.cc
     resolver/ptr_ref_validation_test.cc
     resolver/resolver_behavior_test.cc
-    resolver/resolver_constants_test.cc
     resolver/resolver_test_helper.cc
     resolver/resolver_test_helper.h
     resolver/resolver_test.cc

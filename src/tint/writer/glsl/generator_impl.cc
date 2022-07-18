@@ -500,42 +500,45 @@ bool GeneratorImpl::EmitBitwiseBoolOp(std::ostream& out, const ast::BinaryExpres
 bool GeneratorImpl::EmitFloatModulo(std::ostream& out, const ast::BinaryExpression* expr) {
     std::string fn;
     auto* ret_ty = TypeOf(expr)->UnwrapRef();
-    fn = utils::GetOrCreate(float_modulo_funcs_, ret_ty, [&]() -> std::string {
-        TextBuffer b;
-        TINT_DEFER(helpers_.Append(b));
+    auto* lhs_ty = TypeOf(expr->lhs)->UnwrapRef();
+    auto* rhs_ty = TypeOf(expr->rhs)->UnwrapRef();
+    fn = utils::GetOrCreate(float_modulo_funcs_, BinaryOperandType{{lhs_ty, rhs_ty}},
+                            [&]() -> std::string {
+                                TextBuffer b;
+                                TINT_DEFER(helpers_.Append(b));
 
-        auto fn_name = UniqueIdentifier("tint_float_modulo");
-        std::vector<std::string> parameter_names;
-        {
-            auto decl = line(&b);
-            if (!EmitTypeAndName(decl, ret_ty, ast::StorageClass::kNone, ast::Access::kUndefined,
-                                 fn_name)) {
-                return "";
-            }
-            {
-                ScopedParen sp(decl);
-                const auto* ty = TypeOf(expr->lhs)->UnwrapRef();
-                if (!EmitTypeAndName(decl, ty, ast::StorageClass::kNone, ast::Access::kUndefined,
-                                     "lhs")) {
-                    return "";
-                }
-                decl << ", ";
-                ty = TypeOf(expr->rhs)->UnwrapRef();
-                if (!EmitTypeAndName(decl, ty, ast::StorageClass::kNone, ast::Access::kUndefined,
-                                     "rhs")) {
-                    return "";
-                }
-            }
-            decl << " {";
-        }
-        {
-            ScopedIndent si(&b);
-            line(&b) << "return (lhs - rhs * trunc(lhs / rhs));";
-        }
-        line(&b) << "}";
-        line(&b);
-        return fn_name;
-    });
+                                auto fn_name = UniqueIdentifier("tint_float_modulo");
+                                std::vector<std::string> parameter_names;
+                                {
+                                    auto decl = line(&b);
+                                    if (!EmitTypeAndName(decl, ret_ty, ast::StorageClass::kNone,
+                                                         ast::Access::kUndefined, fn_name)) {
+                                        return "";
+                                    }
+                                    {
+                                        ScopedParen sp(decl);
+                                        const auto* ty = TypeOf(expr->lhs)->UnwrapRef();
+                                        if (!EmitTypeAndName(decl, ty, ast::StorageClass::kNone,
+                                                             ast::Access::kUndefined, "lhs")) {
+                                            return "";
+                                        }
+                                        decl << ", ";
+                                        ty = TypeOf(expr->rhs)->UnwrapRef();
+                                        if (!EmitTypeAndName(decl, ty, ast::StorageClass::kNone,
+                                                             ast::Access::kUndefined, "rhs")) {
+                                            return "";
+                                        }
+                                    }
+                                    decl << " {";
+                                }
+                                {
+                                    ScopedIndent si(&b);
+                                    line(&b) << "return (lhs - rhs * trunc(lhs / rhs));";
+                                }
+                                line(&b) << "}";
+                                line(&b);
+                                return fn_name;
+                            });
 
     if (fn.empty()) {
         return false;
@@ -1336,7 +1339,8 @@ bool GeneratorImpl::EmitBarrierCall(std::ostream& out, const sem::Builtin* built
 const ast::Expression* GeneratorImpl::CreateF32Zero(const sem::Statement* stmt) {
     auto* zero = builder_.Expr(0_f);
     auto* f32 = builder_.create<sem::F32>();
-    auto* sem_zero = builder_.create<sem::Expression>(zero, f32, stmt, /* constant_value */ nullptr,
+    auto* sem_zero = builder_.create<sem::Expression>(zero, f32, sem::EvaluationStage::kRuntime,
+                                                      stmt, /* constant_value */ nullptr,
                                                       /* has_side_effects */ false);
     builder_.Sem().Add(zero, sem_zero);
     return zero;

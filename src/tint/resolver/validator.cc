@@ -533,14 +533,46 @@ bool Validator::StorageClassLayout(const sem::Variable* var,
     return true;
 }
 
+bool Validator::LocalVariable(const sem::Variable* v) const {
+    auto* decl = v->Declaration();
+    return Switch(
+        decl,  //
+        [&](const ast::Var* var) {
+            if (IsValidationEnabled(var->attributes,
+                                    ast::DisabledValidation::kIgnoreStorageClass)) {
+                if (!v->Type()->UnwrapRef()->IsConstructible()) {
+                    AddError("function-scope 'var' must have a constructible type",
+                             var->type ? var->type->source : var->source);
+                    return false;
+                }
+            }
+            return Var(v);
+        },                                        //
+        [&](const ast::Let*) { return Let(v); },  //
+        [&](const ast::Const*) { return true; },  //
+        [&](Default) {
+            TINT_ICE(Resolver, diagnostics_)
+                << "Validator::Variable() called with a unknown variable type: "
+                << decl->TypeInfo().name;
+            return false;
+        });
+}
+
 bool Validator::GlobalVariable(
     const sem::GlobalVariable* global,
-    std::unordered_map<uint32_t, const sem::Variable*> constant_ids,
-    std::unordered_map<const sem::Type*, const Source&> atomic_composite_info) const {
+    const std::unordered_map<uint32_t, const sem::Variable*>& constant_ids,
+    const std::unordered_map<const sem::Type*, const Source&>& atomic_composite_info) const {
     auto* decl = global->Declaration();
     bool ok = Switch(
         decl,  //
         [&](const ast::Var* var) {
+            if (auto* init = global->Constructor();
+                init && init->Stage() > sem::EvaluationStage::kOverride) {
+                AddError("module-scope 'var' initializer must be a constant or override expression",
+                         init->Declaration()->source);
+                return false;
+            }
+
             if (global->StorageClass() == ast::StorageClass::kNone) {
                 AddError("module-scope 'var' declaration must have a storage class", decl->source);
                 return false;
@@ -583,41 +615,17 @@ bool Validator::GlobalVariable(
                 return false;
             }
 
-            return Var(global);
-        },
-        [&](const ast::Let*) {
-            if (!decl->attributes.empty()) {
-                AddError("attribute is not valid for module-scope 'let' declaration",
-                         decl->attributes[0]->source);
+            auto name = symbols_.NameFor(var->symbol);
+            if (sem::ParseBuiltinType(name) != sem::BuiltinType::kNone) {
+                AddError(
+                    "'" + name + "' is a builtin and cannot be redeclared as a module-scope 'var'",
+                    var->source);
                 return false;
             }
-            return Let(global);
+
+            return Var(global);
         },
-        [&](const ast::Override*) {
-            for (auto* attr : decl->attributes) {
-                if (auto* id_attr = attr->As<ast::IdAttribute>()) {
-                    uint32_t id = id_attr->value;
-                    auto it = constant_ids.find(id);
-                    if (it != constant_ids.end() && it->second != global) {
-                        AddError("pipeline constant IDs must be unique", attr->source);
-                        AddNote("a pipeline constant with an ID of " + std::to_string(id) +
-                                    " was previously declared here:",
-                                ast::GetAttribute<ast::IdAttribute>(
-                                    it->second->Declaration()->attributes)
-                                    ->source);
-                        return false;
-                    }
-                    if (id > 65535) {
-                        AddError("pipeline constant IDs must be between 0 and 65535", attr->source);
-                        return false;
-                    }
-                } else {
-                    AddError("attribute is not valid for 'override' declaration", attr->source);
-                    return false;
-                }
-            }
-            return Override(global);
-        },
+        [&](const ast::Override*) { return Override(global, constant_ids); },
         [&](const ast::Const*) {
             if (!decl->attributes.empty()) {
                 AddError("attribute is not valid for module-scope 'const' declaration",
@@ -710,47 +718,13 @@ bool Validator::AtomicVariable(
     return true;
 }
 
-bool Validator::Variable(const sem::Variable* v) const {
-    auto* decl = v->Declaration();
-    return Switch(
-        decl,                                               //
-        [&](const ast::Var*) { return Var(v); },            //
-        [&](const ast::Let*) { return Let(v); },            //
-        [&](const ast::Override*) { return Override(v); },  //
-        [&](const ast::Const*) { return true; },            //
-        [&](Default) {
-            TINT_ICE(Resolver, diagnostics_)
-                << "Validator::Variable() called with a unknown variable type: "
-                << decl->TypeInfo().name;
-            return false;
-        });
-}
-
 bool Validator::Var(const sem::Variable* v) const {
     auto* var = v->Declaration()->As<ast::Var>();
     auto* storage_ty = v->Type()->UnwrapRef();
 
-    if (v->Is<sem::GlobalVariable>()) {
-        auto name = symbols_.NameFor(var->symbol);
-        if (sem::ParseBuiltinType(name) != sem::BuiltinType::kNone) {
-            AddError("'" + name + "' is a builtin and cannot be redeclared as a module-scope 'var'",
-                     var->source);
-            return false;
-        }
-    }
-
     if (!IsStorable(storage_ty)) {
         AddError(sem_.TypeNameOf(storage_ty) + " cannot be used as the type of a var", var->source);
         return false;
-    }
-
-    if (v->Is<sem::LocalVariable>() &&
-        IsValidationEnabled(var->attributes, ast::DisabledValidation::kIgnoreStorageClass)) {
-        if (!v->Type()->UnwrapRef()->IsConstructible()) {
-            AddError("function-scope 'var' must have a constructible type",
-                     var->type ? var->type->source : var->source);
-            return false;
-        }
     }
 
     if (storage_ty->is_handle() && var->declared_storage_class != ast::StorageClass::kNone) {
@@ -777,15 +751,6 @@ bool Validator::Let(const sem::Variable* v) const {
     auto* decl = v->Declaration();
     auto* storage_ty = v->Type()->UnwrapRef();
 
-    if (v->Is<sem::GlobalVariable>()) {
-        auto name = symbols_.NameFor(decl->symbol);
-        if (sem::ParseBuiltinType(name) != sem::BuiltinType::kNone) {
-            AddError("'" + name + "' is a builtin and cannot be redeclared as a 'let'",
-                     decl->source);
-            return false;
-        }
-    }
-
     if (!(storage_ty->IsConstructible() || storage_ty->Is<sem::Pointer>())) {
         AddError(sem_.TypeNameOf(storage_ty) + " cannot be used as the type of a 'let'",
                  decl->source);
@@ -794,9 +759,39 @@ bool Validator::Let(const sem::Variable* v) const {
     return true;
 }
 
-bool Validator::Override(const sem::Variable* v) const {
+bool Validator::Override(
+    const sem::Variable* v,
+    const std::unordered_map<uint32_t, const sem::Variable*>& constant_ids) const {
     auto* decl = v->Declaration();
     auto* storage_ty = v->Type()->UnwrapRef();
+
+    if (auto* init = v->Constructor(); init && init->Stage() > sem::EvaluationStage::kOverride) {
+        AddError("'override' initializer must be an override expression",
+                 init->Declaration()->source);
+        return false;
+    }
+
+    for (auto* attr : decl->attributes) {
+        if (auto* id_attr = attr->As<ast::IdAttribute>()) {
+            uint32_t id = id_attr->value;
+            auto it = constant_ids.find(id);
+            if (it != constant_ids.end() && it->second != v) {
+                AddError("pipeline constant IDs must be unique", attr->source);
+                AddNote("a pipeline constant with an ID of " + std::to_string(id) +
+                            " was previously declared here:",
+                        ast::GetAttribute<ast::IdAttribute>(it->second->Declaration()->attributes)
+                            ->source);
+                return false;
+            }
+            if (id > 65535) {
+                AddError("pipeline constant IDs must be between 0 and 65535", attr->source);
+                return false;
+            }
+        } else {
+            AddError("attribute is not valid for 'override' declaration", attr->source);
+            return false;
+        }
+    }
 
     auto name = symbols_.NameFor(decl->symbol);
     if (sem::ParseBuiltinType(name) != sem::BuiltinType::kNone) {

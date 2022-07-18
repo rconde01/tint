@@ -91,6 +91,7 @@ namespace tint::resolver {
 Resolver::Resolver(ProgramBuilder* builder)
     : builder_(builder),
       diagnostics_(builder->Diagnostics()),
+      const_eval_(*builder),
       intrinsic_table_(IntrinsicTable::Create(*builder)),
       sem_(builder, dependencies_),
       validator_(builder, sem_) {}
@@ -366,10 +367,11 @@ sem::Variable* Resolver::Let(const ast::Let* v, bool is_global) {
     sem::Variable* sem = nullptr;
     if (is_global) {
         sem = builder_->create<sem::GlobalVariable>(
-            v, ty, ast::StorageClass::kNone, ast::Access::kUndefined, /* constant_value */ nullptr,
-            sem::BindingPoint{});
+            v, ty, sem::EvaluationStage::kRuntime, ast::StorageClass::kNone,
+            ast::Access::kUndefined, /* constant_value */ nullptr, sem::BindingPoint{});
     } else {
-        sem = builder_->create<sem::LocalVariable>(v, ty, ast::StorageClass::kNone,
+        sem = builder_->create<sem::LocalVariable>(v, ty, sem::EvaluationStage::kRuntime,
+                                                   ast::StorageClass::kNone,
                                                    ast::Access::kUndefined, current_statement_,
                                                    /* constant_value */ nullptr);
     }
@@ -420,8 +422,8 @@ sem::Variable* Resolver::Override(const ast::Override* v) {
     }
 
     auto* sem = builder_->create<sem::GlobalVariable>(
-        v, ty, ast::StorageClass::kNone, ast::Access::kUndefined, /* constant_value */ nullptr,
-        sem::BindingPoint{});
+        v, ty, sem::EvaluationStage::kOverride, ast::StorageClass::kNone, ast::Access::kUndefined,
+        /* constant_value */ nullptr, sem::BindingPoint{});
 
     if (auto* id = ast::GetAttribute<ast::IdAttribute>(v->attributes)) {
         sem->SetConstantId(static_cast<uint16_t>(id->value));
@@ -481,11 +483,11 @@ sem::Variable* Resolver::Const(const ast::Const* c, bool is_global) {
     }
 
     auto* sem = is_global ? static_cast<sem::Variable*>(builder_->create<sem::GlobalVariable>(
-                                c, ty, ast::StorageClass::kNone, ast::Access::kUndefined, value,
-                                sem::BindingPoint{}))
+                                c, ty, sem::EvaluationStage::kConstant, ast::StorageClass::kNone,
+                                ast::Access::kUndefined, value, sem::BindingPoint{}))
                           : static_cast<sem::Variable*>(builder_->create<sem::LocalVariable>(
-                                c, ty, ast::StorageClass::kNone, ast::Access::kUndefined,
-                                current_statement_, value));
+                                c, ty, sem::EvaluationStage::kConstant, ast::StorageClass::kNone,
+                                ast::Access::kUndefined, current_statement_, value));
 
     sem->SetConstructor(rhs);
     builder_->Sem().Add(c, sem);
@@ -566,12 +568,14 @@ sem::Variable* Resolver::Var(const ast::Var* var, bool is_global) {
         if (auto bp = var->BindingPoint()) {
             binding_point = {bp.group->value, bp.binding->value};
         }
-        sem = builder_->create<sem::GlobalVariable>(var, var_ty, storage_class, access,
+        sem = builder_->create<sem::GlobalVariable>(var, var_ty, sem::EvaluationStage::kRuntime,
+                                                    storage_class, access,
                                                     /* constant_value */ nullptr, binding_point);
 
     } else {
-        sem = builder_->create<sem::LocalVariable>(
-            var, var_ty, storage_class, access, current_statement_, /* constant_value */ nullptr);
+        sem = builder_->create<sem::LocalVariable>(var, var_ty, sem::EvaluationStage::kRuntime,
+                                                   storage_class, access, current_statement_,
+                                                   /* constant_value */ nullptr);
     }
 
     sem->SetConstructor(rhs);
@@ -1269,6 +1273,7 @@ sem::Expression* Resolver::Expression(const ast::Expression* root) {
             [&](const ast::UnaryOpExpression* unary) -> sem::Expression* { return UnaryOp(unary); },
             [&](const ast::PhonyExpression*) -> sem::Expression* {
                 return builder_->create<sem::Expression>(expr, builder_->create<sem::Void>(),
+                                                         sem::EvaluationStage::kRuntime,
                                                          current_statement_,
                                                          /* constant_value */ nullptr,
                                                          /* has_side_effects */ false);
@@ -1313,7 +1318,7 @@ const sem::Expression* Resolver::Materialize(const sem::Expression* expr,
                 << ") called on expression with no constant value";
             return nullptr;
         }
-        auto materialized_val = ConvertValue(expr_val, target_ty, decl->source);
+        auto materialized_val = const_eval_.Convert(target_ty, expr_val, decl->source);
         if (!materialized_val) {
             // ConvertValue() has already failed and raised an diagnostic error.
             return nullptr;
@@ -1422,10 +1427,11 @@ sem::Expression* Resolver::IndexAccessor(const ast::IndexAccessorExpression* exp
         ty = builder_->create<sem::Reference>(ty, ref->StorageClass(), ref->Access());
     }
 
-    auto val = EvaluateIndexValue(obj, idx);
+    auto stage = sem::EarliestStage(obj->Stage(), idx->Stage());
+    auto val = const_eval_.Index(obj, idx);
     bool has_side_effects = idx->HasSideEffects() || obj->HasSideEffects();
     auto* sem = builder_->create<sem::IndexAccessorExpression>(
-        expr, ty, obj, idx, current_statement_, std::move(val), has_side_effects,
+        expr, ty, stage, obj, idx, current_statement_, std::move(val), has_side_effects,
         obj->SourceVariable());
     sem->Behaviors() = idx->Behaviors() + obj->Behaviors();
     return sem;
@@ -1441,9 +1447,10 @@ sem::Expression* Resolver::Bitcast(const ast::BitcastExpression* expr) {
         return nullptr;
     }
 
-    auto val = EvaluateBitcastValue(inner, ty);
-    auto* sem = builder_->create<sem::Expression>(expr, ty, current_statement_, std::move(val),
-                                                  inner->HasSideEffects());
+    auto val = const_eval_.Bitcast(ty, inner);
+    auto stage = sem::EvaluationStage::kRuntime;  // TODO(crbug.com/tint/1581)
+    auto* sem = builder_->create<sem::Expression>(expr, ty, stage, current_statement_,
+                                                  std::move(val), inner->HasSideEffects());
 
     sem->Behaviors() = inner->Behaviors();
 
@@ -1463,6 +1470,7 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
 
     // Resolve all of the arguments, their types and the set of behaviors.
     std::vector<const sem::Expression*> args(expr->args.size());
+    auto args_stage = sem::EvaluationStage::kConstant;
     sem::Behaviors arg_behaviors;
     for (size_t i = 0; i < expr->args.size(); i++) {
         auto* arg = sem_.Get(expr->args[i]);
@@ -1470,6 +1478,7 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
             return nullptr;
         }
         args[i] = arg;
+        args_stage = sem::EarliestStage(args_stage, arg->Stage());
         arg_behaviors.Add(arg->Behaviors());
     }
     arg_behaviors.Remove(sem::Behavior::kNext);
@@ -1482,19 +1491,50 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
     // call for a CtorConvIntrinsic with an optional template argument type.
     auto ct_ctor_or_conv = [&](CtorConvIntrinsic ty, const sem::Type* template_arg) -> sem::Call* {
         auto arg_tys = utils::Transform(args, [](auto* arg) { return arg->Type(); });
-        auto* call_target = intrinsic_table_->Lookup(ty, template_arg, arg_tys, expr->source);
-        if (!call_target) {
+        auto ctor_or_conv = intrinsic_table_->Lookup(ty, template_arg, arg_tys, expr->source);
+        if (!ctor_or_conv.target) {
             return nullptr;
         }
+        if (!MaterializeArguments(args, ctor_or_conv.target)) {
+            return nullptr;
+        }
+        const sem::Constant* value = nullptr;
+        auto stage = sem::EarliestStage(ctor_or_conv.target->Stage(), args_stage);
+        if (stage == sem::EvaluationStage::kConstant) {
+            value = (const_eval_.*ctor_or_conv.const_eval_fn)(ctor_or_conv.target->ReturnType(),
+                                                              args.data(), args.size());
+        }
+        return builder_->create<sem::Call>(expr, ctor_or_conv.target, stage, std::move(args),
+                                           current_statement_, value, has_side_effects);
+    };
+
+    // arr_or_str_ctor is a helper for building a sem::TypeConstructor for an array or structure
+    // constructor call target.
+    auto arr_or_str_ctor = [&](const sem::Type* ty,
+                               const sem::CallTarget* call_target) -> sem::Call* {
         if (!MaterializeArguments(args, call_target)) {
             return nullptr;
         }
-        auto val = EvaluateCtorOrConvValue(args, call_target->ReturnType());
-        return builder_->create<sem::Call>(expr, call_target, std::move(args), current_statement_,
-                                           val, has_side_effects);
+
+        auto stage = args_stage;               // The evaluation stage of the call
+        const sem::Constant* value = nullptr;  // The constant value for the call
+        if (stage == sem::EvaluationStage::kConstant) {
+            value = const_eval_.ArrayOrStructCtor(ty, args);
+            if (!value) {
+                // Constant evaluation failed.
+                // Can happen for expressions that will fail validation (later).
+                // Use the kRuntime EvaluationStage, as kConstant will trigger an assertion in the
+                // sem::Expression constructor, which checks that kConstant is paired with a
+                // constant value.
+                stage = sem::EvaluationStage::kRuntime;
+            }
+        }
+
+        return builder_->create<sem::Call>(expr, call_target, stage, std::move(args),
+                                           current_statement_, value, has_side_effects);
     };
 
-    // ct_ctor_or_conv is a helper for building either a sem::TypeConstructor or sem::TypeConversion
+    // ty_ctor_or_conv is a helper for building either a sem::TypeConstructor or sem::TypeConversion
     // call for the given semantic type.
     auto ty_ctor_or_conv = [&](const sem::Type* ty) {
         return Switch(
@@ -1512,7 +1552,7 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
             [&](const sem::Bool*) { return ct_ctor_or_conv(CtorConvIntrinsic::kBool, nullptr); },
             [&](const sem::Array* arr) -> sem::Call* {
                 auto* call_target = utils::GetOrCreate(
-                    array_ctors_, ArrayConstructorSig{{arr, args.size()}},
+                    array_ctors_, ArrayConstructorSig{{arr, args.size(), args_stage}},
                     [&]() -> sem::TypeConstructor* {
                         sem::ParameterList params(args.size());
                         for (size_t i = 0; i < args.size(); i++) {
@@ -1523,18 +1563,14 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
                                 ast::StorageClass::kNone,  // storage_class
                                 ast::Access::kUndefined);  // access
                         }
-                        return builder_->create<sem::TypeConstructor>(arr, std::move(params));
+                        return builder_->create<sem::TypeConstructor>(arr, std::move(params),
+                                                                      args_stage);
                     });
-                if (!MaterializeArguments(args, call_target)) {
-                    return nullptr;
-                }
-                auto val = EvaluateCtorOrConvValue(args, arr);
-                return builder_->create<sem::Call>(expr, call_target, std::move(args),
-                                                   current_statement_, val, has_side_effects);
+                return arr_or_str_ctor(arr, call_target);
             },
             [&](const sem::Struct* str) -> sem::Call* {
                 auto* call_target = utils::GetOrCreate(
-                    struct_ctors_, StructConstructorSig{{str, args.size()}},
+                    struct_ctors_, StructConstructorSig{{str, args.size(), args_stage}},
                     [&]() -> sem::TypeConstructor* {
                         sem::ParameterList params(std::min(args.size(), str->Members().size()));
                         for (size_t i = 0, n = params.size(); i < n; i++) {
@@ -1545,15 +1581,10 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
                                 ast::StorageClass::kNone,   // storage_class
                                 ast::Access::kUndefined);   // access
                         }
-                        return builder_->create<sem::TypeConstructor>(str, std::move(params));
+                        return builder_->create<sem::TypeConstructor>(str, std::move(params),
+                                                                      args_stage);
                     });
-                if (!MaterializeArguments(args, call_target)) {
-                    return nullptr;
-                }
-                auto val = EvaluateCtorOrConvValue(args, str);
-                return builder_->create<sem::Call>(expr, call_target, std::move(args),
-                                                   current_statement_, std::move(val),
-                                                   has_side_effects);
+                return arr_or_str_ctor(str, call_target);
             },
             [&](Default) {
                 AddError("type is not constructible", expr->source);
@@ -1681,29 +1712,30 @@ sem::Call* Resolver::BuiltinCall(const ast::CallExpression* expr,
         AddWarning("use of deprecated builtin", expr->source);
     }
 
+    auto stage = builtin.sem->Stage();
+    if (stage == sem::EvaluationStage::kConstant) {  // <-- Optimization
+        // If the builtin is not annotated with @const, then it can only be evaluated
+        // at runtime, in which case there's no point checking the evaluation stage of the
+        // arguments.
+
+        // The builtin is @const annotated. Check all arguments are also constant.
+        for (auto* arg : args) {
+            stage = sem::EarliestStage(stage, arg->Stage());
+        }
+    }
+
     // If the builtin is @const, and all arguments have constant values, evaluate the builtin now.
-    const sem::Constant* constant = nullptr;
-    if (builtin.const_eval_fn) {
-        std::vector<const sem::Constant*> values(args.size());
-        bool is_const = true;  // all arguments have constant values
-        for (size_t i = 0; i < values.size(); i++) {
-            if (auto v = args[i]->ConstantValue()) {
-                values[i] = std::move(v);
-            } else {
-                is_const = false;
-                break;
-            }
-        }
-        if (is_const) {
-            constant = builtin.const_eval_fn(*builder_, values.data(), args.size());
-        }
+    const sem::Constant* value = nullptr;
+    if (stage == sem::EvaluationStage::kConstant) {
+        value = (const_eval_.*builtin.const_eval_fn)(builtin.sem->ReturnType(), args.data(),
+                                                     args.size());
     }
 
     bool has_side_effects =
         builtin.sem->HasSideEffects() ||
         std::any_of(args.begin(), args.end(), [](auto* e) { return e->HasSideEffects(); });
-    auto* call = builder_->create<sem::Call>(expr, builtin.sem, std::move(args), current_statement_,
-                                             constant, has_side_effects);
+    auto* call = builder_->create<sem::Call>(expr, builtin.sem, stage, std::move(args),
+                                             current_statement_, value, has_side_effects);
 
     if (current_function_) {
         current_function_->AddDirectlyCalledBuiltin(builtin.sem);
@@ -1761,7 +1793,8 @@ sem::Call* Resolver::FunctionCall(const ast::CallExpression* expr,
     // TODO(crbug.com/tint/1420): For now, assume all function calls have side
     // effects.
     bool has_side_effects = true;
-    auto* call = builder_->create<sem::Call>(expr, target, std::move(args), current_statement_,
+    auto* call = builder_->create<sem::Call>(expr, target, sem::EvaluationStage::kRuntime,
+                                             std::move(args), current_statement_,
                                              /* constant_value */ nullptr, has_side_effects);
 
     target->AddCallSite(call);
@@ -1856,8 +1889,9 @@ sem::Expression* Resolver::Literal(const ast::LiteralExpression* literal) {
         return nullptr;
     }
 
-    auto val = EvaluateLiteralValue(literal, ty);
-    return builder_->create<sem::Expression>(literal, ty, current_statement_, std::move(val),
+    auto val = const_eval_.Literal(ty, literal);
+    return builder_->create<sem::Expression>(literal, ty, sem::EvaluationStage::kConstant,
+                                             current_statement_, std::move(val),
                                              /* has_side_effects */ false);
 }
 
@@ -1976,7 +2010,7 @@ sem::Expression* Resolver::MemberAccessor(const ast::MemberAccessorExpression* e
             ret = builder_->create<sem::Reference>(ret, ref->StorageClass(), ref->Access());
         }
 
-        auto* val = EvaluateMemberAccessValue(object, member);
+        auto* val = const_eval_.MemberAccess(object, member);
         return builder_->create<sem::StructMemberAccess>(expr, ret, current_statement_, val, object,
                                                          member, has_side_effects, source_var);
     }
@@ -2044,7 +2078,7 @@ sem::Expression* Resolver::MemberAccessor(const ast::MemberAccessorExpression* e
             // the swizzle.
             ret = builder_->create<sem::Vector>(vec->type(), static_cast<uint32_t>(size));
         }
-        auto* val = EvaluateSwizzleValue(object, ret, swizzle);
+        auto* val = const_eval_.Swizzle(ret, object, swizzle);
         return builder_->create<sem::Swizzle>(expr, ret, current_statement_, val, object,
                                               std::move(swizzle), has_side_effects, source_var);
     }
@@ -2060,6 +2094,7 @@ sem::Expression* Resolver::Binary(const ast::BinaryExpression* expr) {
     const auto* rhs = sem_.Get(expr->rhs);
     auto* lhs_ty = lhs->Type()->UnwrapRef();
     auto* rhs_ty = rhs->Type()->UnwrapRef();
+    auto stage = sem::EvaluationStage::kRuntime;  // TODO(crbug.com/tint/1581)
 
     auto op = intrinsic_table_->Lookup(expr->op, lhs_ty, rhs_ty, expr->source, false);
     if (!op.result) {
@@ -2078,9 +2113,14 @@ sem::Expression* Resolver::Binary(const ast::BinaryExpression* expr) {
         }
     }
 
-    auto* val = EvaluateBinaryValue(lhs, rhs, op);
+    const sem::Constant* value = nullptr;
+    if (op.const_eval_fn) {
+        const sem::Expression* args[] = {lhs, rhs};
+        value = (const_eval_.*op.const_eval_fn)(op.result, args, 2u);
+    }
+
     bool has_side_effects = lhs->HasSideEffects() || rhs->HasSideEffects();
-    auto* sem = builder_->create<sem::Expression>(expr, op.result, current_statement_, val,
+    auto* sem = builder_->create<sem::Expression>(expr, op.result, stage, current_statement_, value,
                                                   has_side_effects);
     sem->Behaviors() = lhs->Behaviors() + rhs->Behaviors();
 
@@ -2096,7 +2136,8 @@ sem::Expression* Resolver::UnaryOp(const ast::UnaryOpExpression* unary) {
 
     const sem::Type* ty = nullptr;
     const sem::Variable* source_var = nullptr;
-    const sem::Constant* val = nullptr;
+    const sem::Constant* value = nullptr;
+    auto stage = sem::EvaluationStage::kRuntime;
 
     switch (unary->op) {
         case ast::UnaryOp::kAddressOf:
@@ -2148,13 +2189,20 @@ sem::Expression* Resolver::UnaryOp(const ast::UnaryOpExpression* unary) {
                     return nullptr;
                 }
             }
+            stage = expr->Stage();
+            if (stage == sem::EvaluationStage::kConstant) {
+                if (op.const_eval_fn) {
+                    value = (const_eval_.*op.const_eval_fn)(ty, &expr, 1u);
+                } else {
+                    stage = sem::EvaluationStage::kRuntime;
+                }
+            }
             ty = op.result;
-            val = EvaluateUnaryValue(expr, op);
             break;
         }
     }
 
-    auto* sem = builder_->create<sem::Expression>(unary, ty, current_statement_, val,
+    auto* sem = builder_->create<sem::Expression>(unary, ty, stage, current_statement_, value,
                                                   expr->HasSideEffects(), source_var);
     sem->Behaviors() = expr->Behaviors();
     return sem;
@@ -2575,7 +2623,7 @@ sem::Statement* Resolver::VariableDeclStatement(const ast::VariableDeclStatement
             sem->Behaviors() = ctor->Behaviors();
         }
 
-        return validator_.Variable(variable);
+        return validator_.LocalVariable(variable);
     });
 }
 
