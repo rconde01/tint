@@ -15,9 +15,12 @@
 #ifndef SRC_TINT_SEM_INFO_H_
 #define SRC_TINT_SEM_INFO_H_
 
+#include <algorithm>
 #include <type_traits>
 #include <unordered_map>
+#include <vector>
 
+#include "src/tint/ast/node.h"
 #include "src/tint/debug.h"
 #include "src/tint/sem/node.h"
 #include "src/tint/sem/type_mappings.h"
@@ -35,7 +38,7 @@ class Info {
     /// Placeholder type used by Get() to provide a default value for EXPLICIT_SEM
     using InferFromAST = std::nullptr_t;
 
-    /// Resolves to the return type of the Get() method given the desired sementic
+    /// Resolves to the return type of the Get() method given the desired semantic
     /// type and AST type.
     template <typename SEM, typename AST>
     using GetResultType =
@@ -55,36 +58,42 @@ class Info {
     /// @return this Program
     Info& operator=(Info&& rhs);
 
-    /// Get looks up the semantic information for the AST node `node`.
+    /// @param highest_node_id the last allocated (numerically highest) AST node identifier.
+    void Reserve(ast::NodeID highest_node_id) {
+        nodes_.resize(std::max(highest_node_id.value + 1, nodes_.size()));
+    }
+
+    /// Get looks up the semantic information for the AST node `ast_node`.
     /// @param ast_node the AST node
     /// @returns a pointer to the semantic node if found, otherwise nullptr
     template <typename SEM = InferFromAST,
               typename AST = CastableBase,
               typename RESULT = GetResultType<SEM, AST>>
     const RESULT* Get(const AST* ast_node) const {
-        auto it = map_.find(ast_node);
-        if (it == map_.end()) {
-            return nullptr;
+        if (ast_node && ast_node->node_id.value < nodes_.size()) {
+            return As<RESULT>(nodes_[ast_node->node_id.value]);
         }
-        return As<RESULT>(it->second);
+        return nullptr;
     }
 
-    /// Add registers the semantic node `sem_node` for the AST node `node`.
+    /// Add registers the semantic node `sem_node` for the AST node `ast_node`.
     /// @param ast_node the AST node
     /// @param sem_node the semantic node
     template <typename AST>
     void Add(const AST* ast_node, const SemanticNodeTypeFor<AST>* sem_node) {
-        // Check there's no semantic info already existing for the node
-        TINT_ASSERT(Semantic, Get(ast_node) == nullptr);
-        map_.emplace(ast_node, sem_node);
+        Reserve(ast_node->node_id);
+        // Check there's no semantic info already existing for the AST node
+        TINT_ASSERT(Semantic, nodes_[ast_node->node_id.value] == nullptr);
+        nodes_[ast_node->node_id.value] = sem_node;
     }
 
-    /// Replace replaces any existing semantic node `sem_node` for the AST node `node`.
+    /// Replace replaces any existing semantic node `sem_node` for the AST node `ast_node`.
     /// @param ast_node the AST node
     /// @param sem_node the new semantic node
     template <typename AST>
     void Replace(const AST* ast_node, const SemanticNodeTypeFor<AST>* sem_node) {
-        map_[ast_node] = sem_node;
+        Reserve(ast_node->node_id);
+        nodes_[ast_node->node_id.value] = sem_node;
     }
 
     /// Wrap returns a new Info created with the contents of `inner`.
@@ -96,7 +105,7 @@ class Info {
     /// @return the Info that wraps `inner`
     static Info Wrap(const Info& inner) {
         Info out;
-        out.map_ = inner.map_;
+        out.nodes_ = inner.nodes_;
         out.module_ = inner.module_;
         return out;
     }
@@ -109,8 +118,8 @@ class Info {
     const sem::Module* Module() const { return module_; }
 
   private:
-    // The map of AST node to semantic node
-    std::unordered_map<const ast::Node*, const sem::Node*> map_;
+    // AST node index to semantic node
+    std::vector<const sem::Node*> nodes_;
     // The semantic module
     sem::Module* module_ = nullptr;
 };
