@@ -105,6 +105,9 @@ bool Resolver::Resolve() {
 
     builder_->Sem().Reserve(builder_->LastAllocatedNodeID());
 
+    // Pre-allocate the marked bitset with the total number of AST nodes.
+    marked_.Resize(builder_->ASTNodes().Count());
+
     if (!DependencyGraph::Build(builder_->AST(), builder_->Symbols(), builder_->Diagnostics(),
                                 dependencies_)) {
         return false;
@@ -161,7 +164,7 @@ bool Resolver::ResolveInternal() {
 
     bool result = true;
     for (auto* node : builder_->ASTNodes().Objects()) {
-        if (marked_.count(node) == 0) {
+        if (!marked_[node->node_id.value]) {
             TINT_ICE(Resolver, diagnostics_)
                 << "AST node '" << node->TypeInfo().name << "' was not reached by the resolver\n"
                 << "At: " << node->source << "\n"
@@ -1399,7 +1402,13 @@ sem::Expression* Resolver::IndexAccessor(const ast::IndexAccessorExpression* exp
     if (!idx) {
         return nullptr;
     }
-    auto* obj = sem_.Get(expr->object);
+    const auto* obj = sem_.Get(expr->object);
+    if (idx->Stage() != sem::EvaluationStage::kConstant) {
+        // If the index is non-constant, then the resulting expression is non-constant, so we'll
+        // have to materialize the object. For example, consider:
+        //     vec2(1, 2)[runtime-index]
+        obj = Materialize(obj);
+    }
     auto* obj_raw_ty = obj->Type();
     auto* obj_ty = obj_raw_ty->UnwrapRef();
     auto* ty = Switch(
@@ -2836,7 +2845,9 @@ bool Resolver::Mark(const ast::Node* node) {
         TINT_ICE(Resolver, diagnostics_) << "Resolver::Mark() called with nullptr";
         return false;
     }
-    if (marked_.emplace(node).second) {
+    auto marked_bit_ref = marked_[node->node_id.value];
+    if (!marked_bit_ref) {
+        marked_bit_ref = true;
         return true;
     }
     TINT_ICE(Resolver, diagnostics_) << "AST node '" << node->TypeInfo().name

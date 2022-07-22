@@ -462,6 +462,7 @@ set(TINT_LIB_SRCS
   transform/zero_init_workgroup_memory.cc
   transform/zero_init_workgroup_memory.h
   utils/bitcast.h
+  utils/bitset.h
   utils/block_allocator.h
   utils/compiler_macros.h
   utils/concat.h
@@ -474,6 +475,7 @@ set(TINT_LIB_SRCS
   utils/string.h
   utils/unique_allocator.h
   utils/unique_vector.h
+  utils/vector.h
   writer/append_vector.cc
   writer/append_vector.h
   writer/array_length_from_uniform_options.cc
@@ -841,6 +843,7 @@ if(TINT_BUILD_TESTS)
     traits_test.cc
     transform/transform_test.cc
     utils/bitcast_test.cc
+    utils/bitset_test.cc
     utils/block_allocator_test.cc
     utils/crc32_test.cc
     utils/defer_test.cc
@@ -857,6 +860,7 @@ if(TINT_BUILD_TESTS)
     utils/transform_test.cc
     utils/unique_allocator_test.cc
     utils/unique_vector_test.cc
+    utils/vector_test.cc
     writer/append_vector_test.cc
     writer/flatten_bindings_test.cc
     writer/float_to_string_test.cc
