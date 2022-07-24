@@ -562,7 +562,7 @@ Maybe<const ast::Variable*> ParserImpl::global_variable_decl(ast::AttributeList&
                             decl->type,                               // type
                             decl->storage_class,                      // storage class
                             decl->access,                             // access control
-                            initalizer,                               // constructor
+                            initalizer,                               // initializer
                             std::move(attrs));                        // attributes
 }
 
@@ -619,20 +619,20 @@ Maybe<const ast::Variable*> ParserImpl::global_constant_decl(ast::AttributeList&
         return create<ast::Const>(decl->source,                             // source
                                   builder_.Symbols().Register(decl->name),  // symbol
                                   decl->type,                               // type
-                                  initializer,                              // constructor
+                                  initializer,                              // initializer
                                   std::move(attrs));                        // attributes
     }
     if (is_overridable) {
         return create<ast::Override>(decl->source,                             // source
                                      builder_.Symbols().Register(decl->name),  // symbol
                                      decl->type,                               // type
-                                     initializer,                              // constructor
+                                     initializer,                              // initializer
                                      std::move(attrs));                        // attributes
     }
     return create<ast::Const>(decl->source,                             // source
                               builder_.Symbols().Register(decl->name),  // symbol
                               decl->type,                               // type
-                              initializer,                              // constructor
+                              initializer,                              // initializer
                               std::move(attrs));                        // attributes
 }
 
@@ -1271,34 +1271,31 @@ Expect<const ast::Type*> ParserImpl::expect_type_decl_matrix(Token t) {
     return builder_.ty.mat(make_source_range_from(t.source()), subtype, columns, rows);
 }
 
-// storage_class
-//  : INPUT
-//  | OUTPUT
-//  | UNIFORM
-//  | WORKGROUP
-//  | STORAGE
-//  | PRIVATE
-//  | FUNCTION
 Expect<ast::StorageClass> ParserImpl::expect_storage_class(std::string_view use) {
     auto source = peek().source();
+    auto ident = expect_ident("storage class");
+    if (ident.errored) {
+        return Failure::kErrored;
+    }
 
-    if (match(Token::Type::kUniform)) {
+    auto name = ident.value;
+    if (name == "uniform") {
         return {ast::StorageClass::kUniform, source};
     }
 
-    if (match(Token::Type::kWorkgroup)) {
+    if (name == "workgroup") {
         return {ast::StorageClass::kWorkgroup, source};
     }
 
-    if (match(Token::Type::kStorage)) {
+    if (name == "storage" || name == "storage_buffer") {
         return {ast::StorageClass::kStorage, source};
     }
 
-    if (match(Token::Type::kPrivate)) {
+    if (name == "private") {
         return {ast::StorageClass::kPrivate, source};
     }
 
-    if (match(Token::Type::kFunction)) {
+    if (name == "function") {
         return {ast::StorageClass::kFunction, source};
     }
 
@@ -1567,9 +1564,9 @@ Expect<ast::BlockStatement*> ParserImpl::expect_body_stmt() {
     });
 }
 
-// paren_rhs_stmt
+// paren_expression
 //   : PAREN_LEFT logical_or_expression PAREN_RIGHT
-Expect<const ast::Expression*> ParserImpl::expect_paren_rhs_stmt() {
+Expect<const ast::Expression*> ParserImpl::expect_paren_expression() {
     return expect_paren_block("", [&]() -> Expect<const ast::Expression*> {
         auto expr = logical_or_expression();
         if (expr.errored) {
@@ -1803,18 +1800,18 @@ Maybe<const ast::VariableDeclStatement*> ParserImpl::variable_stmt() {
             return Failure::kErrored;
         }
 
-        auto constructor = logical_or_expression();
-        if (constructor.errored) {
+        auto initializer = logical_or_expression();
+        if (initializer.errored) {
             return Failure::kErrored;
         }
-        if (!constructor.matched) {
-            return add_error(peek(), "missing constructor for 'const' declaration");
+        if (!initializer.matched) {
+            return add_error(peek(), "missing initializer for 'const' declaration");
         }
 
         auto* const_ = create<ast::Const>(decl->source,                             // source
                                           builder_.Symbols().Register(decl->name),  // symbol
                                           decl->type,                               // type
-                                          constructor.value,                        // constructor
+                                          initializer.value,                        // initializer
                                           ast::AttributeList{});                    // attributes
 
         return create<ast::VariableDeclStatement>(decl->source, const_);
@@ -1831,18 +1828,18 @@ Maybe<const ast::VariableDeclStatement*> ParserImpl::variable_stmt() {
             return Failure::kErrored;
         }
 
-        auto constructor = logical_or_expression();
-        if (constructor.errored) {
+        auto initializer = logical_or_expression();
+        if (initializer.errored) {
             return Failure::kErrored;
         }
-        if (!constructor.matched) {
-            return add_error(peek(), "missing constructor for 'let' declaration");
+        if (!initializer.matched) {
+            return add_error(peek(), "missing initializer for 'let' declaration");
         }
 
         auto* let = create<ast::Let>(decl->source,                             // source
                                      builder_.Symbols().Register(decl->name),  // symbol
                                      decl->type,                               // type
-                                     constructor.value,                        // constructor
+                                     initializer.value,                        // initializer
                                      ast::AttributeList{});                    // attributes
 
         return create<ast::VariableDeclStatement>(decl->source, let);
@@ -1856,17 +1853,17 @@ Maybe<const ast::VariableDeclStatement*> ParserImpl::variable_stmt() {
         return Failure::kNoMatch;
     }
 
-    const ast::Expression* constructor = nullptr;
+    const ast::Expression* initializer = nullptr;
     if (match(Token::Type::kEqual)) {
-        auto constructor_expr = logical_or_expression();
-        if (constructor_expr.errored) {
+        auto initializer_expr = logical_or_expression();
+        if (initializer_expr.errored) {
             return Failure::kErrored;
         }
-        if (!constructor_expr.matched) {
-            return add_error(peek(), "missing constructor for 'var' declaration");
+        if (!initializer_expr.matched) {
+            return add_error(peek(), "missing initializer for 'var' declaration");
         }
 
-        constructor = constructor_expr.value;
+        initializer = initializer_expr.value;
     }
 
     auto* var = create<ast::Var>(decl->source,                             // source
@@ -1874,7 +1871,7 @@ Maybe<const ast::VariableDeclStatement*> ParserImpl::variable_stmt() {
                                  decl->type,                               // type
                                  decl->storage_class,                      // storage class
                                  decl->access,                             // access control
-                                 constructor,                              // constructor
+                                 initializer,                              // initializer
                                  ast::AttributeList{});                    // attributes
 
     return create<ast::VariableDeclStatement>(var->source, var);
@@ -1963,7 +1960,7 @@ Maybe<const ast::IfStatement*> ParserImpl::if_stmt() {
 }
 
 // switch_stmt
-//   : SWITCH paren_rhs_stmt BRACKET_LEFT switch_body+ BRACKET_RIGHT
+//   : SWITCH paren_expression BRACKET_LEFT switch_body+ BRACKET_RIGHT
 Maybe<const ast::SwitchStatement*> ParserImpl::switch_stmt() {
     Source source;
     if (!match(Token::Type::kSwitch, &source)) {
@@ -2325,8 +2322,8 @@ Maybe<const ast::BlockStatement*> ParserImpl::continuing_stmt() {
 //   : IDENT argument_expression_list?
 //   | type_decl argument_expression_list
 //   | const_literal
-//   | paren_rhs_stmt
-//   | BITCAST LESS_THAN type_decl GREATER_THAN paren_rhs_stmt
+//   | paren_expression
+//   | BITCAST LESS_THAN type_decl GREATER_THAN paren_expression
 Maybe<const ast::Expression*> ParserImpl::primary_expression() {
     auto t = peek();
     auto source = t.source();
@@ -2340,7 +2337,7 @@ Maybe<const ast::Expression*> ParserImpl::primary_expression() {
     }
 
     if (t.Is(Token::Type::kParenLeft)) {
-        auto paren = expect_paren_rhs_stmt();
+        auto paren = expect_paren_expression();
         if (paren.errored) {
             return Failure::kErrored;
         }
@@ -2356,7 +2353,7 @@ Maybe<const ast::Expression*> ParserImpl::primary_expression() {
             return Failure::kErrored;
         }
 
-        auto params = expect_paren_rhs_stmt();
+        auto params = expect_paren_expression();
         if (params.errored) {
             return Failure::kErrored;
         }

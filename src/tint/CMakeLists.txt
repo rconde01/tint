@@ -441,6 +441,8 @@ set(TINT_LIB_SRCS
   transform/single_entry_point.h
   transform/spirv_atomic.cc
   transform/spirv_atomic.h
+  transform/substitute_override.cc
+  transform/substitute_override.h
   transform/transform.cc
   transform/transform.h
   transform/unshadow.cc
@@ -730,6 +732,7 @@ if(TINT_BUILD_TESTS)
     ast/module_clone_test.cc
     ast/module_test.cc
     ast/multisampled_texture_test.cc
+    ast/override_test.cc
     ast/phony_expression_test.cc
     ast/pointer_test.cc
     ast/return_statement_test.cc
@@ -963,7 +966,7 @@ if(TINT_BUILD_TESTS)
       reader/wgsl/parser_impl_loop_stmt_test.cc
       reader/wgsl/parser_impl_multiplicative_expression_test.cc
       reader/wgsl/parser_impl_param_list_test.cc
-      reader/wgsl/parser_impl_paren_rhs_stmt_test.cc
+      reader/wgsl/parser_impl_paren_expression_test.cc
       reader/wgsl/parser_impl_pipeline_stage_test.cc
       reader/wgsl/parser_impl_primary_expression_test.cc
       reader/wgsl/parser_impl_relational_expression_test.cc
@@ -1109,6 +1112,7 @@ if(TINT_BUILD_TESTS)
       transform/simplify_pointers_test.cc
       transform/single_entry_point_test.cc
       transform/spirv_atomic_test.cc
+      transform/substitute_override_test.cc
       transform/test_helper.h
       transform/unshadow_test.cc
       transform/unwind_discard_functions_test.cc
