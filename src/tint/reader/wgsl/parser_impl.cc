@@ -275,14 +275,17 @@ void ParserImpl::deprecated(const Source& source, const std::string& msg) {
 }
 
 const Token& ParserImpl::next() {
-    if (!tokens_[next_token_idx_].IsEof() && !tokens_[next_token_idx_].IsError()) {
-        // Skip over any placeholder elements
-        while (true) {
-            if (!tokens_[next_token_idx_].IsPlaceholder()) {
-                break;
-            }
-            next_token_idx_++;
+    // If the next token is already an error or the end of file, stay there.
+    if (tokens_[next_token_idx_].IsEof() || tokens_[next_token_idx_].IsError()) {
+        return tokens_[next_token_idx_];
+    }
+
+    // Skip over any placeholder elements
+    while (true) {
+        if (!tokens_[next_token_idx_].IsPlaceholder()) {
+            break;
         }
+        next_token_idx_++;
     }
     last_source_idx_ = next_token_idx_;
     return tokens_[next_token_idx_++];
@@ -397,7 +400,7 @@ Maybe<bool> ParserImpl::enable_directive() {
             synchronized_ = true;
             next();
             name = {"f16", t.source()};
-        } else if (t.Is(Token::Type::kParenLeft)){
+        } else if (t.Is(Token::Type::kParenLeft)) {
             // A common error case is writing `enable(foo);` instead of `enable foo;`.
             synchronized_ = false;
             return add_error(t.source(), "enable directives don't take parenthesis");
@@ -1312,28 +1315,12 @@ Expect<ast::StorageClass> ParserImpl::expect_storage_class(std::string_view use)
         return Failure::kErrored;
     }
 
-    auto name = ident.value;
-    if (name == "uniform") {
-        return {ast::StorageClass::kUniform, t.source()};
+    auto storage_class = ast::ParseStorageClass(ident.value);
+    if (storage_class == ast::StorageClass::kInvalid) {
+        return add_error(t.source(), "invalid storage class", use);
     }
 
-    if (name == "workgroup") {
-        return {ast::StorageClass::kWorkgroup, t.source()};
-    }
-
-    if (name == "storage" || name == "storage_buffer") {
-        return {ast::StorageClass::kStorage, t.source()};
-    }
-
-    if (name == "private") {
-        return {ast::StorageClass::kPrivate, t.source()};
-    }
-
-    if (name == "function") {
-        return {ast::StorageClass::kFunction, t.source()};
-    }
-
-    return add_error(t.source(), "invalid storage class", use);
+    return {storage_class, t.source()};
 }
 
 // struct_decl

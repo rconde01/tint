@@ -16,6 +16,7 @@
 
 #include "src/tint/utils/io/command.h"
 #include "src/tint/utils/io/tmpfile.h"
+#include "src/tint/utils/string.h"
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -65,11 +66,11 @@ Result HlslUsingDXC(const std::string& dxc_path,
         // Match Dawn's compile flags
         // See dawn\src\dawn_native\d3d12\RenderPipelineD3D12.cpp
         // and dawn_native\d3d12\ShaderModuleD3D12.cpp (GetDXCArguments)
-        const char* compileFlags =
-            "/Zpr "  // D3DCOMPILE_PACK_MATRIX_ROW_MAJOR
-            "/Gis";  // D3DCOMPILE_IEEE_STRICTNESS
-
-        auto res = dxc(profile, "-E " + ep.first, compileFlags, file.Path());
+        auto res = dxc(profile,
+                       "-E " + ep.first,  // Entry point
+                       "/Zpr",            // D3DCOMPILE_PACK_MATRIX_ROW_MAJOR
+                       "/Gis",            // D3DCOMPILE_IEEE_STRICTNESS
+                       file.Path());
         if (!res.out.empty()) {
             if (!result.output.empty()) {
                 result.output += "\n";
@@ -83,6 +84,9 @@ Result HlslUsingDXC(const std::string& dxc_path,
             result.output += res.err;
         }
         result.failed = (res.error_code != 0);
+
+        // Remove the temporary file name from the output to keep output deterministic
+        result.output = utils::ReplaceAll(result.output, file.Path(), "shader.hlsl");
     }
 
     if (entry_points.empty()) {
