@@ -85,10 +85,10 @@ bool IsRelational(tint::ast::BinaryOp op) {
            op == tint::ast::BinaryOp::kGreaterThanEqual;
 }
 
-bool RequiresOESSampleVariables(tint::ast::Builtin builtin) {
+bool RequiresOESSampleVariables(tint::ast::BuiltinValue builtin) {
     switch (builtin) {
-        case tint::ast::Builtin::kSampleIndex:
-        case tint::ast::Builtin::kSampleMask:
+        case tint::ast::BuiltinValue::kSampleIndex:
+        case tint::ast::BuiltinValue::kSampleMask:
             return true;
         default:
             return false;
@@ -141,7 +141,7 @@ const char* convert_texel_format_to_glsl(const ast::TexelFormat format) {
             return "rgba32i";
         case ast::TexelFormat::kRgba32Float:
             return "rgba32f";
-        case ast::TexelFormat::kNone:
+        case ast::TexelFormat::kInvalid:
             return "unknown";
     }
     return "unknown";
@@ -1932,10 +1932,11 @@ bool GeneratorImpl::EmitGlobalVariable(const ast::Variable* global) {
                 case ast::StorageClass::kIn:
                 case ast::StorageClass::kOut:
                     return EmitIOVariable(sem);
-                default:
+                default: {
                     TINT_ICE(Writer, diagnostics_)
                         << "unhandled storage class " << sem->StorageClass();
                     return false;
+                }
             }
         },
         [&](const ast::Let* let) { return EmitProgramConstVariable(let); },
@@ -2158,7 +2159,7 @@ bool GeneratorImpl::EmitEntryPointFunction(const ast::Function* func) {
                     TINT_ICE(Writer, builder_.Diagnostics())
                         << "expected a pipeline-overridable constant";
                 }
-                out << kSpecConstantPrefix << global->ConstantId();
+                out << kSpecConstantPrefix << global->OverrideId().value;
             } else {
                 out << std::to_string(wgsize[i].value);
             }
@@ -3052,18 +3053,18 @@ bool GeneratorImpl::EmitOverride(const ast::Override* override) {
     auto* type = sem->Type();
 
     auto* global = sem->As<sem::GlobalVariable>();
-    auto const_id = global->ConstantId();
+    auto override_id = global->OverrideId();
 
-    line() << "#ifndef " << kSpecConstantPrefix << const_id;
+    line() << "#ifndef " << kSpecConstantPrefix << override_id.value;
 
     if (override->constructor != nullptr) {
         auto out = line();
-        out << "#define " << kSpecConstantPrefix << const_id << " ";
+        out << "#define " << kSpecConstantPrefix << override_id.value << " ";
         if (!EmitExpression(out, override->constructor)) {
             return false;
         }
     } else {
-        line() << "#error spec constant required for constant id " << const_id;
+        line() << "#error spec constant required for constant id " << override_id.value;
     }
     line() << "#endif";
     {
@@ -3073,7 +3074,7 @@ bool GeneratorImpl::EmitOverride(const ast::Override* override) {
                              builder_.Symbols().NameFor(override->symbol))) {
             return false;
         }
-        out << " = " << kSpecConstantPrefix << const_id << ";";
+        out << " = " << kSpecConstantPrefix << override_id.value << ";";
     }
 
     return true;

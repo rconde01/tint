@@ -70,46 +70,6 @@ const char kReadAccess[] = "read";
 const char kWriteAccess[] = "write";
 const char kReadWriteAccess[] = "read_write";
 
-ast::Builtin ident_to_builtin(std::string_view str) {
-    if (str == "position") {
-        return ast::Builtin::kPosition;
-    }
-    if (str == "vertex_index") {
-        return ast::Builtin::kVertexIndex;
-    }
-    if (str == "instance_index") {
-        return ast::Builtin::kInstanceIndex;
-    }
-    if (str == "front_facing") {
-        return ast::Builtin::kFrontFacing;
-    }
-    if (str == "frag_depth") {
-        return ast::Builtin::kFragDepth;
-    }
-    if (str == "local_invocation_id") {
-        return ast::Builtin::kLocalInvocationId;
-    }
-    if (str == "local_invocation_idx" || str == "local_invocation_index") {
-        return ast::Builtin::kLocalInvocationIndex;
-    }
-    if (str == "global_invocation_id") {
-        return ast::Builtin::kGlobalInvocationId;
-    }
-    if (str == "workgroup_id") {
-        return ast::Builtin::kWorkgroupId;
-    }
-    if (str == "num_workgroups") {
-        return ast::Builtin::kNumWorkgroups;
-    }
-    if (str == "sample_index") {
-        return ast::Builtin::kSampleIndex;
-    }
-    if (str == "sample_mask") {
-        return ast::Builtin::kSampleMask;
-    }
-    return ast::Builtin::kNone;
-}
-
 const char kBindingAttribute[] = "binding";
 const char kBuiltinAttribute[] = "builtin";
 const char kGroupAttribute[] = "group";
@@ -288,7 +248,11 @@ const Token& ParserImpl::next() {
         next_token_idx_++;
     }
     last_source_idx_ = next_token_idx_;
-    return tokens_[next_token_idx_++];
+
+    if (!tokens_[next_token_idx_].IsEof() && !tokens_[next_token_idx_].IsError()) {
+        next_token_idx_++;
+    }
+    return tokens_[last_source_idx_];
 }
 
 const Token& ParserImpl::peek(size_t idx) {
@@ -302,6 +266,9 @@ const Token& ParserImpl::peek(size_t idx) {
             break;
         }
         idx++;
+    }
+    if (next_token_idx_ + idx >= tokens_.size()) {
+        return tokens_[tokens_.size() - 1];
     }
 
     return tokens_[next_token_idx_ + idx];
@@ -418,7 +385,7 @@ Maybe<bool> ParserImpl::enable_directive() {
         }
 
         auto extension = ast::ParseExtension(name.value);
-        if (extension == ast::Extension::kNone) {
+        if (extension == ast::Extension::kInvalid) {
             return add_error(name.source, "unsupported extension: '" + name.value + "'");
         }
         builder_.AST().AddEnable(create<ast::Enable>(name.source, extension));
@@ -920,55 +887,11 @@ Maybe<const ast::Type*> ParserImpl::depth_texture() {
 //  | 'rgba32float'
 Expect<ast::TexelFormat> ParserImpl::expect_texel_format(std::string_view use) {
     auto& t = next();
-    if (t == "rgba8unorm") {
-        return ast::TexelFormat::kRgba8Unorm;
+    auto fmt = ast::ParseTexelFormat(t.to_str());
+    if (fmt == ast::TexelFormat::kInvalid) {
+        return add_error(t.source(), "invalid format", use);
     }
-    if (t == "rgba8snorm") {
-        return ast::TexelFormat::kRgba8Snorm;
-    }
-    if (t == "rgba8uint") {
-        return ast::TexelFormat::kRgba8Uint;
-    }
-    if (t == "rgba8sint") {
-        return ast::TexelFormat::kRgba8Sint;
-    }
-    if (t == "rgba16uint") {
-        return ast::TexelFormat::kRgba16Uint;
-    }
-    if (t == "rgba16sint") {
-        return ast::TexelFormat::kRgba16Sint;
-    }
-    if (t == "rgba16float") {
-        return ast::TexelFormat::kRgba16Float;
-    }
-    if (t == "r32uint") {
-        return ast::TexelFormat::kR32Uint;
-    }
-    if (t == "r32sint") {
-        return ast::TexelFormat::kR32Sint;
-    }
-    if (t == "r32float") {
-        return ast::TexelFormat::kR32Float;
-    }
-    if (t == "rg32uint") {
-        return ast::TexelFormat::kRg32Uint;
-    }
-    if (t == "rg32sint") {
-        return ast::TexelFormat::kRg32Sint;
-    }
-    if (t == "rg32float") {
-        return ast::TexelFormat::kRg32Float;
-    }
-    if (t == "rgba32uint") {
-        return ast::TexelFormat::kRgba32Uint;
-    }
-    if (t == "rgba32sint") {
-        return ast::TexelFormat::kRgba32Sint;
-    }
-    if (t == "rgba32float") {
-        return ast::TexelFormat::kRgba32Float;
-    }
-    return add_error(t.source(), "invalid format", use);
+    return fmt;
 }
 
 // variable_ident_decl
@@ -1558,14 +1481,14 @@ Expect<ast::PipelineStage> ParserImpl::expect_pipeline_stage() {
     return add_error(peek(), "invalid value for stage attribute");
 }
 
-Expect<ast::Builtin> ParserImpl::expect_builtin() {
+Expect<ast::BuiltinValue> ParserImpl::expect_builtin() {
     auto ident = expect_ident("builtin");
     if (ident.errored) {
         return Failure::kErrored;
     }
 
-    ast::Builtin builtin = ident_to_builtin(ident.value);
-    if (builtin == ast::Builtin::kNone) {
+    ast::BuiltinValue builtin = ast::ParseBuiltinValue(ident.value);
+    if (builtin == ast::BuiltinValue::kInvalid) {
         return add_error(ident.source, "invalid value for builtin attribute");
     }
 

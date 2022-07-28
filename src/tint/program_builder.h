@@ -19,6 +19,8 @@
 #include <unordered_set>
 #include <utility>
 
+#include "tint/override_id.h"
+
 #include "src/tint/ast/alias.h"
 #include "src/tint/ast/array.h"
 #include "src/tint/ast/assignment_statement.h"
@@ -2518,14 +2520,14 @@ class ProgramBuilder {
     /// @param source the source information
     /// @param builtin the builtin value
     /// @returns the builtin attribute pointer
-    const ast::BuiltinAttribute* Builtin(const Source& source, ast::Builtin builtin) {
+    const ast::BuiltinAttribute* Builtin(const Source& source, ast::BuiltinValue builtin) {
         return create<ast::BuiltinAttribute>(source, builtin);
     }
 
     /// Creates an ast::BuiltinAttribute
     /// @param builtin the builtin value
     /// @returns the builtin attribute pointer
-    const ast::BuiltinAttribute* Builtin(ast::Builtin builtin) {
+    const ast::BuiltinAttribute* Builtin(ast::BuiltinValue builtin) {
         return create<ast::BuiltinAttribute>(source_, builtin);
     }
 
@@ -2592,11 +2594,24 @@ class ProgramBuilder {
     /// @param source the source information
     /// @param id the id value
     /// @returns the override attribute pointer
+    const ast::IdAttribute* Id(const Source& source, OverrideId id) {
+        return create<ast::IdAttribute>(source, id.value);
+    }
+
+    /// Creates an ast::IdAttribute with an override identifier
+    /// @param id the optional id value
+    /// @returns the override attribute pointer
+    const ast::IdAttribute* Id(OverrideId id) { return Id(source_, id); }
+
+    /// Creates an ast::IdAttribute
+    /// @param source the source information
+    /// @param id the id value
+    /// @returns the override attribute pointer
     const ast::IdAttribute* Id(const Source& source, uint32_t id) {
         return create<ast::IdAttribute>(source, id);
     }
 
-    /// Creates an ast::IdAttribute with a constant ID
+    /// Creates an ast::IdAttribute with an override identifier
     /// @param id the optional id value
     /// @returns the override attribute pointer
     const ast::IdAttribute* Id(uint32_t id) { return Id(source_, id); }

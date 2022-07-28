@@ -3,6 +3,9 @@
 Template file for use with tools/src/cmd/gen to generate builtin_table.inl
 Used by BuiltinTable.cc for builtin overload resolution.
 
+To update the generated file, run:
+    ./tools/run gen
+
 See:
 * tools/src/cmd/gen for structures used by this template
 * https://golang.org/pkg/text/template/ for documentation on the template syntax
@@ -179,7 +182,6 @@ constexpr IntrinsicInfo kConstructorsAndConverters[] = {
 {{- $class := PascalCase .Name -}}
 /// TypeMatcher for 'type {{.Name}}'
 {{- if .Decl.Source.S.Filepath  }}
-/// @see {{.Decl.Source}}
 {{- end  }}
 class {{$class}} : public TypeMatcher {
  public:
@@ -234,7 +236,6 @@ std::string {{$class}}::String(MatchState*{{if .TemplateParams}} state{{end}}) c
 {{- $class := PascalCase .Name -}}
 /// TypeMatcher for 'match {{.Name}}'
 {{- if .Decl.Source.S.Filepath  }}
-/// @see {{.Decl.Source}}
 {{- end  }}
 class {{$class}} : public TypeMatcher {
  public:
@@ -282,7 +283,6 @@ std::string {{$class}}::String(MatchState*) const {
 {{- $enum := PascalCase .Enum.Name -}}
 /// EnumMatcher for 'match {{.Name}}'
 {{- if .Decl.Source.S.Filepath  }}
-/// @see {{.Decl.Source}}
 {{- end  }}
 class {{$class}} : public NumberMatcher {
  public:

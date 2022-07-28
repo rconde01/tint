@@ -562,7 +562,7 @@ bool Validator::LocalVariable(const sem::Variable* v) const {
 
 bool Validator::GlobalVariable(
     const sem::GlobalVariable* global,
-    const std::unordered_map<uint32_t, const sem::Variable*>& constant_ids,
+    const std::unordered_map<OverrideId, const sem::Variable*>& override_ids,
     const std::unordered_map<const sem::Type*, const Source&>& atomic_composite_info) const {
     auto* decl = global->Declaration();
     bool ok = Switch(
@@ -627,7 +627,7 @@ bool Validator::GlobalVariable(
 
             return Var(global);
         },
-        [&](const ast::Override*) { return Override(global, constant_ids); },
+        [&](const ast::Override*) { return Override(global, override_ids); },
         [&](const ast::Const*) {
             if (!decl->attributes.empty()) {
                 AddError("attribute is not valid for module-scope 'const' declaration",
@@ -763,7 +763,7 @@ bool Validator::Let(const sem::Variable* v) const {
 
 bool Validator::Override(
     const sem::Variable* v,
-    const std::unordered_map<uint32_t, const sem::Variable*>& constant_ids) const {
+    const std::unordered_map<OverrideId, const sem::Variable*>& override_ids) const {
     auto* decl = v->Declaration();
     auto* storage_ty = v->Type()->UnwrapRef();
 
@@ -776,17 +776,21 @@ bool Validator::Override(
     for (auto* attr : decl->attributes) {
         if (auto* id_attr = attr->As<ast::IdAttribute>()) {
             uint32_t id = id_attr->value;
-            auto it = constant_ids.find(id);
-            if (it != constant_ids.end() && it->second != v) {
-                AddError("pipeline constant IDs must be unique", attr->source);
-                AddNote("a pipeline constant with an ID of " + std::to_string(id) +
+            if (id > std::numeric_limits<decltype(OverrideId::value)>::max()) {
+                AddError(
+                    "override IDs must be between 0 and " +
+                        std::to_string(std::numeric_limits<decltype(OverrideId::value)>::max()),
+                    attr->source);
+                return false;
+            }
+            if (auto it =
+                    override_ids.find(OverrideId{static_cast<decltype(OverrideId::value)>(id)});
+                it != override_ids.end() && it->second != v) {
+                AddError("override IDs must be unique", attr->source);
+                AddNote("a override with an ID of " + std::to_string(id) +
                             " was previously declared here:",
                         ast::GetAttribute<ast::IdAttribute>(it->second->Declaration()->attributes)
                             ->source);
-                return false;
-            }
-            if (id > 65535) {
-                AddError("pipeline constant IDs must be between 0 and 65535", attr->source);
                 return false;
             }
         } else {
@@ -886,7 +890,7 @@ bool Validator::BuiltinAttribute(const ast::BuiltinAttribute* attr,
     bool is_stage_mismatch = false;
     bool is_output = !is_input;
     switch (attr->builtin) {
-        case ast::Builtin::kPosition:
+        case ast::BuiltinValue::kPosition:
             if (stage != ast::PipelineStage::kNone &&
                 !((is_input && stage == ast::PipelineStage::kFragment) ||
                   (is_output && stage == ast::PipelineStage::kVertex))) {
@@ -898,10 +902,10 @@ bool Validator::BuiltinAttribute(const ast::BuiltinAttribute* attr,
                 return false;
             }
             break;
-        case ast::Builtin::kGlobalInvocationId:
-        case ast::Builtin::kLocalInvocationId:
-        case ast::Builtin::kNumWorkgroups:
-        case ast::Builtin::kWorkgroupId:
+        case ast::BuiltinValue::kGlobalInvocationId:
+        case ast::BuiltinValue::kLocalInvocationId:
+        case ast::BuiltinValue::kNumWorkgroups:
+        case ast::BuiltinValue::kWorkgroupId:
             if (stage != ast::PipelineStage::kNone &&
                 !(stage == ast::PipelineStage::kCompute && is_input)) {
                 is_stage_mismatch = true;
@@ -912,7 +916,7 @@ bool Validator::BuiltinAttribute(const ast::BuiltinAttribute* attr,
                 return false;
             }
             break;
-        case ast::Builtin::kFragDepth:
+        case ast::BuiltinValue::kFragDepth:
             if (stage != ast::PipelineStage::kNone &&
                 !(stage == ast::PipelineStage::kFragment && !is_input)) {
                 is_stage_mismatch = true;
@@ -922,7 +926,7 @@ bool Validator::BuiltinAttribute(const ast::BuiltinAttribute* attr,
                 return false;
             }
             break;
-        case ast::Builtin::kFrontFacing:
+        case ast::BuiltinValue::kFrontFacing:
             if (stage != ast::PipelineStage::kNone &&
                 !(stage == ast::PipelineStage::kFragment && is_input)) {
                 is_stage_mismatch = true;
@@ -932,7 +936,7 @@ bool Validator::BuiltinAttribute(const ast::BuiltinAttribute* attr,
                 return false;
             }
             break;
-        case ast::Builtin::kLocalInvocationIndex:
+        case ast::BuiltinValue::kLocalInvocationIndex:
             if (stage != ast::PipelineStage::kNone &&
                 !(stage == ast::PipelineStage::kCompute && is_input)) {
                 is_stage_mismatch = true;
@@ -942,8 +946,8 @@ bool Validator::BuiltinAttribute(const ast::BuiltinAttribute* attr,
                 return false;
             }
             break;
-        case ast::Builtin::kVertexIndex:
-        case ast::Builtin::kInstanceIndex:
+        case ast::BuiltinValue::kVertexIndex:
+        case ast::BuiltinValue::kInstanceIndex:
             if (stage != ast::PipelineStage::kNone &&
                 !(stage == ast::PipelineStage::kVertex && is_input)) {
                 is_stage_mismatch = true;
@@ -953,7 +957,7 @@ bool Validator::BuiltinAttribute(const ast::BuiltinAttribute* attr,
                 return false;
             }
             break;
-        case ast::Builtin::kSampleMask:
+        case ast::BuiltinValue::kSampleMask:
             if (stage != ast::PipelineStage::kNone && !(stage == ast::PipelineStage::kFragment)) {
                 is_stage_mismatch = true;
             }
@@ -962,7 +966,7 @@ bool Validator::BuiltinAttribute(const ast::BuiltinAttribute* attr,
                 return false;
             }
             break;
-        case ast::Builtin::kSampleIndex:
+        case ast::BuiltinValue::kSampleIndex:
             if (stage != ast::PipelineStage::kNone &&
                 !(stage == ast::PipelineStage::kFragment && is_input)) {
                 is_stage_mismatch = true;
@@ -1102,7 +1106,7 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
     // already been seen, in order to catch conflicts.
     // TODO(jrprice): This state could be stored in sem::Function instead, and
     // then passed to sem::Function since it would be useful there too.
-    std::unordered_set<ast::Builtin> builtins;
+    std::unordered_set<ast::BuiltinValue> builtins;
     std::unordered_set<uint32_t> locations;
     enum class ParamOrRetType {
         kParameter,
@@ -1237,7 +1241,7 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
                 bool has_position = false;
                 if (pipeline_io_attribute) {
                     if (auto* builtin = pipeline_io_attribute->As<ast::BuiltinAttribute>()) {
-                        has_position = (builtin->builtin == ast::Builtin::kPosition);
+                        has_position = (builtin->builtin == ast::BuiltinValue::kPosition);
                     }
                 }
                 if (!has_position) {
@@ -1298,13 +1302,13 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
     }
 
     if (decl->PipelineStage() == ast::PipelineStage::kVertex &&
-        builtins.count(ast::Builtin::kPosition) == 0) {
+        builtins.count(ast::BuiltinValue::kPosition) == 0) {
         // Check module-scope variables, as the SPIR-V sanitizer generates these.
         bool found = false;
         for (auto* global : func->TransitivelyReferencedGlobals()) {
             if (auto* builtin =
                     ast::GetAttribute<ast::BuiltinAttribute>(global->Declaration()->attributes)) {
-                if (builtin->builtin == ast::Builtin::kPosition) {
+                if (builtin->builtin == ast::BuiltinValue::kPosition) {
                     found = true;
                     break;
                 }
@@ -1708,13 +1712,13 @@ bool Validator::RequiredExtensionForBuiltinFunction(
     }
 
     const auto extension = builtin->RequiredExtension();
-    if (extension == ast::Extension::kNone) {
+    if (extension == ast::Extension::kInvalid) {
         return true;
     }
 
     if (!enabled_extensions.contains(extension)) {
         AddError("cannot call built-in function '" + std::string(builtin->str()) +
-                     "' without extension " + ast::str(extension),
+                     "' without extension " + utils::ToString(extension),
                  call->Declaration()->source);
         return false;
     }
@@ -2111,7 +2115,7 @@ bool Validator::Structure(const sem::Struct* str, ast::PipelineStage stage) cons
                                       /* is_input */ false)) {
                     return false;
                 }
-                if (builtin->builtin == ast::Builtin::kPosition) {
+                if (builtin->builtin == ast::BuiltinValue::kPosition) {
                     has_position = true;
                 }
             } else if (auto* interpolate = attr->As<ast::InterpolateAttribute>()) {

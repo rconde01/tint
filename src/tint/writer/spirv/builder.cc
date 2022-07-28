@@ -380,7 +380,7 @@ void Builder::push_extension(const char* extension) {
 
 bool Builder::GenerateExtension(ast::Extension extension) {
     switch (extension) {
-        case ast::Extension::kChromiumExperimentalDP4a:
+        case ast::Extension::kChromiumExperimentalDp4A:
             push_extension("SPV_KHR_integer_dot_product");
             push_capability(SpvCapabilityDotProductKHR);
             push_capability(SpvCapabilityDotProductInput4x8BitPackedKHR);
@@ -540,7 +540,7 @@ bool Builder::GenerateExecutionModes(const ast::Function* func, uint32_t id) {
                             << "expected a pipeline-overridable constant";
                     }
                     constant.is_spec_op = true;
-                    constant.constant_id = sem_const->ConstantId();
+                    constant.constant_id = sem_const->OverrideId().value;
                 }
 
                 auto result = GenerateConstantIfNeeded(constant);
@@ -563,7 +563,7 @@ bool Builder::GenerateExecutionModes(const ast::Function* func, uint32_t id) {
     }
 
     for (auto builtin : func_sem->TransitivelyReferencedBuiltinVariables()) {
-        if (builtin.second->builtin == ast::Builtin::kFragDepth) {
+        if (builtin.second->builtin == ast::BuiltinValue::kFragDepth) {
             push_execution_mode(spv::Op::OpExecutionMode,
                                 {Operand(id), U32Operand(SpvExecutionModeDepthReplacing)});
         }
@@ -1340,7 +1340,7 @@ uint32_t Builder::GenerateTypeConstructorOrConversion(const sem::Call* call,
     // Generate the zero initializer if there are no values provided.
     if (args.IsEmpty()) {
         if (global_var && global_var->Declaration()->Is<ast::Override>()) {
-            auto constant_id = global_var->ConstantId();
+            auto constant_id = global_var->OverrideId().value;
             if (result_type->Is<sem::I32>()) {
                 return GenerateConstantIfNeeded(ScalarConstant::I32(0).AsSpecOp(constant_id));
             }
@@ -1664,7 +1664,7 @@ uint32_t Builder::GenerateLiteralIfNeeded(const ast::Variable* var,
     auto* global = builder_.Sem().Get<sem::GlobalVariable>(var);
     if (global && global->Declaration()->Is<ast::Override>()) {
         constant.is_spec_op = true;
-        constant.constant_id = global->ConstantId();
+        constant.constant_id = global->OverrideId().value;
     }
 
     Switch(
@@ -4135,9 +4135,9 @@ SpvStorageClass Builder::ConvertStorageClass(ast::StorageClass klass) const {
     return SpvStorageClassMax;
 }
 
-SpvBuiltIn Builder::ConvertBuiltin(ast::Builtin builtin, ast::StorageClass storage) {
+SpvBuiltIn Builder::ConvertBuiltin(ast::BuiltinValue builtin, ast::StorageClass storage) {
     switch (builtin) {
-        case ast::Builtin::kPosition:
+        case ast::BuiltinValue::kPosition:
             if (storage == ast::StorageClass::kIn) {
                 return SpvBuiltInFragCoord;
             } else if (storage == ast::StorageClass::kOut) {
@@ -4146,32 +4146,32 @@ SpvBuiltIn Builder::ConvertBuiltin(ast::Builtin builtin, ast::StorageClass stora
                 TINT_ICE(Writer, builder_.Diagnostics()) << "invalid storage class for builtin";
                 break;
             }
-        case ast::Builtin::kVertexIndex:
+        case ast::BuiltinValue::kVertexIndex:
             return SpvBuiltInVertexIndex;
-        case ast::Builtin::kInstanceIndex:
+        case ast::BuiltinValue::kInstanceIndex:
             return SpvBuiltInInstanceIndex;
-        case ast::Builtin::kFrontFacing:
+        case ast::BuiltinValue::kFrontFacing:
             return SpvBuiltInFrontFacing;
-        case ast::Builtin::kFragDepth:
+        case ast::BuiltinValue::kFragDepth:
             return SpvBuiltInFragDepth;
-        case ast::Builtin::kLocalInvocationId:
+        case ast::BuiltinValue::kLocalInvocationId:
             return SpvBuiltInLocalInvocationId;
-        case ast::Builtin::kLocalInvocationIndex:
+        case ast::BuiltinValue::kLocalInvocationIndex:
             return SpvBuiltInLocalInvocationIndex;
-        case ast::Builtin::kGlobalInvocationId:
+        case ast::BuiltinValue::kGlobalInvocationId:
             return SpvBuiltInGlobalInvocationId;
-        case ast::Builtin::kPointSize:
+        case ast::BuiltinValue::kPointSize:
             return SpvBuiltInPointSize;
-        case ast::Builtin::kWorkgroupId:
+        case ast::BuiltinValue::kWorkgroupId:
             return SpvBuiltInWorkgroupId;
-        case ast::Builtin::kNumWorkgroups:
+        case ast::BuiltinValue::kNumWorkgroups:
             return SpvBuiltInNumWorkgroups;
-        case ast::Builtin::kSampleIndex:
+        case ast::BuiltinValue::kSampleIndex:
             push_capability(SpvCapabilitySampleRateShading);
             return SpvBuiltInSampleId;
-        case ast::Builtin::kSampleMask:
+        case ast::BuiltinValue::kSampleMask:
             return SpvBuiltInSampleMask;
-        case ast::Builtin::kNone:
+        case ast::BuiltinValue::kInvalid:
             break;
     }
     return SpvBuiltInMax;
@@ -4241,7 +4241,7 @@ SpvImageFormat Builder::convert_texel_format_to_spv(const ast::TexelFormat forma
             return SpvImageFormatRgba32i;
         case ast::TexelFormat::kRgba32Float:
             return SpvImageFormatRgba32f;
-        case ast::TexelFormat::kNone:
+        case ast::TexelFormat::kInvalid:
             return SpvImageFormatUnknown;
     }
     return SpvImageFormatUnknown;

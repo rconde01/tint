@@ -148,29 +148,30 @@ std::vector<EntryPoint> Inspector::GetEntryPoints() {
         entry_point.remapped_name = program_->Symbols().NameFor(func->symbol);
 
         switch (func->PipelineStage()) {
-            case ast::PipelineStage::kCompute:
+            case ast::PipelineStage::kCompute: {
                 entry_point.stage = PipelineStage::kCompute;
+
+                auto wgsize = sem->WorkgroupSize();
+                if (!wgsize[0].overridable_const && !wgsize[1].overridable_const &&
+                    !wgsize[2].overridable_const) {
+                    entry_point.workgroup_size = {wgsize[0].value, wgsize[1].value,
+                                                  wgsize[2].value};
+                }
                 break;
-            case ast::PipelineStage::kFragment:
+            }
+            case ast::PipelineStage::kFragment: {
                 entry_point.stage = PipelineStage::kFragment;
                 break;
-            case ast::PipelineStage::kVertex:
+            }
+            case ast::PipelineStage::kVertex: {
                 entry_point.stage = PipelineStage::kVertex;
                 break;
-            default:
+            }
+            default: {
                 TINT_UNREACHABLE(Inspector, diagnostics_)
                     << "invalid pipeline stage for entry point '" << entry_point.name << "'";
                 break;
-        }
-
-        auto wgsize = sem->WorkgroupSize();
-        entry_point.workgroup_size_x = wgsize[0].value;
-        entry_point.workgroup_size_y = wgsize[1].value;
-        entry_point.workgroup_size_z = wgsize[2].value;
-        if (wgsize[0].overridable_const || wgsize[1].overridable_const ||
-            wgsize[2].overridable_const) {
-            // TODO(crbug.com/tint/713): Handle overridable constants.
-            TINT_ASSERT(Inspector, false);
+            }
         }
 
         for (auto* param : sem->Parameters()) {
@@ -179,15 +180,15 @@ std::vector<EntryPoint> Inspector::GetEntryPoints() {
                                         entry_point.input_variables);
 
             entry_point.input_position_used |= ContainsBuiltin(
-                ast::Builtin::kPosition, param->Type(), param->Declaration()->attributes);
+                ast::BuiltinValue::kPosition, param->Type(), param->Declaration()->attributes);
             entry_point.front_facing_used |= ContainsBuiltin(
-                ast::Builtin::kFrontFacing, param->Type(), param->Declaration()->attributes);
+                ast::BuiltinValue::kFrontFacing, param->Type(), param->Declaration()->attributes);
             entry_point.sample_index_used |= ContainsBuiltin(
-                ast::Builtin::kSampleIndex, param->Type(), param->Declaration()->attributes);
+                ast::BuiltinValue::kSampleIndex, param->Type(), param->Declaration()->attributes);
             entry_point.input_sample_mask_used |= ContainsBuiltin(
-                ast::Builtin::kSampleMask, param->Type(), param->Declaration()->attributes);
+                ast::BuiltinValue::kSampleMask, param->Type(), param->Declaration()->attributes);
             entry_point.num_workgroups_used |= ContainsBuiltin(
-                ast::Builtin::kNumWorkgroups, param->Type(), param->Declaration()->attributes);
+                ast::BuiltinValue::kNumWorkgroups, param->Type(), param->Declaration()->attributes);
         }
 
         if (!sem->ReturnType()->Is<sem::Void>()) {
@@ -195,7 +196,7 @@ std::vector<EntryPoint> Inspector::GetEntryPoints() {
                                         entry_point.output_variables);
 
             entry_point.output_sample_mask_used = ContainsBuiltin(
-                ast::Builtin::kSampleMask, sem->ReturnType(), func->return_type_attributes);
+                ast::BuiltinValue::kSampleMask, sem->ReturnType(), func->return_type_attributes);
         }
 
         for (auto* var : sem->TransitivelyReferencedGlobals()) {
@@ -205,28 +206,28 @@ std::vector<EntryPoint> Inspector::GetEntryPoints() {
 
             auto* global = var->As<sem::GlobalVariable>();
             if (global && global->Declaration()->Is<ast::Override>()) {
-                OverridableConstant overridable_constant;
-                overridable_constant.name = name;
-                overridable_constant.numeric_id = global->ConstantId();
+                Override override;
+                override.name = name;
+                override.id = global->OverrideId();
                 auto* type = var->Type();
                 TINT_ASSERT(Inspector, type->is_scalar());
                 if (type->is_bool_scalar_or_vector()) {
-                    overridable_constant.type = OverridableConstant::Type::kBool;
+                    override.type = Override::Type::kBool;
                 } else if (type->is_float_scalar()) {
-                    overridable_constant.type = OverridableConstant::Type::kFloat32;
+                    override.type = Override::Type::kFloat32;
                 } else if (type->is_signed_integer_scalar()) {
-                    overridable_constant.type = OverridableConstant::Type::kInt32;
+                    override.type = Override::Type::kInt32;
                 } else if (type->is_unsigned_integer_scalar()) {
-                    overridable_constant.type = OverridableConstant::Type::kUint32;
+                    override.type = Override::Type::kUint32;
                 } else {
                     TINT_UNREACHABLE(Inspector, diagnostics_);
                 }
 
-                overridable_constant.is_initialized = global->Declaration()->constructor;
-                overridable_constant.is_numeric_id_specified =
+                override.is_initialized = global->Declaration()->constructor;
+                override.is_id_specified =
                     ast::HasAttribute<ast::IdAttribute>(global->Declaration()->attributes);
 
-                entry_point.overridable_constants.push_back(overridable_constant);
+                entry_point.overrides.push_back(override);
             }
         }
 
@@ -236,37 +237,37 @@ std::vector<EntryPoint> Inspector::GetEntryPoints() {
     return result;
 }
 
-std::map<uint32_t, Scalar> Inspector::GetConstantIDs() {
-    std::map<uint32_t, Scalar> result;
+std::map<OverrideId, Scalar> Inspector::GetOverrideDefaultValues() {
+    std::map<OverrideId, Scalar> result;
     for (auto* var : program_->AST().GlobalVariables()) {
         auto* global = program_->Sem().Get<sem::GlobalVariable>(var);
         if (!global || !global->Declaration()->Is<ast::Override>()) {
             continue;
         }
 
-        // If there are conflicting defintions for a constant id, that is invalid
+        // If there are conflicting defintions for an override id, that is invalid
         // WGSL, so the resolver should catch it. Thus here the inspector just
-        // assumes all definitions of the constant id are the same, so only needs
-        // to find the first reference to constant id.
-        uint32_t constant_id = global->ConstantId();
-        if (result.find(constant_id) != result.end()) {
+        // assumes all definitions of the override id are the same, so only needs
+        // to find the first reference to override id.
+        OverrideId override_id = global->OverrideId();
+        if (result.find(override_id) != result.end()) {
             continue;
         }
 
         if (!var->constructor) {
-            result[constant_id] = Scalar();
+            result[override_id] = Scalar();
             continue;
         }
 
         auto* literal = var->constructor->As<ast::LiteralExpression>();
         if (!literal) {
             // This is invalid WGSL, but handling gracefully.
-            result[constant_id] = Scalar();
+            result[override_id] = Scalar();
             continue;
         }
 
         if (auto* l = literal->As<ast::BoolLiteralExpression>()) {
-            result[constant_id] = Scalar(l->value);
+            result[override_id] = Scalar(l->value);
             continue;
         }
 
@@ -274,32 +275,32 @@ std::map<uint32_t, Scalar> Inspector::GetConstantIDs() {
             switch (l->suffix) {
                 case ast::IntLiteralExpression::Suffix::kNone:
                 case ast::IntLiteralExpression::Suffix::kI:
-                    result[constant_id] = Scalar(static_cast<int32_t>(l->value));
+                    result[override_id] = Scalar(static_cast<int32_t>(l->value));
                     continue;
                 case ast::IntLiteralExpression::Suffix::kU:
-                    result[constant_id] = Scalar(static_cast<uint32_t>(l->value));
+                    result[override_id] = Scalar(static_cast<uint32_t>(l->value));
                     continue;
             }
         }
 
         if (auto* l = literal->As<ast::FloatLiteralExpression>()) {
-            result[constant_id] = Scalar(static_cast<float>(l->value));
+            result[override_id] = Scalar(static_cast<float>(l->value));
             continue;
         }
 
-        result[constant_id] = Scalar();
+        result[override_id] = Scalar();
     }
 
     return result;
 }
 
-std::map<std::string, uint32_t> Inspector::GetConstantNameToIdMap() {
-    std::map<std::string, uint32_t> result;
+std::map<std::string, OverrideId> Inspector::GetNamedOverrideIds() {
+    std::map<std::string, OverrideId> result;
     for (auto* var : program_->AST().GlobalVariables()) {
         auto* global = program_->Sem().Get<sem::GlobalVariable>(var);
         if (global && global->Declaration()->Is<ast::Override>()) {
             auto name = program_->Symbols().NameFor(var->symbol);
-            result[name] = global->ConstantId();
+            result[name] = global->OverrideId();
         }
     }
     return result;
@@ -644,7 +645,7 @@ void Inspector::AddEntryPointInOutVariables(std::string name,
     variables.push_back(stage_variable);
 }
 
-bool Inspector::ContainsBuiltin(ast::Builtin builtin,
+bool Inspector::ContainsBuiltin(ast::BuiltinValue builtin,
                                 const sem::Type* type,
                                 const ast::AttributeList& attributes) const {
     auto* unwrapped_type = type->UnwrapRef();

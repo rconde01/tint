@@ -1676,7 +1676,7 @@ bool ParserImpl::ConvertDecorationsForVariable(uint32_t id,
                     break;
             }
             auto ast_builtin = enum_converter_.ToBuiltin(spv_builtin);
-            if (ast_builtin == ast::Builtin::kNone) {
+            if (ast_builtin == ast::BuiltinValue::kInvalid) {
                 // A diagnostic has already been emitted.
                 return false;
             }
@@ -2476,7 +2476,7 @@ const Pointer* ParserImpl::GetTypeForHandleVar(const spvtools::opt::Instruction&
         } else {
             const auto access = ast::Access::kWrite;
             const auto format = enum_converter_.ToTexelFormat(image_type->format());
-            if (format == ast::TexelFormat::kNone) {
+            if (format == ast::TexelFormat::kInvalid) {
                 return nullptr;
             }
             ast_store_type = ty_.StorageTexture(dim, format, access);

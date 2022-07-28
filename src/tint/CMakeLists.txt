@@ -77,8 +77,8 @@ set(TINT_LIB_SRCS
   ast/break_statement.h
   ast/builtin_attribute.cc
   ast/builtin_attribute.h
-  ast/builtin.cc
-  ast/builtin.h
+  ast/builtin_value.cc
+  ast/builtin_value.h
   ast/call_expression.cc
   ast/call_expression.h
   ast/call_statement.cc
@@ -198,6 +198,8 @@ set(TINT_LIB_SRCS
   ast/struct.h
   ast/switch_statement.cc
   ast/switch_statement.h
+  ast/texel_format.cc
+  ast/texel_format.h
   ast/texture.cc
   ast/texture.h
   ast/traverse_expressions.h
@@ -698,6 +700,7 @@ if(TINT_BUILD_TESTS)
     ast/builtin_attribute_test.cc
     ast/builtin_texture_helper_test.cc
     ast/builtin_texture_helper_test.h
+    ast/builtin_value_test.cc
     ast/call_expression_test.cc
     ast/call_statement_test.cc
     ast/case_statement_test.cc
@@ -739,6 +742,7 @@ if(TINT_BUILD_TESTS)
     ast/sampled_texture_test.cc
     ast/sampler_test.cc
     ast/stage_attribute_test.cc
+    ast/storage_class_test.cc
     ast/storage_texture_test.cc
     ast/stride_attribute_test.cc
     ast/struct_member_align_attribute_test.cc
@@ -748,6 +752,7 @@ if(TINT_BUILD_TESTS)
     ast/struct_test.cc
     ast/switch_statement_test.cc
     ast/test_helper.h
+    ast/texel_format_test.cc
     ast/texture_test.cc
     ast/traverse_expressions_test.cc
     ast/u32_test.cc
@@ -793,7 +798,7 @@ if(TINT_BUILD_TESTS)
     resolver/is_host_shareable_test.cc
     resolver/is_storeable_test.cc
     resolver/materialize_test.cc
-    resolver/pipeline_overridable_constant_test.cc
+    resolver/override_test.cc
     resolver/ptr_ref_test.cc
     resolver/ptr_ref_validation_test.cc
     resolver/resolver_behavior_test.cc
@@ -1277,6 +1282,9 @@ if(TINT_BUILD_BENCHMARKS)
 
   set(TINT_BENCHMARK_SRC
     "castable_bench.cc"
+    "ast/extension_bench.cc"
+    "ast/storage_class_bench.cc"
+    "ast/texel_format_bench.cc"
     "bench/benchmark.cc"
     "reader/wgsl/parser_bench.cc"
   )
