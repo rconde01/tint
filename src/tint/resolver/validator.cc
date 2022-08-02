@@ -1495,28 +1495,21 @@ bool Validator::Call(const sem::Call* call, sem::Statement* current_statement) c
     bool is_call_stmt =
         current_statement && Is<ast::CallStatement>(current_statement->Declaration(),
                                                     [&](auto* stmt) { return stmt->expr == expr; });
-
-    return Switch(
-        call->Target(),  //
-        [&](const sem::TypeConversion*) {
-            if (is_call_stmt) {
+    if (is_call_stmt) {
+        return Switch(
+            call->Target(),  //
+            [&](const sem::TypeConversion*) {
                 AddError("type conversion evaluated but not used", call->Declaration()->source);
                 return false;
-            }
-            return true;
-        },
-        [&](const sem::TypeConstructor* ctor) {
-            if (is_call_stmt) {
+            },
+            [&](const sem::TypeConstructor*) {
                 AddError("type constructor evaluated but not used", call->Declaration()->source);
                 return false;
-            }
-            return Switch(
-                ctor->ReturnType(),  //
-                [&](const sem::Array* arr) { return ArrayConstructor(expr, arr); },
-                [&](const sem::Struct* str) { return StructureConstructor(expr, str); },
-                [&](Default) { return true; });
-        },
-        [&](Default) { return true; });
+            },
+            [&](Default) { return true; });
+    }
+
+    return true;
 }
 
 bool Validator::DiscardStatement(const sem::Statement* stmt,
@@ -1874,18 +1867,17 @@ bool Validator::ArrayConstructor(const ast::CallExpression* ctor,
     auto* elem_ty = array_type->ElemType();
     for (auto* value : values) {
         auto* value_ty = sem_.TypeOf(value)->UnwrapRef();
-        if (value_ty != elem_ty) {
-            AddError(
-                "type in array constructor does not match array type: "
-                "expected '" +
-                    sem_.TypeNameOf(elem_ty) + "', found '" + sem_.TypeNameOf(value_ty) + "'",
-                value->source);
+        if (sem::Type::ConversionRank(value_ty, elem_ty) == sem::Type::kNoConversion) {
+            AddError("'" + sem_.TypeNameOf(value_ty) +
+                         "' cannot be used to construct an array of '" + sem_.TypeNameOf(elem_ty) +
+                         "'",
+                     value->source);
             return false;
         }
     }
 
     if (array_type->IsRuntimeSized()) {
-        AddError("cannot init a runtime-sized array", ctor->source);
+        AddError("cannot construct a runtime-sized array", ctor->source);
         return false;
     } else if (!elem_ty->IsConstructible()) {
         AddError("array constructor has non-constructible element type", ctor->source);
@@ -2011,6 +2003,11 @@ bool Validator::PipelineStages(const std::vector<sem::Function*>& entry_points) 
 bool Validator::Array(const sem::Array* arr, const Source& source) const {
     auto* el_ty = arr->ElemType();
 
+    if (!IsPlain(el_ty)) {
+        AddError(sem_.TypeNameOf(el_ty) + " cannot be used as an element type of an array", source);
+        return false;
+    }
+
     if (!IsFixedFootprint(el_ty)) {
         AddError("an array element type cannot contain a runtime-sized array", source);
         return false;
@@ -2020,8 +2017,7 @@ bool Validator::Array(const sem::Array* arr, const Source& source) const {
 
 bool Validator::ArrayStrideAttribute(const ast::StrideAttribute* attr,
                                      uint32_t el_size,
-                                     uint32_t el_align,
-                                     const Source& source) const {
+                                     uint32_t el_align) const {
     auto stride = attr->stride;
     bool is_valid_stride = (stride >= el_size) && (stride >= el_align) && (stride % el_align == 0);
     if (!is_valid_stride) {
@@ -2032,8 +2028,8 @@ bool Validator::ArrayStrideAttribute(const ast::StrideAttribute* attr,
         AddError(
             "arrays decorated with the stride attribute must have a stride "
             "that is at least the size of the element type, and be a multiple "
-            "of the element type's alignment value.",
-            source);
+            "of the element type's alignment value",
+            attr->source);
         return false;
     }
     return true;

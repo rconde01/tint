@@ -1316,7 +1316,9 @@ sem::Expression* Resolver::Expression(const ast::Expression* root) {
     return nullptr;
 }
 
-const sem::Type* Resolver::ConcreteType(const sem::Type* ty, const sem::Type* target_ty) {
+const sem::Type* Resolver::ConcreteType(const sem::Type* ty,
+                                        const sem::Type* target_ty,
+                                        const Source& source) {
     auto i32 = [&] { return builder_->create<sem::I32>(); };
     auto f32 = [&] { return builder_->create<sem::F32>(); };
     auto i32v = [&](uint32_t width) { return builder_->create<sem::Vector>(i32(), width); };
@@ -1342,6 +1344,16 @@ const sem::Type* Resolver::ConcreteType(const sem::Type* ty, const sem::Type* ta
                           [&](const sem::AbstractFloat*) {
                               return target_ty ? target_ty : f32m(m->columns(), m->rows());
                           });
+        },
+        [&](const sem::Array* a) -> const sem::Type* {
+            const sem::Type* target_el_ty = nullptr;
+            if (auto* target_arr_ty = As<sem::Array>(target_ty)) {
+                target_el_ty = target_arr_ty->ElemType();
+            }
+            if (auto* el_ty = ConcreteType(a->ElemType(), target_el_ty, source)) {
+                return Array(source, el_ty, a->Count(), /* explicit_stride */ 0);
+            }
+            return nullptr;
         });
 }
 
@@ -1354,7 +1366,7 @@ const sem::Expression* Resolver::Materialize(const sem::Expression* expr,
 
     auto* decl = expr->Declaration();
 
-    auto* concrete_ty = ConcreteType(expr->Type(), target_type);
+    auto* concrete_ty = ConcreteType(expr->Type(), target_type, decl->source);
     if (!concrete_ty) {
         return expr;  // Does not require materialization
     }
@@ -1421,6 +1433,9 @@ sem::Expression* Resolver::IndexAccessor(const ast::IndexAccessorExpression* exp
         // have to materialize the object. For example, consider:
         //     vec2(1, 2)[runtime-index]
         obj = Materialize(obj);
+    }
+    if (!obj) {
+        return nullptr;
     }
     auto* obj_raw_ty = obj->Type();
     auto* obj_ty = obj_raw_ty->UnwrapRef();
@@ -1579,20 +1594,28 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
                 auto* call_target = utils::GetOrCreate(
                     array_ctors_, ArrayConstructorSig{{arr, args.Length(), args_stage}},
                     [&]() -> sem::TypeConstructor* {
-                        utils::Vector<const sem::Parameter*, 8> params;
-                        params.Reserve(args.Length());
-                        for (size_t i = 0; i < args.Length(); i++) {
-                            params.Push(builder_->create<sem::Parameter>(
-                                nullptr,                    // declaration
-                                static_cast<uint32_t>(i),   // index
-                                arr->ElemType(),            // type
-                                ast::StorageClass::kNone,   // storage_class
-                                ast::Access::kUndefined));  // access
-                        }
+                        auto params = utils::Transform(args, [&](auto, size_t i) {
+                            return builder_->create<sem::Parameter>(
+                                nullptr,                   // declaration
+                                static_cast<uint32_t>(i),  // index
+                                arr->ElemType(),           // type
+                                ast::StorageClass::kNone,  // storage_class
+                                ast::Access::kUndefined);
+                        });
                         return builder_->create<sem::TypeConstructor>(arr, std::move(params),
                                                                       args_stage);
                     });
-                return arr_or_str_ctor(arr, call_target);
+
+                auto* call = arr_or_str_ctor(arr, call_target);
+                if (!call) {
+                    return nullptr;
+                }
+
+                // Validation must occur after argument materialization in arr_or_str_ctor().
+                if (!validator_.ArrayConstructor(expr, arr)) {
+                    return nullptr;
+                }
+                return call;
             },
             [&](const sem::Struct* str) -> sem::Call* {
                 auto* call_target = utils::GetOrCreate(
@@ -1611,7 +1634,17 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
                         return builder_->create<sem::TypeConstructor>(str, std::move(params),
                                                                       args_stage);
                     });
-                return arr_or_str_ctor(str, call_target);
+
+                auto* call = arr_or_str_ctor(str, call_target);
+                if (!call) {
+                    return nullptr;
+                }
+
+                // Validation must occur after argument materialization in arr_or_str_ctor().
+                if (!validator_.StructureConstructor(expr, str)) {
+                    return nullptr;
+                }
+                return call;
             },
             [&](Default) {
                 AddError("type is not constructible", expr->source);
@@ -1658,6 +1691,59 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
                     return c;
                 }
                 return nullptr;
+            },
+            [&](const ast::Array* a) -> sem::Call* {
+                Mark(a);
+                // array element type must be inferred if it was not specified.
+                auto el_count = static_cast<uint32_t>(args.Length());
+                const sem::Type* el_ty = nullptr;
+                if (a->type) {
+                    el_ty = Type(a->type);
+                    if (!el_ty) {
+                        return nullptr;
+                    }
+                    if (!a->count) {
+                        AddError("cannot construct a runtime-sized array", expr->source);
+                        return nullptr;
+                    }
+                    if (auto count = ArrayCount(a->count)) {
+                        el_count = count.Get();
+                    } else {
+                        return nullptr;
+                    }
+                    // Note: validation later will detect any mismatches between explicit array
+                    // size and number of constructor expressions.
+                } else {
+                    auto arg_tys =
+                        utils::Transform(args, [](auto* arg) { return arg->Type()->UnwrapRef(); });
+                    el_ty = sem::Type::Common(arg_tys);
+                    if (!el_ty) {
+                        AddError(
+                            "cannot infer common array element type from constructor arguments",
+                            expr->source);
+                        std::unordered_set<const sem::Type*> types;
+                        for (size_t i = 0; i < args.Length(); i++) {
+                            if (types.emplace(args[i]->Type()).second) {
+                                AddNote("argument " + std::to_string(i) + " is of type '" +
+                                            sem_.TypeNameOf(args[i]->Type()) + "'",
+                                        args[i]->Declaration()->source);
+                            }
+                        }
+                        return nullptr;
+                    }
+                }
+                uint32_t explicit_stride = 0;
+                if (!ArrayAttributes(a->attributes, el_ty, explicit_stride)) {
+                    return nullptr;
+                }
+
+                auto* arr = Array(a->source, el_ty, el_count, explicit_stride);
+                if (!arr) {
+                    return nullptr;
+                }
+                builder_->Sem().Add(a, arr);
+
+                return ty_ctor_or_conv(arr);
             },
             [&](const ast::Type* ast) -> sem::Call* {
                 // Handler for AST types that do not have an optional element type.
@@ -2259,100 +2345,126 @@ sem::Type* Resolver::TypeDecl(const ast::TypeDecl* named_type) {
 }
 
 sem::Array* Resolver::Array(const ast::Array* arr) {
-    auto source = arr->source;
-
-    auto* elem_type = Type(arr->type);
-    if (!elem_type) {
+    if (!arr->type) {
+        AddError("missing array element type", arr->source.End());
         return nullptr;
     }
 
-    if (!validator_.IsPlain(elem_type)) {  // Check must come before GetDefaultAlignAndSize()
-        AddError(sem_.TypeNameOf(elem_type) + " cannot be used as an element type of an array",
-                 source);
-        return nullptr;
-    }
-
-    uint32_t el_align = elem_type->Align();
-    uint32_t el_size = elem_type->Size();
-
-    if (!validator_.NoDuplicateAttributes(arr->attributes)) {
+    auto* el_ty = Type(arr->type);
+    if (!el_ty) {
         return nullptr;
     }
 
     // Look for explicit stride via @stride(n) attribute
     uint32_t explicit_stride = 0;
-    for (auto* attr : arr->attributes) {
+    if (!ArrayAttributes(arr->attributes, el_ty, explicit_stride)) {
+        return nullptr;
+    }
+
+    uint32_t el_count = 0;  // sem::Array uses a size of 0 for a runtime-sized array.
+
+    // Evaluate the constant array size expression.
+    if (auto* count_expr = arr->count) {
+        if (auto count = ArrayCount(count_expr)) {
+            el_count = count.Get();
+        } else {
+            return nullptr;
+        }
+    }
+
+    auto* out = Array(arr->source, el_ty, el_count, explicit_stride);
+    if (out == nullptr) {
+        return nullptr;
+    }
+
+    if (el_ty->Is<sem::Atomic>()) {
+        atomic_composite_info_.emplace(out, arr->type->source);
+    } else {
+        auto found = atomic_composite_info_.find(el_ty);
+        if (found != atomic_composite_info_.end()) {
+            atomic_composite_info_.emplace(out, found->second);
+        }
+    }
+
+    return out;
+}
+
+utils::Result<uint32_t> Resolver::ArrayCount(const ast::Expression* count_expr) {
+    // Evaluate the constant array size expression.
+    const auto* count_sem = Materialize(Expression(count_expr));
+    if (!count_sem) {
+        return utils::Failure;
+    }
+
+    auto* count_val = count_sem->ConstantValue();
+    if (!count_val) {
+        AddError("array size must evaluate to a constant integer expression", count_expr->source);
+        return utils::Failure;
+    }
+
+    if (auto* ty = count_val->Type(); !ty->is_integer_scalar()) {
+        AddError("array size must evaluate to a constant integer expression, but is type '" +
+                     builder_->FriendlyName(ty) + "'",
+                 count_expr->source);
+        return utils::Failure;
+    }
+
+    int64_t count = count_val->As<AInt>();
+    if (count < 1) {
+        AddError("array size (" + std::to_string(count) + ") must be greater than 0",
+                 count_expr->source);
+        return utils::Failure;
+    }
+
+    return static_cast<uint32_t>(count);
+}
+
+bool Resolver::ArrayAttributes(const ast::AttributeList& attributes,
+                               const sem::Type* el_ty,
+                               uint32_t& explicit_stride) {
+    if (!validator_.NoDuplicateAttributes(attributes)) {
+        return false;
+    }
+
+    for (auto* attr : attributes) {
         Mark(attr);
         if (auto* sd = attr->As<ast::StrideAttribute>()) {
             explicit_stride = sd->stride;
-            if (!validator_.ArrayStrideAttribute(sd, el_size, el_align, source)) {
-                return nullptr;
+            if (!validator_.ArrayStrideAttribute(sd, el_ty->Size(), el_ty->Align())) {
+                return false;
             }
             continue;
         }
 
         AddError("attribute is not valid for array types", attr->source);
-        return nullptr;
+        return false;
     }
 
-    // Calculate implicit stride
-    uint64_t implicit_stride = utils::RoundUp<uint64_t>(el_align, el_size);
+    return true;
+}
 
+sem::Array* Resolver::Array(const Source& source,
+                            const sem::Type* el_ty,
+                            uint32_t el_count,
+                            uint32_t explicit_stride) {
+    uint32_t el_align = el_ty->Align();
+    uint32_t el_size = el_ty->Size();
+    uint64_t implicit_stride = el_size ? utils::RoundUp<uint64_t>(el_align, el_size) : 0;
     uint64_t stride = explicit_stride ? explicit_stride : implicit_stride;
 
-    int64_t count = 0;  // sem::Array uses a size of 0 for a runtime-sized array.
-
-    // Evaluate the constant array size expression.
-    if (auto* count_expr = arr->count) {
-        const auto* count_sem = Materialize(Expression(count_expr));
-        if (!count_sem) {
-            return nullptr;
-        }
-
-        auto* count_val = count_sem->ConstantValue();
-        if (!count_val) {
-            AddError("array size must evaluate to a constant integer expression",
-                     count_expr->source);
-            return nullptr;
-        }
-
-        if (auto* ty = count_val->Type(); !ty->is_integer_scalar()) {
-            AddError("array size must evaluate to a constant integer expression, but is type '" +
-                         builder_->FriendlyName(ty) + "'",
-                     count_expr->source);
-            return nullptr;
-        }
-
-        count = count_val->As<AInt>();
-        if (count < 1) {
-            AddError("array size (" + std::to_string(count) + ") must be greater than 0",
-                     count_expr->source);
-            return nullptr;
-        }
-    }
-
-    auto size = std::max<uint64_t>(static_cast<uint32_t>(count), 1u) * stride;
+    auto size = std::max<uint64_t>(el_count, 1u) * stride;
     if (size > std::numeric_limits<uint32_t>::max()) {
         std::stringstream msg;
         msg << "array size (0x" << std::hex << size << ") must not exceed 0xffffffff bytes";
-        AddError(msg.str(), arr->source);
+        AddError(msg.str(), source);
         return nullptr;
     }
-    auto* out = builder_->create<sem::Array>(
-        elem_type, static_cast<uint32_t>(count), el_align, static_cast<uint32_t>(size),
-        static_cast<uint32_t>(stride), static_cast<uint32_t>(implicit_stride));
+    auto* out = builder_->create<sem::Array>(el_ty, el_count, el_align, static_cast<uint32_t>(size),
+                                             static_cast<uint32_t>(stride),
+                                             static_cast<uint32_t>(implicit_stride));
 
     if (!validator_.Array(out, source)) {
         return nullptr;
-    }
-
-    if (elem_type->Is<sem::Atomic>()) {
-        atomic_composite_info_.emplace(out, arr->type->source);
-    } else {
-        auto found = atomic_composite_info_.find(elem_type);
-        if (found != atomic_composite_info_.end()) {
-            atomic_composite_info_.emplace(out, found->second);
-        }
     }
 
     return out;
