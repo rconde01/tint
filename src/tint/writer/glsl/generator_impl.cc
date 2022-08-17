@@ -70,6 +70,7 @@
 #include "src/tint/utils/defer.h"
 #include "src/tint/utils/map.h"
 #include "src/tint/utils/scoped_assignment.h"
+#include "src/tint/utils/string.h"
 #include "src/tint/writer/append_vector.h"
 #include "src/tint/writer/float_to_string.h"
 #include "src/tint/writer/generate_external_texture_bindings.h"
@@ -272,8 +273,8 @@ bool GeneratorImpl::Generate() {
 
     auto* mod = builder_.Sem().Module();
     for (auto* decl : mod->DependencyOrderedDeclarations()) {
-        if (decl->Is<ast::Alias>()) {
-            continue;  // Ignore aliases.
+        if (decl->IsAnyOf<ast::Alias, ast::StaticAssert>()) {
+            continue;  // These are not emitted.
         }
 
         if (auto* global = decl->As<ast::Variable>()) {
@@ -686,7 +687,7 @@ bool GeneratorImpl::EmitBinary(std::ostream& out, const ast::BinaryExpression* e
     return true;
 }
 
-bool GeneratorImpl::EmitStatements(const ast::StatementList& stmts) {
+bool GeneratorImpl::EmitStatements(utils::VectorRef<const ast::Statement*> stmts) {
     for (auto* s : stmts) {
         if (!EmitStatement(s)) {
             return false;
@@ -695,7 +696,7 @@ bool GeneratorImpl::EmitStatements(const ast::StatementList& stmts) {
     return true;
 }
 
-bool GeneratorImpl::EmitStatementsWithIndent(const ast::StatementList& stmts) {
+bool GeneratorImpl::EmitStatementsWithIndent(utils::VectorRef<const ast::Statement*> stmts) {
     ScopedIndent si(this);
     return EmitStatements(stmts);
 }
@@ -892,7 +893,7 @@ bool GeneratorImpl::EmitWorkgroupAtomicCall(std::ostream& out,
         out << name;
         {
             ScopedParen sp(out);
-            for (size_t i = 0; i < expr->args.size(); i++) {
+            for (size_t i = 0; i < expr->args.Length(); i++) {
                 auto* arg = expr->args[i];
                 if (i > 0) {
                     out << ", ";
@@ -1204,97 +1205,51 @@ bool GeneratorImpl::EmitDotCall(std::ostream& out,
 bool GeneratorImpl::EmitModfCall(std::ostream& out,
                                  const ast::CallExpression* expr,
                                  const sem::Builtin* builtin) {
-    if (expr->args.size() == 1) {
-        return CallBuiltinHelper(
-            out, expr, builtin, [&](TextBuffer* b, const std::vector<std::string>& params) {
-                // Emit the builtin return type unique to this overload. This does not
-                // exist in the AST, so it will not be generated in Generate().
-                if (!EmitStructType(&helpers_, builtin->ReturnType()->As<sem::Struct>())) {
+    TINT_ASSERT(Writer, expr->args.Length() == 1);
+    return CallBuiltinHelper(
+        out, expr, builtin, [&](TextBuffer* b, const std::vector<std::string>& params) {
+            // Emit the builtin return type unique to this overload. This does not
+            // exist in the AST, so it will not be generated in Generate().
+            if (!EmitStructType(&helpers_, builtin->ReturnType()->As<sem::Struct>())) {
+                return false;
+            }
+
+            {
+                auto l = line(b);
+                if (!EmitType(l, builtin->ReturnType(), ast::StorageClass::kNone,
+                              ast::Access::kUndefined, "")) {
                     return false;
                 }
-
-                {
-                    auto l = line(b);
-                    if (!EmitType(l, builtin->ReturnType(), ast::StorageClass::kNone,
-                                  ast::Access::kUndefined, "")) {
-                        return false;
-                    }
-                    l << " result;";
-                }
-                line(b) << "result.fract = modf(" << params[0] << ", result.whole);";
-                line(b) << "return result;";
-                return true;
-            });
-    }
-
-    // DEPRECATED
-    out << "modf";
-    ScopedParen sp(out);
-    if (!EmitExpression(out, expr->args[0])) {
-        return false;
-    }
-    out << ", ";
-    if (!EmitExpression(out, expr->args[1])) {
-        return false;
-    }
-    return true;
+                l << " result;";
+            }
+            line(b) << "result.fract = modf(" << params[0] << ", result.whole);";
+            line(b) << "return result;";
+            return true;
+        });
 }
 
 bool GeneratorImpl::EmitFrexpCall(std::ostream& out,
                                   const ast::CallExpression* expr,
                                   const sem::Builtin* builtin) {
-    if (expr->args.size() == 1) {
-        return CallBuiltinHelper(
-            out, expr, builtin, [&](TextBuffer* b, const std::vector<std::string>& params) {
-                // Emit the builtin return type unique to this overload. This does not
-                // exist in the AST, so it will not be generated in Generate().
-                if (!EmitStructType(&helpers_, builtin->ReturnType()->As<sem::Struct>())) {
-                    return false;
-                }
-
-                {
-                    auto l = line(b);
-                    if (!EmitType(l, builtin->ReturnType(), ast::StorageClass::kNone,
-                                  ast::Access::kUndefined, "")) {
-                        return false;
-                    }
-                    l << " result;";
-                }
-                line(b) << "result.sig = frexp(" << params[0] << ", result.exp);";
-                line(b) << "return result;";
-                return true;
-            });
-    }
-    // DEPRECATED
-    // Exponent is an integer in WGSL, but HLSL wants a float.
-    // We need to make the call with a temporary float, and then cast.
+    TINT_ASSERT(Writer, expr->args.Length() == 1);
     return CallBuiltinHelper(
         out, expr, builtin, [&](TextBuffer* b, const std::vector<std::string>& params) {
-            auto* significand_ty = builtin->Parameters()[0]->Type();
-            auto significand = params[0];
-            auto* exponent_ty = builtin->Parameters()[1]->Type();
-            auto exponent = params[1];
-
-            std::string width;
-            if (auto* vec = significand_ty->As<sem::Vector>()) {
-                width = std::to_string(vec->Width());
+            // Emit the builtin return type unique to this overload. This does not
+            // exist in the AST, so it will not be generated in Generate().
+            if (!EmitStructType(&helpers_, builtin->ReturnType()->As<sem::Struct>())) {
+                return false;
             }
 
-            // Exponent is an integer, which HLSL does not have an overload for.
-            // We need to cast from a float.
-            line(b) << "float" << width << " float_exp;";
-            line(b) << "float" << width << " significand = frexp(" << significand
-                    << ", float_exp);";
             {
                 auto l = line(b);
-                l << exponent << " = ";
-                if (!EmitType(l, exponent_ty->UnwrapPtr(), ast::StorageClass::kNone,
+                if (!EmitType(l, builtin->ReturnType(), ast::StorageClass::kNone,
                               ast::Access::kUndefined, "")) {
                     return false;
                 }
-                l << "(float_exp);";
+                l << " result;";
             }
-            line(b) << "return significand;";
+            line(b) << "result.sig = frexp(" << params[0] << ", result.exp);";
+            line(b) << "return result;";
             return true;
         });
 }
@@ -1745,7 +1700,7 @@ bool GeneratorImpl::EmitCase(const ast::CaseStatement* stmt) {
                 return false;
             }
             out << ":";
-            if (selector == stmt->selectors.back()) {
+            if (selector == stmt->selectors.Back()) {
                 out << " {";
             }
         }
@@ -1846,7 +1801,7 @@ bool GeneratorImpl::EmitIf(const ast::IfStatement* stmt) {
                 return false;
             }
         } else {
-            if (!EmitStatementsWithIndent({stmt->else_statement})) {
+            if (!EmitStatementsWithIndent(utils::Vector{stmt->else_statement})) {
                 return false;
             }
         }
@@ -1936,6 +1891,11 @@ bool GeneratorImpl::EmitGlobalVariable(const ast::Variable* global) {
                 case ast::StorageClass::kIn:
                 case ast::StorageClass::kOut:
                     return EmitIOVariable(sem);
+                case ast::StorageClass::kPushConstant:
+                    diagnostics_.add_error(
+                        diag::System::Writer,
+                        "unhandled storage class " + utils::ToString(sem->StorageClass()));
+                    return false;
                 default: {
                     TINT_ICE(Writer, diagnostics_)
                         << "unhandled storage class " << sem->StorageClass();
@@ -2096,8 +2056,9 @@ bool GeneratorImpl::EmitIOVariable(const sem::Variable* var) {
     return true;
 }
 
-void GeneratorImpl::EmitInterpolationQualifiers(std::ostream& out,
-                                                const ast::AttributeList& attributes) {
+void GeneratorImpl::EmitInterpolationQualifiers(
+    std::ostream& out,
+    utils::VectorRef<const ast::Attribute*> attributes) {
     for (auto* attr : attributes) {
         if (auto* interpolate = attr->As<ast::InterpolateAttribute>()) {
             switch (interpolate->type) {
@@ -2121,8 +2082,9 @@ void GeneratorImpl::EmitInterpolationQualifiers(std::ostream& out,
     }
 }
 
-bool GeneratorImpl::EmitAttributes(std::ostream& out, const ast::AttributeList& attributes) {
-    if (attributes.empty()) {
+bool GeneratorImpl::EmitAttributes(std::ostream& out,
+                                   utils::VectorRef<const ast::Attribute*> attributes) {
+    if (attributes.IsEmpty()) {
         return true;
     }
     bool first = true;
@@ -2644,69 +2606,53 @@ bool GeneratorImpl::EmitReturn(const ast::ReturnStatement* stmt) {
 }
 
 bool GeneratorImpl::EmitStatement(const ast::Statement* stmt) {
-    if (auto* a = stmt->As<ast::AssignmentStatement>()) {
-        return EmitAssign(a);
-    }
-    if (auto* b = stmt->As<ast::BlockStatement>()) {
-        return EmitBlock(b);
-    }
-    if (auto* b = stmt->As<ast::BreakStatement>()) {
-        return EmitBreak(b);
-    }
-    if (auto* c = stmt->As<ast::CallStatement>()) {
-        auto out = line();
-        if (!EmitCall(out, c->expr)) {
-            return false;
-        }
-        out << ";";
-        return true;
-    }
-    if (auto* c = stmt->As<ast::ContinueStatement>()) {
-        return EmitContinue(c);
-    }
-    if (auto* d = stmt->As<ast::DiscardStatement>()) {
-        return EmitDiscard(d);
-    }
-    if (stmt->As<ast::FallthroughStatement>()) {
-        line() << "/* fallthrough */";
-        return true;
-    }
-    if (auto* i = stmt->As<ast::IfStatement>()) {
-        return EmitIf(i);
-    }
-    if (auto* l = stmt->As<ast::LoopStatement>()) {
-        return EmitLoop(l);
-    }
-    if (auto* l = stmt->As<ast::ForLoopStatement>()) {
-        return EmitForLoop(l);
-    }
-    if (auto* l = stmt->As<ast::WhileStatement>()) {
-        return EmitWhile(l);
-    }
-    if (auto* r = stmt->As<ast::ReturnStatement>()) {
-        return EmitReturn(r);
-    }
-    if (auto* s = stmt->As<ast::SwitchStatement>()) {
-        return EmitSwitch(s);
-    }
-    if (auto* v = stmt->As<ast::VariableDeclStatement>()) {
-        return Switch(
-            v->variable,  //
-            [&](const ast::Var* var) { return EmitVar(var); },
-            [&](const ast::Let* let) { return EmitLet(let); },
-            [&](const ast::Const*) {
-                return true;  // Constants are embedded at their use
-            },
-            [&](Default) {  //
-                TINT_ICE(Writer, diagnostics_)
-                    << "unknown variable type: " << v->variable->TypeInfo().name;
+    return Switch(
+        stmt,  //
+        [&](const ast::AssignmentStatement* a) { return EmitAssign(a); },
+        [&](const ast::BlockStatement* b) { return EmitBlock(b); },
+        [&](const ast::BreakStatement* b) { return EmitBreak(b); },
+        [&](const ast::CallStatement* c) {
+            auto out = line();
+            if (!EmitCall(out, c->expr)) {
                 return false;
-            });
-    }
-
-    diagnostics_.add_error(diag::System::Writer,
-                           "unknown statement type: " + std::string(stmt->TypeInfo().name));
-    return false;
+            }
+            out << ";";
+            return true;
+        },
+        [&](const ast::ContinueStatement* c) { return EmitContinue(c); },
+        [&](const ast::DiscardStatement* d) { return EmitDiscard(d); },
+        [&](const ast::FallthroughStatement*) {
+            line() << "/* fallthrough */";
+            return true;
+        },
+        [&](const ast::IfStatement* i) { return EmitIf(i); },
+        [&](const ast::LoopStatement* l) { return EmitLoop(l); },
+        [&](const ast::ForLoopStatement* l) { return EmitForLoop(l); },
+        [&](const ast::WhileStatement* l) { return EmitWhile(l); },
+        [&](const ast::ReturnStatement* r) { return EmitReturn(r); },
+        [&](const ast::SwitchStatement* s) { return EmitSwitch(s); },
+        [&](const ast::VariableDeclStatement* v) {
+            return Switch(
+                v->variable,  //
+                [&](const ast::Var* var) { return EmitVar(var); },
+                [&](const ast::Let* let) { return EmitLet(let); },
+                [&](const ast::Const*) {
+                    return true;  // Constants are embedded at their use
+                },
+                [&](Default) {  //
+                    TINT_ICE(Writer, diagnostics_)
+                        << "unknown variable type: " << v->variable->TypeInfo().name;
+                    return false;
+                });
+        },
+        [&](const ast::StaticAssert*) {
+            return true;  // Not emitted
+        },
+        [&](Default) {
+            diagnostics_.add_error(diag::System::Writer,
+                                   "unknown statement type: " + std::string(stmt->TypeInfo().name));
+            return false;
+        });
 }
 
 bool GeneratorImpl::EmitSwitch(const ast::SwitchStatement* stmt) {

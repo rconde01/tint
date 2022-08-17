@@ -1025,8 +1025,13 @@ Token Lexer::try_punctuation() {
             type = Token::Type::kGreaterThanEqual;
             advance(2);
         } else if (matches(pos() + 1, '>')) {
-            type = Token::Type::kShiftRight;
-            advance(2);
+            if (matches(pos() + 2, '=')) {
+                type = Token::Type::kShiftRightEqual;
+                advance(3);
+            } else {
+                type = Token::Type::kShiftRight;
+                advance(2);
+            }
         } else {
             type = Token::Type::kGreaterThan;
             advance(1);
@@ -1036,8 +1041,13 @@ Token Lexer::try_punctuation() {
             type = Token::Type::kLessThanEqual;
             advance(2);
         } else if (matches(pos() + 1, '<')) {
-            type = Token::Type::kShiftLeft;
-            advance(2);
+            if (matches(pos() + 2, '=')) {
+                type = Token::Type::kShiftLeftEqual;
+                advance(3);
+            } else {
+                type = Token::Type::kShiftLeft;
+                advance(2);
+            }
         } else {
             type = Token::Type::kLessThan;
             advance(1);
@@ -1185,9 +1195,6 @@ Token Lexer::check_keyword(const Source& source, std::string_view str) {
     if (str == "if") {
         return {Token::Type::kIf, source, "if"};
     }
-    if (str == "import") {
-        return {Token::Type::kImport, source, "import"};
-    }
     if (str == "let") {
         return {Token::Type::kLet, source, "let"};
     }
@@ -1235,6 +1242,9 @@ Token Lexer::check_keyword(const Source& source, std::string_view str) {
     }
     if (str == "sampler_comparison") {
         return {Token::Type::kComparisonSampler, source, "sampler_comparison"};
+    }
+    if (str == "static_assert") {
+        return {Token::Type::kStaticAssert, source, "static_assert"};
     }
     if (str == "struct") {
         return {Token::Type::kStruct, source, "struct"};

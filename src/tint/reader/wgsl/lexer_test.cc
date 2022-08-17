@@ -1049,7 +1049,9 @@ INSTANTIATE_TEST_SUITE_P(LexerTest,
                                          TokenData{"%=", Token::Type::kModuloEqual},
                                          TokenData{"&=", Token::Type::kAndEqual},
                                          TokenData{"|=", Token::Type::kOrEqual},
-                                         TokenData{"^=", Token::Type::kXorEqual}));
+                                         TokenData{"^=", Token::Type::kXorEqual},
+                                         TokenData{">>=", Token::Type::kShiftRightEqual},
+                                         TokenData{"<<=", Token::Type::kShiftLeftEqual}));
 
 using SplittablePunctuationTest = testing::TestWithParam<TokenData>;
 TEST_P(SplittablePunctuationTest, Parses) {
@@ -1127,7 +1129,6 @@ INSTANTIATE_TEST_SUITE_P(
                     TokenData{"for", Token::Type::kFor},
                     TokenData{"i32", Token::Type::kI32},
                     TokenData{"if", Token::Type::kIf},
-                    TokenData{"import", Token::Type::kImport},
                     TokenData{"let", Token::Type::kLet},
                     TokenData{"loop", Token::Type::kLoop},
                     TokenData{"mat2x2", Token::Type::kMat2x2},
@@ -1144,6 +1145,7 @@ INSTANTIATE_TEST_SUITE_P(
                     TokenData{"return", Token::Type::kReturn},
                     TokenData{"sampler", Token::Type::kSampler},
                     TokenData{"sampler_comparison", Token::Type::kComparisonSampler},
+                    TokenData{"static_assert", Token::Type::kStaticAssert},
                     TokenData{"struct", Token::Type::kStruct},
                     TokenData{"switch", Token::Type::kSwitch},
                     TokenData{"texture_1d", Token::Type::kTextureSampled1d},

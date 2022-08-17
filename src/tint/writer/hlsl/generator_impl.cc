@@ -72,6 +72,7 @@
 #include "src/tint/utils/defer.h"
 #include "src/tint/utils/map.h"
 #include "src/tint/utils/scoped_assignment.h"
+#include "src/tint/utils/string.h"
 #include "src/tint/writer/append_vector.h"
 #include "src/tint/writer/float_to_string.h"
 #include "src/tint/writer/generate_external_texture_bindings.h"
@@ -274,12 +275,8 @@ bool GeneratorImpl::Generate() {
 
     auto* mod = builder_.Sem().Module();
     for (auto* decl : mod->DependencyOrderedDeclarations()) {
-        if (decl->Is<ast::Alias>()) {
-            continue;  // Ignore aliases.
-        }
-        if (decl->Is<ast::Enable>()) {
-            // Currently we don't have to do anything for using a extension in HLSL.
-            continue;
+        if (decl->IsAnyOf<ast::Alias, ast::Enable, ast::StaticAssert>()) {
+            continue;  // These are not emitted.
         }
 
         // Emit a new line between declarations if the type of declaration has
@@ -920,7 +917,7 @@ bool GeneratorImpl::EmitBinary(std::ostream& out, const ast::BinaryExpression* e
     return true;
 }
 
-bool GeneratorImpl::EmitStatements(const ast::StatementList& stmts) {
+bool GeneratorImpl::EmitStatements(utils::VectorRef<const ast::Statement*> stmts) {
     for (auto* s : stmts) {
         if (!EmitStatement(s)) {
             return false;
@@ -929,7 +926,7 @@ bool GeneratorImpl::EmitStatements(const ast::StatementList& stmts) {
     return true;
 }
 
-bool GeneratorImpl::EmitStatementsWithIndent(const ast::StatementList& stmts) {
+bool GeneratorImpl::EmitStatementsWithIndent(utils::VectorRef<const ast::Statement*> stmts) {
     ScopedIndent si(this);
     return EmitStatements(stmts);
 }
@@ -1663,7 +1660,7 @@ bool GeneratorImpl::EmitWorkgroupAtomicCall(std::ostream& out,
 
         {
             ScopedParen sp(pre);
-            for (size_t i = 0; i < expr->args.size(); i++) {
+            for (size_t i = 0; i < expr->args.Length(); i++) {
                 auto* arg = expr->args[i];
                 if (i > 0) {
                     pre << ", ";
@@ -1858,16 +1855,15 @@ bool GeneratorImpl::EmitModfCall(std::ostream& out,
                 return false;
             }
 
-            line(b) << "float" << width << " whole;";
-            line(b) << "float" << width << " fract = modf(" << in << ", whole);";
             {
                 auto l = line(b);
                 if (!EmitType(l, builtin->ReturnType(), ast::StorageClass::kNone,
                               ast::Access::kUndefined, "")) {
                     return false;
                 }
-                l << " result = {fract, whole};";
+                l << " result;";
             }
+            line(b) << "result.fract = modf(" << params[0] << ", result.whole);";
             line(b) << "return result;";
             return true;
         });
@@ -1892,8 +1888,15 @@ bool GeneratorImpl::EmitFrexpCall(std::ostream& out,
                 return false;
             }
 
-            line(b) << "float" << width << " exp;";
-            line(b) << "float" << width << " sig = frexp(" << in << ", exp);";
+            std::string member_type;
+            if (Is<sem::F16>(sem::Type::DeepestElementOf(ty))) {
+                member_type = width.empty() ? "float16_t" : ("vector<float16_t, " + width + ">");
+            } else {
+                member_type = "float" + width;
+            }
+
+            line(b) << member_type << " exp;";
+            line(b) << member_type << " sig = frexp(" << in << ", exp);";
             {
                 auto l = line(b);
                 if (!EmitType(l, builtin->ReturnType(), ast::StorageClass::kNone,
@@ -2571,7 +2574,7 @@ bool GeneratorImpl::EmitCase(const ast::SwitchStatement* s, size_t case_idx) {
                 return false;
             }
             out << ":";
-            if (selector == stmt->selectors.back()) {
+            if (selector == stmt->selectors.Back()) {
                 out << " {";
             }
         }
@@ -2686,7 +2689,7 @@ bool GeneratorImpl::EmitIf(const ast::IfStatement* stmt) {
                 return false;
             }
         } else {
-            if (!EmitStatementsWithIndent({stmt->else_statement})) {
+            if (!EmitStatementsWithIndent(utils::Vector{stmt->else_statement})) {
                 return false;
             }
         }
@@ -2849,6 +2852,11 @@ bool GeneratorImpl::EmitGlobalVariable(const ast::Variable* global) {
                     return EmitPrivateVariable(sem);
                 case ast::StorageClass::kWorkgroup:
                     return EmitWorkgroupVariable(sem);
+                case ast::StorageClass::kPushConstant:
+                    diagnostics_.add_error(
+                        diag::System::Writer,
+                        "unhandled storage class " + utils::ToString(sem->StorageClass()));
+                    return false;
                 default: {
                     TINT_ICE(Writer, diagnostics_)
                         << "unhandled storage class " << sem->StorageClass();
@@ -2863,6 +2871,7 @@ bool GeneratorImpl::EmitGlobalVariable(const ast::Variable* global) {
         [&](Default) {
             TINT_ICE(Writer, diagnostics_)
                 << "unhandled global variable type " << global->TypeInfo().name;
+
             return false;
         });
 }
@@ -3639,6 +3648,9 @@ bool GeneratorImpl::EmitStatement(const ast::Statement* stmt) {
                     return false;
                 });
         },
+        [&](const ast::StaticAssert*) {
+            return true;  // Not emitted
+        },
         [&](Default) {  //
             diagnostics_.add_error(diag::System::Writer,
                                    "unknown statement type: " + std::string(stmt->TypeInfo().name));
@@ -3647,7 +3659,7 @@ bool GeneratorImpl::EmitStatement(const ast::Statement* stmt) {
 }
 
 bool GeneratorImpl::EmitDefaultOnlySwitch(const ast::SwitchStatement* stmt) {
-    TINT_ASSERT(Writer, stmt->body.size() == 1 && stmt->body[0]->IsDefault());
+    TINT_ASSERT(Writer, stmt->body.Length() == 1 && stmt->body[0]->IsDefault());
 
     // FXC fails to compile a switch with just a default case, ignoring the
     // default case body. We work around this here by emitting the default case
@@ -3680,7 +3692,7 @@ bool GeneratorImpl::EmitDefaultOnlySwitch(const ast::SwitchStatement* stmt) {
 
 bool GeneratorImpl::EmitSwitch(const ast::SwitchStatement* stmt) {
     // BUG(crbug.com/tint/1188): work around default-only switches
-    if (stmt->body.size() == 1 && stmt->body[0]->IsDefault()) {
+    if (stmt->body.Length() == 1 && stmt->body[0]->IsDefault()) {
         return EmitDefaultOnlySwitch(stmt);
     }
 
@@ -3695,7 +3707,7 @@ bool GeneratorImpl::EmitSwitch(const ast::SwitchStatement* stmt) {
 
     {
         ScopedIndent si(this);
-        for (size_t i = 0; i < stmt->body.size(); i++) {
+        for (size_t i = 0; i < stmt->body.Length(); i++) {
             if (!EmitCase(stmt, i)) {
                 return false;
             }

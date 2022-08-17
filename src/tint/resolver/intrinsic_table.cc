@@ -123,17 +123,17 @@ class TemplateState {
     /// If none of the above applies, then `ty` is a type mismatch for the template type, and
     /// nullptr is returned.
     const sem::Type* Type(size_t idx, const sem::Type* ty) {
-        auto res = types_.emplace(idx, ty);
-        if (res.second) {
+        if (idx >= types_.Length()) {
+            types_.Resize(idx + 1);
+        }
+        auto& t = types_[idx];
+        if (t == nullptr) {
+            t = ty;
             return ty;
         }
-        auto* existing = res.first->second;
-        if (existing == ty) {
-            return ty;
-        }
-        ty = sem::Type::Common(utils::Vector{existing, ty});
+        ty = sem::Type::Common(utils::Vector{t, ty});
         if (ty) {
-            res.first->second = ty;
+            t = ty;
         }
         return ty;
     }
@@ -142,28 +142,44 @@ class TemplateState {
     /// Num() returns true. If the number is defined, then `Num()` returns true iff it is equal to
     /// `ty`.
     bool Num(size_t idx, Number number) {
-        auto res = numbers_.emplace(idx, number.Value());
-        return res.second || res.first->second == number.Value();
+        if (idx >= numbers_.Length()) {
+            numbers_.Resize(idx + 1, Number::invalid);
+        }
+        auto& n = numbers_[idx];
+        if (!n.IsValid()) {
+            n = number.Value();
+            return true;
+        }
+        return n.Value() == number.Value();
     }
 
     /// Type returns the template type with index `idx`, or nullptr if the type was not defined.
     const sem::Type* Type(size_t idx) const {
-        auto it = types_.find(idx);
-        return (it != types_.end()) ? it->second : nullptr;
+        if (idx >= types_.Length()) {
+            return nullptr;
+        }
+        return types_[idx];
     }
 
     /// SetType replaces the template type with index `idx` with type `ty`.
-    void SetType(size_t idx, const sem::Type* ty) { types_[idx] = ty; }
+    void SetType(size_t idx, const sem::Type* ty) {
+        if (idx >= types_.Length()) {
+            types_.Resize(idx + 1);
+        }
+        types_[idx] = ty;
+    }
 
     /// Type returns the number type with index `idx`.
     Number Num(size_t idx) const {
-        auto it = numbers_.find(idx);
-        return (it != numbers_.end()) ? Number(it->second) : Number::invalid;
+        if (idx >= numbers_.Length()) {
+            return Number::invalid;
+        }
+        return numbers_[idx];
     }
 
   private:
-    std::unordered_map<size_t, const sem::Type*> types_;
-    std::unordered_map<size_t, uint32_t> numbers_;
+    utils::Vector<const sem::Type*, 4> types_;
+    utils::Vector<Number, 2> numbers_;
 };
 
 /// Index type used for matcher indices
@@ -716,24 +732,34 @@ const sem::ExternalTexture* build_texture_external(MatchState& state) {
 // Builtin types starting with a _ prefix cannot be declared in WGSL, so they
 // can only be used as return types. Because of this, they must only match Any,
 // which is used as the return type matcher.
-bool match_modf_result(const sem::Type* ty) {
-    return ty->Is<Any>();
-}
-bool match_modf_result_vec(const sem::Type* ty, Number& N) {
+bool match_modf_result(const sem::Type* ty, const sem::Type*& T) {
     if (!ty->Is<Any>()) {
         return false;
     }
-    N = Number::any;
+    T = ty;
     return true;
 }
-bool match_frexp_result(const sem::Type* ty) {
-    return ty->Is<Any>();
-}
-bool match_frexp_result_vec(const sem::Type* ty, Number& N) {
+bool match_modf_result_vec(const sem::Type* ty, Number& N, const sem::Type*& T) {
     if (!ty->Is<Any>()) {
         return false;
     }
     N = Number::any;
+    T = ty;
+    return true;
+}
+bool match_frexp_result(const sem::Type* ty, const sem::Type*& T) {
+    if (!ty->Is<Any>()) {
+        return false;
+    }
+    T = ty;
+    return true;
+}
+bool match_frexp_result_vec(const sem::Type* ty, Number& N, const sem::Type*& T) {
+    if (!ty->Is<Any>()) {
+        return false;
+    }
+    N = Number::any;
+    T = ty;
     return true;
 }
 
@@ -747,7 +773,7 @@ bool match_atomic_compare_exchange_result(const sem::Type* ty, const sem::Type*&
 
 struct NameAndType {
     std::string name;
-    sem::Type* type;
+    const sem::Type* type;
 };
 const sem::Struct* build_struct(MatchState& state,
                                 std::string name,
@@ -781,27 +807,46 @@ const sem::Struct* build_struct(MatchState& state,
         /* size_no_padding */ size_without_padding);
 }
 
-const sem::Struct* build_modf_result(MatchState& state) {
-    auto* f32 = state.builder.create<sem::F32>();
-    return build_struct(state, "__modf_result", {{"fract", f32}, {"whole", f32}});
+const sem::Struct* build_modf_result(MatchState& state, const sem::Type* el) {
+    std::string display_name;
+    if (el->Is<sem::F16>()) {
+        display_name = "__modf_result_f16";
+    } else {
+        display_name = "__modf_result";
+    }
+    return build_struct(state, display_name, {{"fract", el}, {"whole", el}});
 }
-const sem::Struct* build_modf_result_vec(MatchState& state, Number& n) {
-    auto* vec_f32 = state.builder.create<sem::Vector>(state.builder.create<sem::F32>(), n.Value());
-    return build_struct(state, "__modf_result_vec" + std::to_string(n.Value()),
-                        {{"fract", vec_f32}, {"whole", vec_f32}});
+const sem::Struct* build_modf_result_vec(MatchState& state, Number& n, const sem::Type* el) {
+    std::string display_name;
+    if (el->Is<sem::F16>()) {
+        display_name = "__modf_result_vec" + std::to_string(n.Value()) + "_f16";
+    } else {
+        display_name = "__modf_result_vec" + std::to_string(n.Value());
+    }
+    auto* vec = state.builder.create<sem::Vector>(el, n.Value());
+    return build_struct(state, display_name, {{"fract", vec}, {"whole", vec}});
 }
-const sem::Struct* build_frexp_result(MatchState& state) {
-    auto* f32 = state.builder.create<sem::F32>();
+const sem::Struct* build_frexp_result(MatchState& state, const sem::Type* el) {
+    std::string display_name;
+    if (el->Is<sem::F16>()) {
+        display_name = "__frexp_result_f16";
+    } else {
+        display_name = "__frexp_result";
+    }
     auto* i32 = state.builder.create<sem::I32>();
-    return build_struct(state, "__frexp_result", {{"sig", f32}, {"exp", i32}});
+    return build_struct(state, display_name, {{"sig", el}, {"exp", i32}});
 }
-const sem::Struct* build_frexp_result_vec(MatchState& state, Number& n) {
-    auto* vec_f32 = state.builder.create<sem::Vector>(state.builder.create<sem::F32>(), n.Value());
+const sem::Struct* build_frexp_result_vec(MatchState& state, Number& n, const sem::Type* el) {
+    std::string display_name;
+    if (el->Is<sem::F16>()) {
+        display_name = "__frexp_result_vec" + std::to_string(n.Value()) + "_f16";
+    } else {
+        display_name = "__frexp_result_vec" + std::to_string(n.Value());
+    }
+    auto* vec = state.builder.create<sem::Vector>(el, n.Value());
     auto* vec_i32 = state.builder.create<sem::Vector>(state.builder.create<sem::I32>(), n.Value());
-    return build_struct(state, "__frexp_result_vec" + std::to_string(n.Value()),
-                        {{"sig", vec_f32}, {"exp", vec_i32}});
+    return build_struct(state, display_name, {{"sig", vec}, {"exp", vec_i32}});
 }
-
 const sem::Struct* build_atomic_compare_exchange_result(MatchState& state, const sem::Type* ty) {
     return build_struct(
         state, "__atomic_compare_exchange_result" + ty->FriendlyName(state.builder.Symbols()),
@@ -1026,14 +1071,14 @@ class Impl : public IntrinsicTable {
 
     // Prints the list of candidates for emitting diagnostics
     void PrintCandidates(std::ostream& ss,
-                         utils::ConstVectorRef<Candidate> candidates,
+                         utils::VectorRef<Candidate> candidates,
                          const char* intrinsic_name) const;
 
     /// Raises an error when no overload is a clear winner of overload resolution
     void ErrAmbiguousOverload(const char* intrinsic_name,
-                              utils::ConstVectorRef<const sem::Type*> args,
+                              utils::VectorRef<const sem::Type*> args,
                               TemplateState templates,
-                              utils::ConstVectorRef<Candidate> candidates) const;
+                              utils::VectorRef<Candidate> candidates) const;
 
     ProgramBuilder& builder;
     Matchers matchers;
@@ -1604,7 +1649,7 @@ void Impl::PrintOverload(std::ostream& ss,
 }
 
 void Impl::PrintCandidates(std::ostream& ss,
-                           utils::ConstVectorRef<Candidate> candidates,
+                           utils::VectorRef<Candidate> candidates,
                            const char* intrinsic_name) const {
     for (auto& candidate : candidates) {
         ss << "  ";
@@ -1638,9 +1683,9 @@ std::string MatchState::NumName() {
 }
 
 void Impl::ErrAmbiguousOverload(const char* intrinsic_name,
-                                utils::ConstVectorRef<const sem::Type*> args,
+                                utils::VectorRef<const sem::Type*> args,
                                 TemplateState templates,
-                                utils::ConstVectorRef<Candidate> candidates) const {
+                                utils::VectorRef<Candidate> candidates) const {
     std::stringstream ss;
     ss << "ambiguous overload while attempting to match " << intrinsic_name;
     for (size_t i = 0; i < std::numeric_limits<size_t>::max(); i++) {

@@ -140,6 +140,10 @@ class Token {
         kOrEqual,
         /// A '^='
         kXorEqual,
+        /// A '>>='
+        kShiftRightEqual,
+        /// A '<<='
+        kShiftLeftEqual,
 
         /// A 'array'
         kArray,
@@ -183,8 +187,6 @@ class Token {
         kI32,
         /// A 'if'
         kIf,
-        /// A 'import'
-        kImport,
         /// A 'let'
         kLet,
         /// A 'loop'
@@ -217,6 +219,8 @@ class Token {
         kSampler,
         /// A 'sampler_comparison'
         kComparisonSampler,
+        /// A 'static_assert'
+        kStaticAssert,
         /// A 'struct'
         kStruct,
         /// A 'switch'

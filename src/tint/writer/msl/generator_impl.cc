@@ -286,6 +286,9 @@ bool GeneratorImpl::Generate() {
                 // Do nothing for enabling extension in MSL
                 return true;
             },
+            [&](const ast::StaticAssert*) {
+                return true;  // Not emitted
+            },
             [&](Default) {
                 // These are pushed into the entry point by sanitizer transforms.
                 TINT_ICE(Writer, diagnostics_) << "unhandled type: " << decl->TypeInfo().name;
@@ -804,7 +807,7 @@ bool GeneratorImpl::EmitAtomicCall(std::ostream& out,
         out << name;
         {
             ScopedParen sp(out);
-            for (size_t i = 0; i < expr->args.size(); i++) {
+            for (size_t i = 0; i < expr->args.Length(); i++) {
                 auto* arg = expr->args[i];
                 if (i > 0) {
                     out << ", ";
@@ -1305,9 +1308,9 @@ bool GeneratorImpl::EmitModfCall(std::ostream& out,
                 return false;
             }
 
-            line(b) << "float" << width << " whole;";
-            line(b) << "float" << width << " fract = modf(" << in << ", whole);";
-            line(b) << "return {fract, whole};";
+            line(b) << StructName(builtin->ReturnType()->As<sem::Struct>()) << " result;";
+            line(b) << "result.fract = modf(" << in << ", result.whole);";
+            line(b) << "return result;";
             return true;
         });
 }
@@ -1331,9 +1334,9 @@ bool GeneratorImpl::EmitFrexpCall(std::ostream& out,
                 return false;
             }
 
-            line(b) << "int" << width << " exp;";
-            line(b) << "float" << width << " sig = frexp(" << in << ", exp);";
-            line(b) << "return {sig, exp};";
+            line(b) << StructName(builtin->ReturnType()->As<sem::Struct>()) << " result;";
+            line(b) << "result.sig = frexp(" << in << ", result.exp);";
+            line(b) << "return result;";
             return true;
         });
 }
@@ -1524,7 +1527,7 @@ bool GeneratorImpl::EmitCase(const ast::CaseStatement* stmt) {
                 return false;
             }
             out << ":";
-            if (selector == stmt->selectors.back()) {
+            if (selector == stmt->selectors.Back()) {
                 out << " {";
             }
         }
@@ -1695,7 +1698,7 @@ bool GeneratorImpl::EmitConstant(std::ostream& out, const sem::Constant* constan
             return true;
         },
         [&](const sem::Struct* s) {
-            out << "{";
+            out << program_->Symbols().NameFor(s->Name()) << "{";
             TINT_DEFER(out << "}");
 
             if (constant->AllZero()) {
@@ -2268,7 +2271,7 @@ bool GeneratorImpl::EmitIf(const ast::IfStatement* stmt) {
                 return false;
             }
         } else {
-            if (!EmitStatementsWithIndent({stmt->else_statement})) {
+            if (!EmitStatementsWithIndent(utils::Vector{stmt->else_statement})) {
                 return false;
             }
         }
@@ -2419,6 +2422,9 @@ bool GeneratorImpl::EmitStatement(const ast::Statement* stmt) {
                     return false;
                 });
         },
+        [&](const ast::StaticAssert*) {
+            return true;  // Not emitted
+        },
         [&](Default) {
             diagnostics_.add_error(diag::System::Writer,
                                    "unknown statement type: " + std::string(stmt->TypeInfo().name));
@@ -2426,7 +2432,7 @@ bool GeneratorImpl::EmitStatement(const ast::Statement* stmt) {
         });
 }
 
-bool GeneratorImpl::EmitStatements(const ast::StatementList& stmts) {
+bool GeneratorImpl::EmitStatements(utils::VectorRef<const ast::Statement*> stmts) {
     for (auto* s : stmts) {
         if (!EmitStatement(s)) {
             return false;
@@ -2435,7 +2441,7 @@ bool GeneratorImpl::EmitStatements(const ast::StatementList& stmts) {
     return true;
 }
 
-bool GeneratorImpl::EmitStatementsWithIndent(const ast::StatementList& stmts) {
+bool GeneratorImpl::EmitStatementsWithIndent(utils::VectorRef<const ast::Statement*> stmts) {
     ScopedIndent si(this);
     return EmitStatements(stmts);
 }

@@ -2464,7 +2464,7 @@ uint32_t Builder::GenerateBuiltinCall(const sem::Call* call, const sem::Builtin*
             }
             // Runtime array must be the last member in the structure
             params.push_back(
-                Operand(uint32_t(type->As<sem::Struct>()->Declaration()->members.size() - 1)));
+                Operand(uint32_t(type->As<sem::Struct>()->Declaration()->members.Length() - 1)));
 
             if (!push_function_inst(spv::Op::OpArrayLength, params)) {
                 return 0;
@@ -3486,7 +3486,7 @@ bool Builder::GenerateIfStatement(const ast::IfStatement* stmt) {
         //    if (cond) {} else {break;}
         //  }
         auto is_just_a_break = [](const ast::BlockStatement* block) {
-            return block && (block->statements.size() == 1) &&
+            return block && (block->statements.Length() == 1) &&
                    block->Last()->Is<ast::BreakStatement>();
         };
         if (is_just_a_break(stmt->body) && stmt->else_statement == nullptr) {
@@ -3576,7 +3576,7 @@ bool Builder::GenerateSwitchStatement(const ast::SwitchStatement* stmt) {
     // source. Each fallthrough goes to the next case entry, so is a forward
     // branch, otherwise the branch is to the merge block which comes after
     // the switch statement.
-    for (uint32_t i = 0; i < body.size(); i++) {
+    for (uint32_t i = 0; i < body.Length(); i++) {
         auto* item = body[i];
 
         if (item->IsDefault()) {
@@ -3591,7 +3591,7 @@ bool Builder::GenerateSwitchStatement(const ast::SwitchStatement* stmt) {
         }
 
         if (LastIsFallthrough(item->body)) {
-            if (i == (body.size() - 1)) {
+            if (i == (body.Length() - 1)) {
                 // This case is caught by Resolver validation
                 TINT_UNREACHABLE(Writer, builder_.Diagnostics());
                 return false;
@@ -3723,12 +3723,8 @@ bool Builder::GenerateLoopStatement(const ast::LoopStatement* stmt) {
 bool Builder::GenerateStatement(const ast::Statement* stmt) {
     return Switch(
         stmt, [&](const ast::AssignmentStatement* a) { return GenerateAssignStatement(a); },
-        [&](const ast::BlockStatement* b) {  //
-            return GenerateBlockStatement(b);
-        },
-        [&](const ast::BreakStatement* b) {  //
-            return GenerateBreakStatement(b);
-        },
+        [&](const ast::BlockStatement* b) { return GenerateBlockStatement(b); },
+        [&](const ast::BreakStatement* b) { return GenerateBreakStatement(b); },
         [&](const ast::CallStatement* c) { return GenerateCallExpression(c->expr) != 0; },
         [&](const ast::ContinueStatement* c) { return GenerateContinueStatement(c); },
         [&](const ast::DiscardStatement* d) { return GenerateDiscardStatement(d); },
@@ -3736,19 +3732,14 @@ bool Builder::GenerateStatement(const ast::Statement* stmt) {
             // Do nothing here, the fallthrough gets handled by the switch code.
             return true;
         },
-        [&](const ast::IfStatement* i) {  //
-            return GenerateIfStatement(i);
-        },
-        [&](const ast::LoopStatement* l) {  //
-            return GenerateLoopStatement(l);
-        },
-        [&](const ast::ReturnStatement* r) {  //
-            return GenerateReturnStatement(r);
-        },
-        [&](const ast::SwitchStatement* s) {  //
-            return GenerateSwitchStatement(s);
-        },
+        [&](const ast::IfStatement* i) { return GenerateIfStatement(i); },
+        [&](const ast::LoopStatement* l) { return GenerateLoopStatement(l); },
+        [&](const ast::ReturnStatement* r) { return GenerateReturnStatement(r); },
+        [&](const ast::SwitchStatement* s) { return GenerateSwitchStatement(s); },
         [&](const ast::VariableDeclStatement* v) { return GenerateVariableDeclStatement(v); },
+        [&](const ast::StaticAssert*) {
+            return true;  // Not emitted
+        },
         [&](Default) {
             error_ = "Unknown statement: " + std::string(stmt->TypeInfo().name);
             return false;
@@ -4121,6 +4112,8 @@ SpvStorageClass Builder::ConvertStorageClass(ast::StorageClass klass) const {
             return SpvStorageClassUniform;
         case ast::StorageClass::kWorkgroup:
             return SpvStorageClassWorkgroup;
+        case ast::StorageClass::kPushConstant:
+            return SpvStorageClassPushConstant;
         case ast::StorageClass::kHandle:
             return SpvStorageClassUniformConstant;
         case ast::StorageClass::kStorage:

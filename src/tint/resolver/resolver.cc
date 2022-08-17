@@ -140,6 +140,7 @@ bool Resolver::ResolveInternal() {
                 [&](const ast::TypeDecl* td) { return TypeDecl(td); },
                 [&](const ast::Function* func) { return Function(func); },
                 [&](const ast::Variable* var) { return GlobalVariable(var); },
+                [&](const ast::StaticAssert* sa) { return StaticAssert(sa); },
                 [&](Default) {
                     TINT_UNREACHABLE(Resolver, diagnostics_)
                         << "unhandled global declaration: " << decl->TypeInfo().name;
@@ -156,6 +157,10 @@ bool Resolver::ResolveInternal() {
     SetShadows();
 
     if (!validator_.PipelineStages(entry_points_)) {
+        return false;
+    }
+
+    if (!validator_.PushConstants(entry_points_)) {
         return false;
     }
 
@@ -726,10 +731,37 @@ sem::GlobalVariable* Resolver::GlobalVariable(const ast::Variable* v) {
 
     // TODO(bclayton): Call this at the end of resolve on all uniform and storage
     // referenced structs
-    if (!validator_.StorageClassLayout(sem, valid_type_storage_layouts_)) {
+    if (!validator_.StorageClassLayout(sem, enabled_extensions_, valid_type_storage_layouts_)) {
         return nullptr;
     }
 
+    return sem;
+}
+
+sem::Statement* Resolver::StaticAssert(const ast::StaticAssert* assertion) {
+    auto* expr = Expression(assertion->condition);
+    if (!expr) {
+        return nullptr;
+    }
+    auto* cond = expr->ConstantValue();
+    if (!cond) {
+        AddError("static assertion condition must be a constant expression",
+                 assertion->condition->source);
+        return nullptr;
+    }
+    if (auto* ty = cond->Type(); !ty->Is<sem::Bool>()) {
+        AddError(
+            "static assertion condition must be a bool, got '" + builder_->FriendlyName(ty) + "'",
+            assertion->condition->source);
+        return nullptr;
+    }
+    if (!cond->As<bool>()) {
+        AddError("static assertion failed", assertion->source);
+        return nullptr;
+    }
+    auto* sem =
+        builder_->create<sem::Statement>(assertion, current_compound_statement_, current_function_);
+    builder_->Sem().Add(assertion, sem);
     return sem;
 }
 
@@ -988,7 +1020,7 @@ bool Resolver::WorkgroupSize(const ast::Function* func) {
     return true;
 }
 
-bool Resolver::Statements(const ast::StatementList& stmts) {
+bool Resolver::Statements(utils::VectorRef<const ast::Statement*> stmts) {
     sem::Behaviors behaviors{sem::Behavior::kNext};
 
     bool reachable = true;
@@ -1038,6 +1070,7 @@ sem::Statement* Resolver::Statement(const ast::Statement* stmt) {
         [&](const ast::IncrementDecrementStatement* i) { return IncrementDecrementStatement(i); },
         [&](const ast::ReturnStatement* r) { return ReturnStatement(r); },
         [&](const ast::VariableDeclStatement* v) { return VariableDeclStatement(v); },
+        [&](const ast::StaticAssert* sa) { return StaticAssert(sa); },
 
         // Error cases
         [&](const ast::CaseStatement*) {
@@ -1054,7 +1087,7 @@ sem::CaseStatement* Resolver::CaseStatement(const ast::CaseStatement* stmt) {
     auto* sem =
         builder_->create<sem::CaseStatement>(stmt, current_compound_statement_, current_function_);
     return StatementScope(stmt, sem, [&] {
-        sem->Selectors().reserve(stmt->selectors.size());
+        sem->Selectors().reserve(stmt->selectors.Length());
         for (auto* sel : stmt->selectors) {
             auto* expr = Expression(sel);
             if (!expr) {
@@ -1243,7 +1276,7 @@ sem::WhileStatement* Resolver::WhileStatement(const ast::WhileStatement* stmt) {
 }
 
 sem::Expression* Resolver::Expression(const ast::Expression* root) {
-    utils::Vector<const ast::Expression*, 128> sorted;
+    utils::Vector<const ast::Expression*, 64> sorted;
     constexpr size_t kMaxExpressionDepth = 512U;
     bool failed = false;
     if (!ast::TraverseExpressions<ast::TraverseOrder::RightToLeft>(
@@ -1402,7 +1435,8 @@ const sem::Expression* Resolver::Materialize(const sem::Expression* expr,
     return m;
 }
 
-bool Resolver::MaterializeArguments(utils::VectorRef<const sem::Expression*> args,
+template <size_t N>
+bool Resolver::MaterializeArguments(utils::Vector<const sem::Expression*, N>& args,
                                     const sem::CallTarget* target) {
     for (size_t i = 0, n = std::min(args.Length(), target->Parameters().Length()); i < n; i++) {
         const auto* param_ty = target->Parameters()[i]->Type();
@@ -1418,8 +1452,31 @@ bool Resolver::MaterializeArguments(utils::VectorRef<const sem::Expression*> arg
 }
 
 bool Resolver::ShouldMaterializeArgument(const sem::Type* parameter_ty) const {
-    const auto* param_el_ty = sem::Type::ElementOf(parameter_ty);
+    const auto* param_el_ty = sem::Type::DeepestElementOf(parameter_ty);
     return param_el_ty && !param_el_ty->Is<sem::AbstractNumeric>();
+}
+
+bool Resolver::Convert(const sem::Constant*& c, const sem::Type* target_ty, const Source& source) {
+    auto r = const_eval_.Convert(target_ty, c, source);
+    if (!r) {
+        return false;
+    }
+    c = r.Get();
+    return true;
+}
+
+template <size_t N>
+utils::Result<utils::Vector<const sem::Constant*, N>> Resolver::ConvertArguments(
+    const utils::Vector<const sem::Expression*, N>& args,
+    const sem::CallTarget* target) {
+    auto const_args = utils::Transform(args, [](auto* arg) { return arg->ConstantValue(); });
+    for (size_t i = 0, n = std::min(args.Length(), target->Parameters().Length()); i < n; i++) {
+        if (!Convert(const_args[i], target->Parameters()[i]->Type(),
+                     args[i]->Declaration()->source)) {
+            return utils::Failure;
+        }
+    }
+    return const_args;
 }
 
 sem::Expression* Resolver::IndexAccessor(const ast::IndexAccessorExpression* expr) {
@@ -1467,7 +1524,12 @@ sem::Expression* Resolver::IndexAccessor(const ast::IndexAccessorExpression* exp
     }
 
     auto stage = sem::EarliestStage(obj->Stage(), idx->Stage());
-    auto val = const_eval_.Index(obj, idx);
+    const sem::Constant* val = nullptr;
+    if (auto r = const_eval_.Index(obj, idx)) {
+        val = r.Get();
+    } else {
+        return nullptr;
+    }
     bool has_side_effects = idx->HasSideEffects() || obj->HasSideEffects();
     auto* sem = builder_->create<sem::IndexAccessorExpression>(
         expr, ty, stage, obj, idx, current_statement_, std::move(val), has_side_effects,
@@ -1486,7 +1548,12 @@ sem::Expression* Resolver::Bitcast(const ast::BitcastExpression* expr) {
         return nullptr;
     }
 
-    auto val = const_eval_.Bitcast(ty, inner);
+    const sem::Constant* val = nullptr;
+    if (auto r = const_eval_.Bitcast(ty, inner)) {
+        val = r.Get();
+    } else {
+        return nullptr;
+    }
     auto stage = sem::EvaluationStage::kRuntime;  // TODO(crbug.com/tint/1581)
     auto* sem = builder_->create<sem::Expression>(expr, ty, stage, current_statement_,
                                                   std::move(val), inner->HasSideEffects());
@@ -1509,10 +1576,10 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
 
     // Resolve all of the arguments, their types and the set of behaviors.
     utils::Vector<const sem::Expression*, 8> args;
-    args.Reserve(expr->args.size());
+    args.Reserve(expr->args.Length());
     auto args_stage = sem::EvaluationStage::kConstant;
     sem::Behaviors arg_behaviors;
-    for (size_t i = 0; i < expr->args.size(); i++) {
+    for (size_t i = 0; i < expr->args.Length(); i++) {
         auto* arg = sem_.Get(expr->args[i]);
         if (!arg) {
             return nullptr;
@@ -1541,8 +1608,14 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
         const sem::Constant* value = nullptr;
         auto stage = sem::EarliestStage(ctor_or_conv.target->Stage(), args_stage);
         if (stage == sem::EvaluationStage::kConstant) {
-            value =
-                (const_eval_.*ctor_or_conv.const_eval_fn)(ctor_or_conv.target->ReturnType(), args);
+            auto const_args =
+                utils::Transform(args, [](auto* arg) { return arg->ConstantValue(); });
+            if (auto r = (const_eval_.*ctor_or_conv.const_eval_fn)(
+                    ctor_or_conv.target->ReturnType(), const_args, expr->source)) {
+                value = r.Get();
+            } else {
+                return nullptr;
+            }
         }
         return builder_->create<sem::Call>(expr, ctor_or_conv.target, stage, std::move(args),
                                            current_statement_, value, has_side_effects);
@@ -1559,7 +1632,11 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
         auto stage = args_stage;               // The evaluation stage of the call
         const sem::Constant* value = nullptr;  // The constant value for the call
         if (stage == sem::EvaluationStage::kConstant) {
-            value = const_eval_.ArrayOrStructCtor(ty, args);
+            if (auto r = const_eval_.ArrayOrStructCtor(ty, args)) {
+                value = r.Get();
+            } else {
+                return nullptr;
+            }
             if (!value) {
                 // Constant evaluation failed.
                 // Can happen for expressions that will fail validation (later).
@@ -1774,9 +1851,7 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
                 // there's no need to infer element types.
                 return ty_ctor_or_conv(ty);
             },
-            [&](sem::Function* func) {
-                return FunctionCall(expr, func, std::move(args), arg_behaviors);
-            },
+            [&](sem::Function* func) { return FunctionCall(expr, func, args, arg_behaviors); },
             [&](sem::Variable* var) {
                 auto name = builder_->Symbols().NameFor(var->Declaration()->symbol);
                 AddError("cannot call variable '" + name + "'", ident->source);
@@ -1787,7 +1862,7 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
                 auto name = builder_->Symbols().NameFor(ident->symbol);
                 auto builtin_type = sem::ParseBuiltinType(name);
                 if (builtin_type != sem::BuiltinType::kNone) {
-                    return BuiltinCall(expr, builtin_type, std::move(args));
+                    return BuiltinCall(expr, builtin_type, args);
                 }
 
                 TINT_ICE(Resolver, diagnostics_)
@@ -1805,12 +1880,13 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
     return validator_.Call(call, current_statement_) ? call : nullptr;
 }
 
+template <size_t N>
 sem::Call* Resolver::BuiltinCall(const ast::CallExpression* expr,
                                  sem::BuiltinType builtin_type,
-                                 utils::VectorRef<const sem::Expression*> args) {
+                                 utils::Vector<const sem::Expression*, N>& args) {
     IntrinsicTable::Builtin builtin;
     {
-        auto arg_tys = utils::Transform<8>(args, [](auto* arg) { return arg->Type(); });
+        auto arg_tys = utils::Transform(args, [](auto* arg) { return arg->Type(); });
         builtin = intrinsic_table_->Lookup(builtin_type, arg_tys, expr->source);
         if (!builtin.sem) {
             return nullptr;
@@ -1840,7 +1916,16 @@ sem::Call* Resolver::BuiltinCall(const ast::CallExpression* expr,
     // If the builtin is @const, and all arguments have constant values, evaluate the builtin now.
     const sem::Constant* value = nullptr;
     if (stage == sem::EvaluationStage::kConstant) {
-        value = (const_eval_.*builtin.const_eval_fn)(builtin.sem->ReturnType(), args);
+        auto const_args = ConvertArguments(args, builtin.sem);
+        if (!const_args) {
+            return nullptr;
+        }
+        if (auto r = (const_eval_.*builtin.const_eval_fn)(builtin.sem->ReturnType(),
+                                                          const_args.Get(), expr->source)) {
+            value = r.Get();
+        } else {
+            return nullptr;
+        }
     }
 
     bool has_side_effects =
@@ -1872,9 +1957,8 @@ sem::Call* Resolver::BuiltinCall(const ast::CallExpression* expr,
     return call;
 }
 
-void Resolver::CollectTextureSamplerPairs(
-    const sem::Builtin* builtin,
-    utils::ConstVectorRef<const sem::Expression*> args) const {
+void Resolver::CollectTextureSamplerPairs(const sem::Builtin* builtin,
+                                          utils::VectorRef<const sem::Expression*> args) const {
     // Collect a texture/sampler pair for this builtin.
     const auto& signature = builtin->Signature();
     int texture_index = signature.IndexOf(sem::ParameterUsage::kTexture);
@@ -1892,9 +1976,10 @@ void Resolver::CollectTextureSamplerPairs(
     }
 }
 
+template <size_t N>
 sem::Call* Resolver::FunctionCall(const ast::CallExpression* expr,
                                   sem::Function* target,
-                                  utils::VectorRef<const sem::Expression*> args,
+                                  utils::Vector<const sem::Expression*, N>& args,
                                   sem::Behaviors arg_behaviors) {
     auto sym = expr->target.name->symbol;
     auto name = builder_->Symbols().NameFor(sym);
@@ -1940,9 +2025,8 @@ sem::Call* Resolver::FunctionCall(const ast::CallExpression* expr,
     return call;
 }
 
-void Resolver::CollectTextureSamplerPairs(
-    sem::Function* func,
-    utils::ConstVectorRef<const sem::Expression*> args) const {
+void Resolver::CollectTextureSamplerPairs(sem::Function* func,
+                                          utils::VectorRef<const sem::Expression*> args) const {
     // Map all texture/sampler pairs from the target function to the
     // current function. These can only be global or parameter
     // variables. Resolve any parameter variables to the corresponding
@@ -2003,7 +2087,12 @@ sem::Expression* Resolver::Literal(const ast::LiteralExpression* literal) {
         return nullptr;
     }
 
-    auto val = const_eval_.Literal(ty, literal);
+    const sem::Constant* val = nullptr;
+    if (auto r = const_eval_.Literal(ty, literal)) {
+        val = r.Get();
+    } else {
+        return nullptr;
+    }
     return builder_->create<sem::Expression>(literal, ty, sem::EvaluationStage::kConstant,
                                              current_statement_, std::move(val),
                                              /* has_side_effects */ false);
@@ -2124,7 +2213,12 @@ sem::Expression* Resolver::MemberAccessor(const ast::MemberAccessorExpression* e
             ret = builder_->create<sem::Reference>(ret, ref->StorageClass(), ref->Access());
         }
 
-        auto* val = const_eval_.MemberAccess(object, member);
+        const sem::Constant* val = nullptr;
+        if (auto r = const_eval_.MemberAccess(object, member)) {
+            val = r.Get();
+        } else {
+            return nullptr;
+        }
         return builder_->create<sem::StructMemberAccess>(expr, ret, current_statement_, val, object,
                                                          member, has_side_effects, source_var);
     }
@@ -2192,9 +2286,12 @@ sem::Expression* Resolver::MemberAccessor(const ast::MemberAccessorExpression* e
             // the swizzle.
             ret = builder_->create<sem::Vector>(vec->type(), static_cast<uint32_t>(size));
         }
-        auto* val = const_eval_.Swizzle(ret, object, swizzle);
-        return builder_->create<sem::Swizzle>(expr, ret, current_statement_, val, object,
-                                              std::move(swizzle), has_side_effects, source_var);
+        if (auto r = const_eval_.Swizzle(ret, object, swizzle)) {
+            auto* val = r.Get();
+            return builder_->create<sem::Swizzle>(expr, ret, current_statement_, val, object,
+                                                  std::move(swizzle), has_side_effects, source_var);
+        }
+        return nullptr;
     }
 
     AddError("invalid member accessor expression. Expected vector or struct, got '" +
@@ -2208,7 +2305,6 @@ sem::Expression* Resolver::Binary(const ast::BinaryExpression* expr) {
     const auto* rhs = sem_.Get(expr->rhs);
     auto* lhs_ty = lhs->Type()->UnwrapRef();
     auto* rhs_ty = rhs->Type()->UnwrapRef();
-    auto stage = sem::EvaluationStage::kRuntime;  // TODO(crbug.com/tint/1581)
 
     auto op = intrinsic_table_->Lookup(expr->op, lhs_ty, rhs_ty, expr->source, false);
     if (!op.result) {
@@ -2228,8 +2324,26 @@ sem::Expression* Resolver::Binary(const ast::BinaryExpression* expr) {
     }
 
     const sem::Constant* value = nullptr;
-    if (op.const_eval_fn) {
-        value = (const_eval_.*op.const_eval_fn)(op.result, utils::Vector{lhs, rhs});
+    auto stage = sem::EarliestStage(lhs->Stage(), rhs->Stage());
+    if (stage == sem::EvaluationStage::kConstant) {
+        if (op.const_eval_fn) {
+            auto const_args = utils::Vector{lhs->ConstantValue(), rhs->ConstantValue()};
+            // Implicit conversion (e.g. AInt -> AFloat)
+            if (!Convert(const_args[0], op.lhs, lhs->Declaration()->source)) {
+                return nullptr;
+            }
+            if (!Convert(const_args[1], op.rhs, rhs->Declaration()->source)) {
+                return nullptr;
+            }
+
+            if (auto r = (const_eval_.*op.const_eval_fn)(op.result, const_args, expr->source)) {
+                value = r.Get();
+            } else {
+                return nullptr;
+            }
+        } else {
+            stage = sem::EvaluationStage::kRuntime;
+        }
     }
 
     bool has_side_effects = lhs->HasSideEffects() || rhs->HasSideEffects();
@@ -2305,7 +2419,13 @@ sem::Expression* Resolver::UnaryOp(const ast::UnaryOpExpression* unary) {
             stage = expr->Stage();
             if (stage == sem::EvaluationStage::kConstant) {
                 if (op.const_eval_fn) {
-                    value = (const_eval_.*op.const_eval_fn)(ty, utils::Vector{expr});
+                    if (auto r = (const_eval_.*op.const_eval_fn)(
+                            ty, utils::Vector{expr->ConstantValue()},
+                            expr->Declaration()->source)) {
+                        value = r.Get();
+                    } else {
+                        return nullptr;
+                    }
                 } else {
                     stage = sem::EvaluationStage::kRuntime;
                 }
@@ -2419,7 +2539,7 @@ utils::Result<uint32_t> Resolver::ArrayCount(const ast::Expression* count_expr) 
     return static_cast<uint32_t>(count);
 }
 
-bool Resolver::ArrayAttributes(const ast::AttributeList& attributes,
+bool Resolver::ArrayAttributes(utils::VectorRef<const ast::Attribute*> attributes,
                                const sem::Type* el_ty,
                                uint32_t& explicit_stride) {
     if (!validator_.NoDuplicateAttributes(attributes)) {
@@ -2490,7 +2610,7 @@ sem::Struct* Resolver::Structure(const ast::Struct* str) {
     }
 
     sem::StructMemberList sem_members;
-    sem_members.reserve(str->members.size());
+    sem_members.reserve(str->members.Length());
 
     // Calculate the effective size and alignment of each field, and the overall
     // size of the structure.
@@ -2689,8 +2809,8 @@ sem::SwitchStatement* Resolver::SwitchStatement(const ast::SwitchStatement* stmt
         utils::Vector<const sem::Type*, 8> types;
         types.Push(cond_ty);
 
-        std::vector<sem::CaseStatement*> cases;
-        cases.reserve(stmt->body.size());
+        utils::Vector<sem::CaseStatement*, 4> cases;
+        cases.Reserve(stmt->body.Length());
         for (auto* case_stmt : stmt->body) {
             Mark(case_stmt);
             auto* c = CaseStatement(case_stmt);
@@ -2700,7 +2820,7 @@ sem::SwitchStatement* Resolver::SwitchStatement(const ast::SwitchStatement* stmt
             for (auto* expr : c->Selectors()) {
                 types.Push(expr->Type()->UnwrapRef());
             }
-            cases.emplace_back(c);
+            cases.Push(c);
             behaviors.Add(c->Behaviors());
             sem->Cases().emplace_back(c);
         }

@@ -43,15 +43,26 @@ const auto k3PiOver4 = T(UnwrapNumber<T>(2.356194490192344928846));
 
 template <typename T>
 constexpr auto Negate(const Number<T>& v) {
-    // For signed integrals, avoid C++ UB by not negating the smallest negative number. In
-    // WGSL, this operation is well defined to return the same value, see:
-    // https://gpuweb.github.io/gpuweb/wgsl/#arithmetic-expr.
-    if constexpr (std::is_integral_v<T> && std::is_signed_v<T>) {
-        if (v == std::numeric_limits<T>::min()) {
-            return v;
+    if constexpr (std::is_integral_v<T>) {
+        if constexpr (std::is_signed_v<T>) {
+            // For signed integrals, avoid C++ UB by not negating the smallest negative number. In
+            // WGSL, this operation is well defined to return the same value, see:
+            // https://gpuweb.github.io/gpuweb/wgsl/#arithmetic-expr.
+            if (v == std::numeric_limits<T>::min()) {
+                return v;
+            }
+            return -v;
+
+        } else {
+            // Allow negating unsigned values
+            using ST = std::make_signed_t<T>;
+            auto as_signed = Number<ST>{static_cast<ST>(v)};
+            return Number<T>{static_cast<T>(Negate(as_signed))};
         }
+    } else {
+        // float case
+        return -v;
     }
-    return -v;
 }
 
 template <typename T>
@@ -65,7 +76,7 @@ auto Abs(const Number<T>& v) {
 
 // Concats any number of std::vectors
 template <typename Vec, typename... Vecs>
-auto Concat(Vec&& v1, Vecs&&... vs) {
+[[nodiscard]] auto Concat(Vec&& v1, Vecs&&... vs) {
     auto total_size = v1.size() + (vs.size() + ...);
     v1.reserve(total_size);
     (std::move(vs.begin(), vs.end(), std::back_inserter(v1)), ...);
@@ -1771,7 +1782,7 @@ TEST_F(ResolverConstEvalTest, Array_vec3_f32_Zero) {
 }
 
 TEST_F(ResolverConstEvalTest, Array_Struct_f32_Zero) {
-    Structure("S", {
+    Structure("S", utils::Vector{
                        Member("m1", ty.f32()),
                        Member("m2", ty.f32()),
                    });
@@ -1914,7 +1925,7 @@ TEST_F(ResolverConstEvalTest, Array_vec3_f32_Elements) {
 }
 
 TEST_F(ResolverConstEvalTest, Array_Struct_f32_Elements) {
-    Structure("S", {
+    Structure("S", utils::Vector{
                        Member("m1", ty.f32()),
                        Member("m2", ty.f32()),
                    });
@@ -1958,7 +1969,8 @@ TEST_F(ResolverConstEvalTest, Array_Struct_f32_Elements) {
 }
 
 TEST_F(ResolverConstEvalTest, Struct_I32s_ZeroInit) {
-    Structure("S", {Member("m1", ty.i32()), Member("m2", ty.i32()), Member("m3", ty.i32())});
+    Structure(
+        "S", utils::Vector{Member("m1", ty.i32()), Member("m2", ty.i32()), Member("m3", ty.i32())});
     auto* expr = Construct(ty.type_name("S"));
     WrapInFunction(expr);
 
@@ -1997,7 +2009,7 @@ TEST_F(ResolverConstEvalTest, Struct_I32s_ZeroInit) {
 TEST_F(ResolverConstEvalTest, Struct_MixedScalars_ZeroInit) {
     Enable(ast::Extension::kF16);
 
-    Structure("S", {
+    Structure("S", utils::Vector{
                        Member("m1", ty.i32()),
                        Member("m2", ty.u32()),
                        Member("m3", ty.f32()),
@@ -2052,7 +2064,7 @@ TEST_F(ResolverConstEvalTest, Struct_MixedScalars_ZeroInit) {
 }
 
 TEST_F(ResolverConstEvalTest, Struct_VectorF32s_ZeroInit) {
-    Structure("S", {
+    Structure("S", utils::Vector{
                        Member("m1", ty.vec3<f32>()),
                        Member("m2", ty.vec3<f32>()),
                        Member("m3", ty.vec3<f32>()),
@@ -2104,7 +2116,7 @@ TEST_F(ResolverConstEvalTest, Struct_VectorF32s_ZeroInit) {
 TEST_F(ResolverConstEvalTest, Struct_MixedVectors_ZeroInit) {
     Enable(ast::Extension::kF16);
 
-    Structure("S", {
+    Structure("S", utils::Vector{
                        Member("m1", ty.vec2<i32>()),
                        Member("m2", ty.vec3<u32>()),
                        Member("m3", ty.vec4<f32>()),
@@ -2173,13 +2185,13 @@ TEST_F(ResolverConstEvalTest, Struct_MixedVectors_ZeroInit) {
 }
 
 TEST_F(ResolverConstEvalTest, Struct_Struct_ZeroInit) {
-    Structure("Inner", {
+    Structure("Inner", utils::Vector{
                            Member("m1", ty.i32()),
                            Member("m2", ty.u32()),
                            Member("m3", ty.f32()),
                        });
 
-    Structure("Outer", {
+    Structure("Outer", utils::Vector{
                            Member("m1", ty.type_name("Inner")),
                            Member("m2", ty.type_name("Inner")),
                        });
@@ -2219,7 +2231,7 @@ TEST_F(ResolverConstEvalTest, Struct_Struct_ZeroInit) {
 TEST_F(ResolverConstEvalTest, Struct_MixedScalars_Construct) {
     Enable(ast::Extension::kF16);
 
-    Structure("S", {
+    Structure("S", utils::Vector{
                        Member("m1", ty.i32()),
                        Member("m2", ty.u32()),
                        Member("m3", ty.f32()),
@@ -2276,7 +2288,7 @@ TEST_F(ResolverConstEvalTest, Struct_MixedScalars_Construct) {
 TEST_F(ResolverConstEvalTest, Struct_MixedVectors_Construct) {
     Enable(ast::Extension::kF16);
 
-    Structure("S", {
+    Structure("S", utils::Vector{
                        Member("m1", ty.vec2<i32>()),
                        Member("m2", ty.vec3<u32>()),
                        Member("m3", ty.vec4<f32>()),
@@ -2346,13 +2358,13 @@ TEST_F(ResolverConstEvalTest, Struct_MixedVectors_Construct) {
 }
 
 TEST_F(ResolverConstEvalTest, Struct_Struct_Construct) {
-    Structure("Inner", {
+    Structure("Inner", utils::Vector{
                            Member("m1", ty.i32()),
                            Member("m2", ty.u32()),
                            Member("m3", ty.f32()),
                        });
 
-    Structure("Outer", {
+    Structure("Outer", utils::Vector{
                            Member("m1", ty.type_name("Inner")),
                            Member("m2", ty.type_name("Inner")),
                        });
@@ -2392,7 +2404,7 @@ TEST_F(ResolverConstEvalTest, Struct_Struct_Construct) {
 }
 
 TEST_F(ResolverConstEvalTest, Struct_Array_Construct) {
-    Structure("S", {
+    Structure("S", utils::Vector{
                        Member("m1", ty.array<i32, 2>()),
                        Member("m2", ty.array<f32, 3>()),
                    });
@@ -2921,13 +2933,13 @@ TEST_F(ResolverConstEvalTest, ChainedIndex_OOB) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 TEST_F(ResolverConstEvalTest, MemberAccess) {
-    Structure("Inner", {
+    Structure("Inner", utils::Vector{
                            Member("i1", ty.i32()),
                            Member("i2", ty.u32()),
                            Member("i3", ty.f32()),
                        });
 
-    Structure("Outer", {
+    Structure("Outer", utils::Vector{
                            Member("o1", ty.type_name("Inner")),
                            Member("o2", ty.type_name("Inner")),
                        });
@@ -3114,34 +3126,195 @@ TEST_F(ResolverConstEvalTest, UnaryNegateLowestAbstract) {
 
 }  // namespace unary_op
 
-namespace builtin {
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Binary op
+////////////////////////////////////////////////////////////////////////////////////////////////////
+namespace binary_op {
 
-template <typename T>
-struct Values {
-    std::vector<T> args;
-    T result;
-    bool result_pos_or_neg;
-};
+using Types = std::variant<AInt, AFloat, u32, i32, f32, f16>;
 
 struct Case {
-    std::variant<Values<AInt>, Values<AFloat>, Values<u32>, Values<i32>, Values<f32>, Values<f16>>
-        values;
+    Types lhs;
+    Types rhs;
+    Types expected;
+    bool is_overflow;
 };
 
 static std::ostream& operator<<(std::ostream& o, const Case& c) {
     std::visit(
-        [&](auto&& v) {
-            for (auto& e : v.args) {
-                o << e << ((&e != &v.args.back()) ? " " : "");
+        [&](auto&& lhs, auto&& rhs, auto&& expected) {
+            o << "lhs: " << lhs << ", rhs: " << rhs << ", expected: " << expected;
+        },
+        c.lhs, c.rhs, c.expected);
+    return o;
+}
+
+template <typename T, typename U, typename V>
+Case C(T lhs, U rhs, V expected, bool is_overflow = false) {
+    return Case{lhs, rhs, expected, is_overflow};
+}
+
+using ResolverConstEvalBinaryOpTest = ResolverTestWithParam<std::tuple<ast::BinaryOp, Case>>;
+TEST_P(ResolverConstEvalBinaryOpTest, Test) {
+    Enable(ast::Extension::kF16);
+
+    auto op = std::get<0>(GetParam());
+    auto c = std::get<1>(GetParam());
+    std::visit(
+        [&](auto&& lhs, auto&& rhs, auto&& expected) {
+            using T = std::decay_t<decltype(expected)>;
+
+            if constexpr (std::is_same_v<T, AInt> || std::is_same_v<T, AFloat>) {
+                if (c.is_overflow) {
+                    return;
+                }
+            }
+
+            auto* expr = create<ast::BinaryExpression>(op, Expr(lhs), Expr(rhs));
+            GlobalConst("C", nullptr, expr);
+
+            EXPECT_TRUE(r()->Resolve()) << r()->error();
+
+            auto* sem = Sem().Get(expr);
+            const sem::Constant* value = sem->ConstantValue();
+            ASSERT_NE(value, nullptr);
+            EXPECT_TYPE(value->Type(), sem->Type());
+            EXPECT_EQ(value->As<T>(), expected);
+
+            if constexpr (IsInteger<UnwrapNumber<T>>) {
+                // Check that the constant's integer doesn't contain unexpected data in the MSBs
+                // that are outside of the bit-width of T.
+                EXPECT_EQ(value->As<AInt>(), AInt(expected));
             }
         },
-        c.values);
+        c.lhs, c.rhs, c.expected);
+}
+
+INSTANTIATE_TEST_SUITE_P(MixedAbstractArgs,
+                         ResolverConstEvalBinaryOpTest,
+                         testing::Combine(testing::Values(ast::BinaryOp::kAdd),
+                                          testing::ValuesIn(std::vector{
+                                              // Mixed abstract type args
+                                              C(1_a, 2.3_a, 3.3_a),
+                                              C(2.3_a, 1_a, 3.3_a),
+                                          })));
+
+template <typename T>
+std::vector<Case> OpAddIntCases() {
+    static_assert(IsInteger<UnwrapNumber<T>>);
+    return {
+        C(T{0}, T{0}, T{0}),
+        C(T{1}, T{2}, T{3}),
+        C(T::Lowest(), T{1}, T{T::Lowest() + 1}),
+        C(T::Highest(), Negate(T{1}), T{T::Highest() - 1}),
+        C(T::Lowest(), T::Highest(), Negate(T{1})),
+        C(T::Highest(), T{1}, T::Lowest(), true),
+        C(T::Lowest(), Negate(T{1}), T::Highest(), true),
+    };
+}
+template <typename T>
+std::vector<Case> OpAddFloatCases() {
+    static_assert(IsFloatingPoint<UnwrapNumber<T>>);
+    return {
+        C(T{0}, T{0}, T{0}),
+        C(T{1}, T{2}, T{3}),
+        C(T::Lowest(), T{1}, T{T::Lowest() + 1}),
+        C(T::Highest(), Negate(T{1}), T{T::Highest() - 1}),
+        C(T::Lowest(), T::Highest(), T{0}),
+        C(T::Highest(), T::Highest(), T::Inf(), true),
+        C(T::Lowest(), Negate(T::Highest()), -T::Inf(), true),
+    };
+}
+INSTANTIATE_TEST_SUITE_P(Add,
+                         ResolverConstEvalBinaryOpTest,
+                         testing::Combine(testing::Values(ast::BinaryOp::kAdd),
+                                          testing::ValuesIn(Concat(  //
+                                              OpAddIntCases<AInt>(),
+                                              OpAddIntCases<i32>(),
+                                              OpAddIntCases<u32>(),
+                                              OpAddFloatCases<AFloat>(),
+                                              OpAddFloatCases<f32>(),
+                                              OpAddFloatCases<f16>()))));
+
+TEST_F(ResolverConstEvalTest, BinaryAbstractAddOverflow_AInt) {
+    GlobalConst("c", nullptr, Add(Source{{1, 1}}, Expr(AInt::Highest()), 1_a));
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(),
+              "1:1 error: '-9223372036854775808' cannot be represented as 'abstract-int'");
+}
+
+TEST_F(ResolverConstEvalTest, BinaryAbstractAddUnderflow_AInt) {
+    GlobalConst("c", nullptr, Add(Source{{1, 1}}, Expr(AInt::Lowest()), -1_a));
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(),
+              "1:1 error: '9223372036854775807' cannot be represented as 'abstract-int'");
+}
+
+TEST_F(ResolverConstEvalTest, BinaryAbstractAddOverflow_AFloat) {
+    GlobalConst("c", nullptr, Add(Source{{1, 1}}, Expr(AFloat::Highest()), AFloat::Highest()));
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(), "1:1 error: 'inf' cannot be represented as 'abstract-float'");
+}
+
+TEST_F(ResolverConstEvalTest, BinaryAbstractAddUnderflow_AFloat) {
+    GlobalConst("c", nullptr, Add(Source{{1, 1}}, Expr(AFloat::Lowest()), AFloat::Lowest()));
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(), "1:1 error: '-inf' cannot be represented as 'abstract-float'");
+}
+
+TEST_F(ResolverConstEvalTest, BinaryAbstractMixed_ScalarScalar) {
+    auto* a = Const("a", nullptr, Expr(1_a));    // AInt
+    auto* b = Const("b", nullptr, Expr(2.3_a));  // AFloat
+    auto* c = Add(Expr("a"), Expr("b"));
+    WrapInFunction(a, b, c);
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+    auto* sem = Sem().Get(c);
+    ASSERT_TRUE(sem);
+    ASSERT_TRUE(sem->ConstantValue());
+    auto result = sem->ConstantValue()->As<AFloat>();
+    EXPECT_EQ(result, 3.3f);
+}
+
+TEST_F(ResolverConstEvalTest, BinaryAbstractMixed_ScalarVector) {
+    auto* a = Const("a", nullptr, Expr(1_a));                                   // AInt
+    auto* b = Const("b", nullptr, Construct(ty.vec(nullptr, 3), Expr(2.3_a)));  // AFloat
+    auto* c = Add(Expr("a"), Expr("b"));
+    WrapInFunction(a, b, c);
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+    auto* sem = Sem().Get(c);
+    ASSERT_TRUE(sem);
+    ASSERT_TRUE(sem->ConstantValue());
+    EXPECT_EQ(sem->ConstantValue()->Index(0)->As<AFloat>(), 3.3f);
+    EXPECT_EQ(sem->ConstantValue()->Index(1)->As<AFloat>(), 3.3f);
+    EXPECT_EQ(sem->ConstantValue()->Index(2)->As<AFloat>(), 3.3f);
+}
+
+}  // namespace binary_op
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Builtin
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+namespace builtin {
+
+using Types = std::variant<AInt, AFloat, u32, i32, f32, f16>;
+
+struct Case {
+    utils::Vector<Types, 8> args;
+    Types result;
+    bool result_pos_or_neg;
+};
+
+static std::ostream& operator<<(std::ostream& o, const Case& c) {
+    for (auto& a : c.args) {
+        std::visit([&](auto&& v) { o << v << ((&a != &c.args.Back()) ? " " : ""); }, a);
+    }
     return o;
 }
 
 template <typename T>
-Case C(std::vector<T> args, T result, bool result_pos_or_neg = false) {
-    return Case{Values<T>{std::move(args), result, result_pos_or_neg}};
+Case C(std::initializer_list<Types> args, T result, bool result_pos_or_neg = false) {
+    return Case{std::move(args), std::move(result), result_pos_or_neg};
 }
 
 using ResolverConstEvalBuiltinTest = ResolverTestWithParam<std::tuple<sem::BuiltinType, Case>>;
@@ -3151,12 +3324,15 @@ TEST_P(ResolverConstEvalBuiltinTest, Test) {
 
     auto builtin = std::get<0>(GetParam());
     auto c = std::get<1>(GetParam());
+
+    utils::Vector<const ast::Expression*, 8> args;
+    for (auto& a : c.args) {
+        std::visit([&](auto&& v) { args.Push(Expr(v)); }, a);
+    }
+
     std::visit(
-        [&](auto&& values) {
-            using T = decltype(values.result);
-            auto args = utils::Transform(values.args, [&](auto&& a) {
-                return static_cast<const ast::Expression*>(Expr(a));
-            });
+        [&](auto&& result) {
+            using T = std::decay_t<decltype(result)>;
             auto* expr = Call(sem::str(builtin), std::move(args));
 
             GlobalConst("C", nullptr, expr);
@@ -3171,22 +3347,22 @@ TEST_P(ResolverConstEvalBuiltinTest, Test) {
             auto actual = value->As<T>();
 
             if constexpr (IsFloatingPoint<UnwrapNumber<T>>) {
-                if (std::isnan(values.result)) {
+                if (std::isnan(result)) {
                     EXPECT_TRUE(std::isnan(actual));
                 } else {
-                    EXPECT_FLOAT_EQ(values.result_pos_or_neg ? Abs(actual) : actual, values.result);
+                    EXPECT_FLOAT_EQ(c.result_pos_or_neg ? Abs(actual) : actual, result);
                 }
             } else {
-                EXPECT_EQ(values.result_pos_or_neg ? Abs(actual) : actual, values.result);
+                EXPECT_EQ(c.result_pos_or_neg ? Abs(actual) : actual, result);
             }
 
             if constexpr (IsInteger<UnwrapNumber<T>>) {
                 // Check that the constant's integer doesn't contain unexpected data in the MSBs
                 // that are outside of the bit-width of T.
-                EXPECT_EQ(value->As<AInt>(), AInt(values.result));
+                EXPECT_EQ(value->As<AInt>(), AInt(result));
             }
         },
-        c.values);
+        c.result);
 }
 
 template <typename T, bool finite_only>
@@ -3244,6 +3420,15 @@ std::vector<Case> Atan2Cases() {
 
     return cases;
 }
+
+INSTANTIATE_TEST_SUITE_P(  //
+    MixedAbstractArgs,
+    ResolverConstEvalBuiltinTest,
+    testing::Combine(testing::Values(sem::BuiltinType::kAtan2),
+                     testing::ValuesIn(std::vector{
+                         C({1_a, 1.0_a}, 0.78539819_a),
+                         C({1.0_a, 1_a}, 0.78539819_a),
+                     })));
 
 INSTANTIATE_TEST_SUITE_P(  //
     Atan2,

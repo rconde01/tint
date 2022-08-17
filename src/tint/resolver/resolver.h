@@ -160,19 +160,6 @@ class Resolver {
     /// ProgramBuilder.
     void CreateSemanticNodes() const;
 
-    /// Retrieves information for the requested import.
-    /// @param src the source of the import
-    /// @param path the import path
-    /// @param name the method name to get information on
-    /// @param params the parameters to the method call
-    /// @param id out parameter for the external call ID. Must not be a nullptr.
-    /// @returns the return type of `name` in `path` or nullptr on error.
-    sem::Type* GetImportData(const Source& src,
-                             const std::string& path,
-                             const std::string& name,
-                             const ast::ExpressionList& params,
-                             uint32_t* id);
-
     /// Expression traverses the graph of expressions starting at `expr`, building a postordered
     /// list (leaf-first) of all the expression nodes. Each of the expressions are then resolved by
     /// dispatching to the appropriate expression handlers below.
@@ -193,14 +180,16 @@ class Resolver {
     sem::Expression* Bitcast(const ast::BitcastExpression*);
     sem::Call* Call(const ast::CallExpression*);
     sem::Function* Function(const ast::Function*);
+    template <size_t N>
     sem::Call* FunctionCall(const ast::CallExpression*,
                             sem::Function* target,
-                            utils::VectorRef<const sem::Expression*> args,
+                            utils::Vector<const sem::Expression*, N>& args,
                             sem::Behaviors arg_behaviors);
     sem::Expression* Identifier(const ast::IdentifierExpression*);
+    template <size_t N>
     sem::Call* BuiltinCall(const ast::CallExpression*,
                            sem::BuiltinType,
-                           utils::VectorRef<const sem::Expression*> args);
+                           utils::Vector<const sem::Expression*, N>& args);
     sem::Expression* Literal(const ast::LiteralExpression*);
     sem::Expression* MemberAccessor(const ast::MemberAccessorExpression*);
     sem::Expression* UnaryOp(const ast::UnaryOpExpression*);
@@ -223,12 +212,25 @@ class Resolver {
 
     /// Materializes all the arguments in `args` to the parameter types of `target`.
     /// @returns true on success, false on failure.
-    bool MaterializeArguments(utils::VectorRef<const sem::Expression*> args,
+    template <size_t N>
+    bool MaterializeArguments(utils::Vector<const sem::Expression*, N>& args,
                               const sem::CallTarget* target);
 
     /// @returns true if an argument of an abstract numeric type, passed to a parameter of type
     /// `parameter_ty` should be materialized.
     bool ShouldMaterializeArgument(const sem::Type* parameter_ty) const;
+
+    /// Converts `c` to `target_ty`
+    /// @returns true on success, false on failure.
+    bool Convert(const sem::Constant*& c, const sem::Type* target_ty, const Source& source);
+
+    /// Transforms `args` to a vector of constants, and converts each constant to the call target's
+    /// parameter type.
+    /// @returns the vector of constants, `utils::Failure` on failure.
+    template <size_t N>
+    utils::Result<utils::Vector<const sem::Constant*, N>> ConvertArguments(
+        const utils::Vector<const sem::Expression*, N>& args,
+        const sem::CallTarget* target);
 
     /// @param ty the type that may hold abstract numeric types
     /// @param target_ty the target type for the expression (variable type, parameter type, etc).
@@ -260,16 +262,17 @@ class Resolver {
     sem::LoopStatement* LoopStatement(const ast::LoopStatement*);
     sem::Statement* ReturnStatement(const ast::ReturnStatement*);
     sem::Statement* Statement(const ast::Statement*);
+    sem::Statement* StaticAssert(const ast::StaticAssert*);
     sem::SwitchStatement* SwitchStatement(const ast::SwitchStatement* s);
     sem::Statement* VariableDeclStatement(const ast::VariableDeclStatement*);
-    bool Statements(const ast::StatementList&);
+    bool Statements(utils::VectorRef<const ast::Statement*>);
 
     // CollectTextureSamplerPairs() collects all the texture/sampler pairs from the target function
     // / builtin, and records these on the current function by calling AddTextureSamplerPair().
     void CollectTextureSamplerPairs(sem::Function* func,
-                                    utils::ConstVectorRef<const sem::Expression*> args) const;
+                                    utils::VectorRef<const sem::Expression*> args) const;
     void CollectTextureSamplerPairs(const sem::Builtin* builtin,
-                                    utils::ConstVectorRef<const sem::Expression*> args) const;
+                                    utils::VectorRef<const sem::Expression*> args) const;
 
     /// Resolves the WorkgroupSize for the given function, assigning it to
     /// current_function_
@@ -306,7 +309,7 @@ class Resolver {
     /// @param el_ty the element type of the array.
     /// @param explicit_stride assigned the specified stride of the array in bytes.
     /// @returns true on success, false on failure
-    bool ArrayAttributes(const ast::AttributeList& attributes,
+    bool ArrayAttributes(utils::VectorRef<const ast::Attribute*> attributes,
                          const sem::Type* el_ty,
                          uint32_t& explicit_stride);
 

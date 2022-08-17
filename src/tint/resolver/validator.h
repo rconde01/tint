@@ -116,6 +116,11 @@ class Validator {
     /// @returns true on success, false otherwise.
     bool PipelineStages(const std::vector<sem::Function*>& entry_points) const;
 
+    /// Validates push_constant variables
+    /// @param entry_points the entry points to the module
+    /// @returns true on success, false otherwise.
+    bool PushConstants(const std::vector<sem::Function*>& entry_points) const;
+
     /// Validates aliases
     /// @param alias the alias to validate
     /// @returns true on success, false otherwise.
@@ -320,7 +325,7 @@ class Validator {
     /// Validates a list of statements
     /// @param stmts the statements to validate
     /// @returns true on success, false otherwise
-    bool Statements(const ast::StatementList& stmts) const;
+    bool Statements(utils::VectorRef<const ast::Statement*> stmts) const;
 
     /// Validates a storage texture
     /// @param t the texture to validate
@@ -417,7 +422,7 @@ class Validator {
     /// Validates there are no duplicate attributes
     /// @param attributes the list of attributes to validate
     /// @returns true on success, false otherwise.
-    bool NoDuplicateAttributes(const ast::AttributeList& attributes) const;
+    bool NoDuplicateAttributes(utils::VectorRef<const ast::Attribute*> attributes) const;
 
     /// Validates a storage class layout
     /// @param type the type to validate
@@ -433,15 +438,18 @@ class Validator {
     /// Validates a storage class layout
     /// @param var the variable to validate
     /// @param layouts previously validated storage layouts
+    /// @param enabled_extensions all the extensions declared in current module
     /// @returns true on success, false otherwise.
-    bool StorageClassLayout(const sem::Variable* var, ValidTypeStorageLayouts& layouts) const;
+    bool StorageClassLayout(const sem::Variable* var,
+                            const ast::Extensions& enabled_extensions,
+                            ValidTypeStorageLayouts& layouts) const;
 
     /// @returns true if the attribute list contains a
     /// ast::DisableValidationAttribute with the validation mode equal to
     /// `validation`
     /// @param attributes the attribute list to check
     /// @param validation the validation mode to check
-    bool IsValidationDisabled(const ast::AttributeList& attributes,
+    bool IsValidationDisabled(utils::VectorRef<const ast::Attribute*> attributes,
                               ast::DisabledValidation validation) const;
 
     /// @returns true if the attribute list does not contains a
@@ -449,7 +457,7 @@ class Validator {
     /// `validation`
     /// @param attributes the attribute list to check
     /// @param validation the validation mode to check
-    bool IsValidationEnabled(const ast::AttributeList& attributes,
+    bool IsValidationEnabled(utils::VectorRef<const ast::Attribute*> attributes,
                              ast::DisabledValidation validation) const;
 
   private:

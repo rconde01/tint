@@ -130,6 +130,10 @@ std::string_view Token::TypeToName(Type type) {
             return "|=";
         case Token::Type::kXorEqual:
             return "^=";
+        case Token::Type::kShiftLeftEqual:
+            return "<<=";
+        case Token::Type::kShiftRightEqual:
+            return ">>=";
 
         case Token::Type::kArray:
             return "array";
@@ -173,8 +177,6 @@ std::string_view Token::TypeToName(Type type) {
             return "i32";
         case Token::Type::kIf:
             return "if";
-        case Token::Type::kImport:
-            return "import";
         case Token::Type::kLet:
             return "let";
         case Token::Type::kLoop:
@@ -207,6 +209,8 @@ std::string_view Token::TypeToName(Type type) {
             return "sampler";
         case Token::Type::kComparisonSampler:
             return "sampler_comparison";
+        case Token::Type::kStaticAssert:
+            return "static_assert";
         case Token::Type::kStruct:
             return "struct";
         case Token::Type::kSwitch:
