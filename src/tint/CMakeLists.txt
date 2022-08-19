@@ -475,6 +475,8 @@ set(TINT_LIB_SRCS
   utils/crc32.h
   utils/enum_set.h
   utils/hash.h
+  utils/hashmap.h
+  utils/hashset.h
   utils/map.h
   utils/math.h
   utils/scoped_assignment.h
@@ -863,6 +865,8 @@ if(TINT_BUILD_TESTS)
     utils/hash_test.cc
     utils/io/command_test.cc
     utils/io/tmpfile_test.cc
+    utils/hashmap_test.cc
+    utils/hashset_test.cc
     utils/map_test.cc
     utils/math_test.cc
     utils/result_test.cc
@@ -944,6 +948,7 @@ if(TINT_BUILD_TESTS)
       reader/wgsl/parser_impl_and_expression_test.cc
       reader/wgsl/parser_impl_argument_expression_list_test.cc
       reader/wgsl/parser_impl_assignment_stmt_test.cc
+      reader/wgsl/parser_impl_bitwise_expression_test.cc
       reader/wgsl/parser_impl_break_stmt_test.cc
       reader/wgsl/parser_impl_bug_cases_test.cc
       reader/wgsl/parser_impl_call_stmt_test.cc
@@ -952,6 +957,7 @@ if(TINT_BUILD_TESTS)
       reader/wgsl/parser_impl_const_literal_test.cc
       reader/wgsl/parser_impl_continue_stmt_test.cc
       reader/wgsl/parser_impl_continuing_stmt_test.cc
+      reader/wgsl/parser_impl_core_lhs_expression_test.cc
       reader/wgsl/parser_impl_depth_texture_test.cc
       reader/wgsl/parser_impl_enable_directive_test.cc
       reader/wgsl/parser_impl_external_texture_test.cc
@@ -970,6 +976,7 @@ if(TINT_BUILD_TESTS)
       reader/wgsl/parser_impl_if_stmt_test.cc
       reader/wgsl/parser_impl_inclusive_or_expression_test.cc
       reader/wgsl/parser_impl_increment_decrement_stmt_test.cc
+      reader/wgsl/parser_impl_lhs_expression_test.cc
       reader/wgsl/parser_impl_logical_and_expression_test.cc
       reader/wgsl/parser_impl_logical_or_expression_test.cc
       reader/wgsl/parser_impl_loop_stmt_test.cc

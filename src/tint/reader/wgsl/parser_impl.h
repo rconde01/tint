@@ -82,6 +82,10 @@ class ParserImpl {
     using StructMemberList = utils::Vector<const ast::StructMember*, 8>;
     //! @endcond
 
+    /// Empty structure used by functions that do not return a value, but need to signal success /
+    /// error with Expect<Void> or Maybe<NoError>.
+    struct Void {};
+
     /// Expect is the return type of the parser methods that are expected to
     /// return a parsed value of type T, unless there was an parse error.
     /// In the case of a parse error the called method will have called
@@ -388,13 +392,13 @@ class ParserImpl {
     /// Parses the `global_directive` grammar element, erroring on parse failure.
     /// @param has_parsed_decl flag indicating if the parser has consumed a global declaration.
     /// @return true on parse success, otherwise an error or no-match.
-    Maybe<bool> global_directive(bool has_parsed_decl);
+    Maybe<Void> global_directive(bool has_parsed_decl);
     /// Parses the `enable_directive` grammar element, erroring on parse failure.
     /// @return true on parse success, otherwise an error or no-match.
-    Maybe<bool> enable_directive();
+    Maybe<Void> enable_directive();
     /// Parses the `global_decl` grammar element, erroring on parse failure.
     /// @return true on parse success, otherwise an error or no-match.
-    Maybe<bool> global_decl();
+    Maybe<Void> global_decl();
     /// Parses a `global_variable_decl` grammar element with the initial
     /// `variable_attribute_list*` provided as `attrs`
     /// @returns the variable parsed or nullptr
@@ -410,21 +414,21 @@ class ParserImpl {
     /// Parses a `variable_decl` grammar element
     /// @returns the parsed variable declaration info
     Maybe<VarDeclInfo> variable_decl();
-    /// Helper for parsing ident or variable_ident_decl. Should not be called directly,
+    /// Helper for parsing ident with an optional type declaration. Should not be called directly,
     /// use the specific version below.
     /// @param use a description of what was being parsed if an error was raised.
     /// @param allow_inferred allow the identifier to be parsed without a type
     /// @returns the parsed identifier, and possibly type, or empty otherwise
-    Expect<TypedIdentifier> expect_ident_or_variable_ident_decl_impl(std::string_view use,
-                                                                     bool allow_inferred);
+    Expect<TypedIdentifier> expect_ident_with_optional_type_decl(std::string_view use,
+                                                                 bool allow_inferred);
     /// Parses a `ident` or a `variable_ident_decl` grammar element, erroring on parse failure.
     /// @param use a description of what was being parsed if an error was raised.
     /// @returns the identifier or empty otherwise.
-    Expect<TypedIdentifier> expect_ident_or_variable_ident_decl(std::string_view use);
+    Expect<TypedIdentifier> expect_optionally_typed_ident(std::string_view use);
     /// Parses a `variable_ident_decl` grammar element, erroring on parse failure.
     /// @param use a description of what was being parsed if an error was raised.
     /// @returns the identifier and type parsed or empty otherwise
-    Expect<TypedIdentifier> expect_variable_ident_decl(std::string_view use);
+    Expect<TypedIdentifier> expect_ident_with_type_decl(std::string_view use);
     /// Parses a `variable_qualifier` grammar element
     /// @returns the variable qualifier information
     Maybe<VariableQualifier> variable_qualifier();
@@ -453,26 +457,26 @@ class ParserImpl {
     ///        by the declaration, then this vector is cleared before returning.
     /// @returns the parsed function, nullptr otherwise
     Maybe<const ast::Function*> function_decl(AttributeList& attrs);
-    /// Parses a `texture_samplers` grammar element
+    /// Parses a `texture_and_sampler_types` grammar element
     /// @returns the parsed Type or nullptr if none matched.
-    Maybe<const ast::Type*> texture_samplers();
-    /// Parses a `sampler` grammar element
+    Maybe<const ast::Type*> texture_and_sampler_types();
+    /// Parses a `sampler_type` grammar element
     /// @returns the parsed Type or nullptr if none matched.
-    Maybe<const ast::Type*> sampler();
-    /// Parses a `multisampled_texture` grammar element
+    Maybe<const ast::Type*> sampler_type();
+    /// Parses a `multisampled_texture_type` grammar element
     /// @returns returns the multisample texture dimension or kNone if none
     /// matched.
-    Maybe<const ast::TextureDimension> multisampled_texture();
-    /// Parses a `sampled_texture` grammar element
+    Maybe<const ast::TextureDimension> multisampled_texture_type();
+    /// Parses a `sampled_texture_type` grammar element
     /// @returns returns the sample texture dimension or kNone if none matched.
-    Maybe<const ast::TextureDimension> sampled_texture();
-    /// Parses a `storage_texture` grammar element
+    Maybe<const ast::TextureDimension> sampled_texture_type();
+    /// Parses a `storage_texture_type` grammar element
     /// @returns returns the storage texture dimension.
     /// Returns kNone if none matched.
-    Maybe<const ast::TextureDimension> storage_texture();
-    /// Parses a `depth_texture` grammar element
+    Maybe<const ast::TextureDimension> storage_texture_type();
+    /// Parses a `depth_texture_type` grammar element
     /// @returns the parsed Type or nullptr if none matched.
-    Maybe<const ast::Type*> depth_texture();
+    Maybe<const ast::Type*> depth_texture_type();
     /// Parses a 'texture_external_type' grammar element
     /// @returns the parsed Type or nullptr if none matched
     Maybe<const ast::Type*> external_texture();
@@ -500,7 +504,7 @@ class ParserImpl {
     /// match a valid access control.
     /// @param use a description of what was being parsed if an error was raised
     /// @returns the parsed access control.
-    Expect<ast::Access> expect_access(std::string_view use);
+    Expect<ast::Access> expect_access_mode(std::string_view use);
     /// Parses an interpolation sample name identifier, erroring if the next token does not match a
     /// valid sample name.
     /// @returns the parsed sample name.
@@ -637,6 +641,11 @@ class ParserImpl {
     /// Parses the `equality_expression` grammar element
     /// @returns the parsed expression or nullptr
     Maybe<const ast::Expression*> equality_expression();
+    /// Parses the `bitwise_expression.post.unary_expression` grammar element
+    /// @param lhs the left side of the expression
+    /// @returns the parsed expression or nullptr
+    Maybe<const ast::Expression*> bitwise_expression_post_unary_expression(
+        const ast::Expression* lhs);
     /// Parses the recursive part of the `and_expression`, erroring on parse
     /// failure.
     /// @param lhs the left side of the expression
@@ -683,9 +692,15 @@ class ParserImpl {
     /// Parses a `compound_assignment_operator` grammar element
     /// @returns the parsed compound assignment operator
     Maybe<ast::BinaryOp> compound_assignment_operator();
-    /// Parses a `assignment_statement` grammar element
+    /// Parses a `core_lhs_expression` grammar element
+    /// @returns the parsed expression or a non-kMatched failure
+    Maybe<const ast::Expression*> core_lhs_expression();
+    /// Parses a `lhs_expression` grammar element
+    /// @returns the parsed expression or a non-kMatched failure
+    Maybe<const ast::Expression*> lhs_expression();
+    /// Parses a `variable_updating_statement` grammar element
     /// @returns the parsed assignment or nullptr
-    Maybe<const ast::Statement*> assignment_statement();
+    Maybe<const ast::Statement*> variable_updating_statement();
     /// Parses one or more attribute lists.
     /// @return the parsed attribute list, or an empty list on error.
     Maybe<AttributeList> attribute_list();
