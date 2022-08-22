@@ -646,6 +646,46 @@ class ParserImpl {
     /// @returns the parsed expression or nullptr
     Maybe<const ast::Expression*> bitwise_expression_post_unary_expression(
         const ast::Expression* lhs);
+    /// Parse the `multiplicative_operator` grammar element
+    /// @returns the parsed operator if successful
+    Maybe<ast::BinaryOp> multiplicative_operator();
+    /// Parses multiplicative elements
+    /// @param lhs the left side of the expression
+    /// @returns the parsed expression or `lhs` if no match
+    Expect<const ast::Expression*> expect_multiplicative_expression_post_unary_expression(
+        const ast::Expression* lhs);
+    /// Parses additive elements
+    /// @param lhs the left side of the expression
+    /// @returns the parsed expression or `lhs` if no match
+    Expect<const ast::Expression*> expect_additive_expression_post_unary_expression(
+        const ast::Expression* lhs);
+    /// Parses math elements
+    /// @param lhs the left side of the expression
+    /// @returns the parsed expression or `lhs` if no match
+    Expect<const ast::Expression*> expect_math_expression_post_unary_expression(
+        const ast::Expression* lhs);
+    /// Parses an `element_count_expression` grammar element
+    /// @returns the parsed expression or nullptr
+    Maybe<const ast::Expression*> element_count_expression();
+    /// Parses a `unary_expression shift.post.unary_expression`
+    /// @returns the parsed expression or nullptr
+    Maybe<const ast::Expression*> maybe_shift_expression();
+    /// Parses a `shift_expression.post.unary_expression` grammar element
+    /// @param lhs the left side of the expression
+    /// @returns the parsed expression or `lhs` if no match
+    Expect<const ast::Expression*> expect_shift_expression_post_unary_expression(
+        const ast::Expression* lhs);
+    /// Parses a `unary_expression relational_expression.post.unary_expression`
+    /// @returns the parsed expression or nullptr
+    Maybe<const ast::Expression*> maybe_relational_expression();
+    /// Parses a `relational_expression.post.unary_expression` grammar element
+    /// @param lhs the left side of the expression
+    /// @returns the parsed expression or `lhs` if no match
+    Expect<const ast::Expression*> expect_relational_expression_post_unary_expression(
+        const ast::Expression* lhs);
+    /// Parse the `additive_operator` grammar element
+    /// @returns the parsed operator if successful
+    Maybe<ast::BinaryOp> additive_operator();
     /// Parses the recursive part of the `and_expression`, erroring on parse
     /// failure.
     /// @param lhs the left side of the expression
