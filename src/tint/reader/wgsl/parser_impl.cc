@@ -271,23 +271,18 @@ const Token& ParserImpl::next() {
     return tokens_[last_source_idx_];
 }
 
-const Token& ParserImpl::peek(size_t idx) {
-    if (next_token_idx_ + idx >= tokens_.size()) {
-        return tokens_[tokens_.size() - 1];
-    }
-
-    // Skip over any placeholder elements
-    while (true) {
-        if (!tokens_[next_token_idx_ + idx].IsPlaceholder()) {
-            break;
+const Token& ParserImpl::peek(size_t count) {
+    for (size_t idx = next_token_idx_; idx < tokens_.size(); idx++) {
+        if (tokens_[idx].IsPlaceholder()) {
+            continue;
         }
-        idx++;
+        if (count == 0) {
+            return tokens_[idx];
+        }
+        count--;
     }
-    if (next_token_idx_ + idx >= tokens_.size()) {
-        return tokens_[tokens_.size() - 1];
-    }
-
-    return tokens_[next_token_idx_ + idx];
+    // Walked off the end of the token list, return last token.
+    return tokens_[tokens_.size() - 1];
 }
 
 bool ParserImpl::peek_is(Token::Type tok, size_t idx) {
@@ -679,6 +674,9 @@ Maybe<const ast::Variable*> ParserImpl::global_constant_decl(AttributeList& attr
 
 // variable_decl
 //   : VAR variable_qualifier? optionally_typed_ident
+//
+// Note, the `( LESS_THAN address_space ( COMMA access_mode )? GREATER_THAN ) is pulled out into
+// a `variable_qualifier` helper.
 Maybe<ParserImpl::VarDeclInfo> ParserImpl::variable_decl() {
     Source source;
     if (!match(Token::Type::kVar, &source)) {
@@ -995,7 +993,7 @@ Expect<ast::Access> ParserImpl::expect_access_mode(std::string_view use) {
 }
 
 // variable_qualifier
-//   : LESS_THAN storage_class (COMMA access_mode)? GREATER_THAN
+//   : LESS_THAN address_spaces (COMMA access_mode)? GREATER_THAN
 Maybe<ParserImpl::VariableQualifier> ParserImpl::variable_qualifier() {
     if (!peek_is(Token::Type::kLessThan)) {
         return Failure::kNoMatch;
@@ -1056,75 +1054,119 @@ Maybe<const ast::Alias*> ParserImpl::type_alias_decl() {
     return builder_.ty.alias(make_source_range_from(t.source()), name.value, type.value);
 }
 
-// type_decl
-//   : IDENTIFIER
-//   | BOOL
-//   | FLOAT32
-//   | INT32
-//   | UINT32
-//   | VEC2 LESS_THAN type_decl GREATER_THAN
-//   | VEC3 LESS_THAN type_decl GREATER_THAN
-//   | VEC4 LESS_THAN type_decl GREATER_THAN
-//   | PTR LESS_THAN storage_class, type_decl (COMMA access_mode)? GREATER_THAN
-//   | array_attribute_list* ARRAY LESS_THAN type_decl COMMA element_count_expression GREATER_THAN
-//   | array_attribute_list* ARRAY LESS_THAN type_decl GREATER_THAN
-//   | MAT2x2 LESS_THAN type_decl GREATER_THAN
-//   | MAT2x3 LESS_THAN type_decl GREATER_THAN
-//   | MAT2x4 LESS_THAN type_decl GREATER_THAN
-//   | MAT3x2 LESS_THAN type_decl GREATER_THAN
-//   | MAT3x3 LESS_THAN type_decl GREATER_THAN
-//   | MAT3x4 LESS_THAN type_decl GREATER_THAN
-//   | MAT4x2 LESS_THAN type_decl GREATER_THAN
-//   | MAT4x3 LESS_THAN type_decl GREATER_THAN
-//   | MAT4x4 LESS_THAN type_decl GREATER_THAN
-//   | texture_and_sampler_types
-Maybe<const ast::Type*> ParserImpl::type_decl() {
+// vec_prefix
+//   : 'vec2'
+//   | 'vec3'
+//   | 'vec4'
+Maybe<uint32_t> ParserImpl::vec_prefix() {
     auto& t = peek();
-    Source source;
-    if (match(Token::Type::kIdentifier, &source)) {
-        return builder_.create<ast::TypeName>(source, builder_.Symbols().Register(t.to_str()));
+    if (!t.IsVector()) {
+        return Failure::kNoMatch;
+    }
+    next();
+
+    if (t.Is(Token::Type::kVec3)) {
+        return 3u;
+    }
+    if (t.Is(Token::Type::kVec4)) {
+        return 4u;
+    }
+    return 2u;
+}
+
+// mat_prefix
+//   : 'mat2x2'
+//   | 'mat2x3'
+//   | 'mat2x4'
+//   | 'mat3x2'
+//   | 'mat3x3'
+//   | 'mat3x4'
+//   | 'mat4x2'
+//   | 'mat4x3'
+//   | 'mat4x4'
+Maybe<ParserImpl::MatrixDimensions> ParserImpl::mat_prefix() {
+    auto& t = peek();
+    if (!t.IsMatrix()) {
+        return Failure::kNoMatch;
+    }
+    next();
+
+    uint32_t columns = 2;
+    if (t.IsMat3xN()) {
+        columns = 3;
+    } else if (t.IsMat4xN()) {
+        columns = 4;
+    }
+    if (t.IsMatNx3()) {
+        return MatrixDimensions{columns, 3};
+    }
+    if (t.IsMatNx4()) {
+        return MatrixDimensions{columns, 4};
+    }
+    return MatrixDimensions{columns, 2};
+}
+
+// type_decl_without_ident:
+//   : BOOL
+//   | F16
+//   | F32
+//   | I32
+//   | U32
+//   | ARRAY LESS_THAN type_decl ( COMMA element_count_expression )? GREATER_THAN
+//   | ATOMIC LESS_THAN type_decl GREATER_THAN
+//   | PTR LESS_THAN address_space COMMA type_decl ( COMMA access_mode )? GREATER_THAN
+//   | mat_prefix LESS_THAN type_decl GREATER_THAN
+//   | vec_prefix LESS_THAN type_decl GREATER_THAN
+//   | texture_and_sampler_types
+Maybe<const ast::Type*> ParserImpl::type_decl_without_ident() {
+    auto& t = peek();
+
+    if (match(Token::Type::kBool)) {
+        return builder_.ty.bool_(t.source());
     }
 
-    if (match(Token::Type::kBool, &source)) {
-        return builder_.ty.bool_(source);
+    if (match(Token::Type::kF16)) {
+        return builder_.ty.f16(t.source());
     }
 
-    if (match(Token::Type::kF16, &source)) {
-        return builder_.ty.f16(source);
+    if (match(Token::Type::kF32)) {
+        return builder_.ty.f32(t.source());
     }
 
-    if (match(Token::Type::kF32, &source)) {
-        return builder_.ty.f32(source);
+    if (match(Token::Type::kI32)) {
+        return builder_.ty.i32(t.source());
     }
 
-    if (match(Token::Type::kI32, &source)) {
-        return builder_.ty.i32(source);
+    if (match(Token::Type::kU32)) {
+        return builder_.ty.u32(t.source());
     }
 
-    if (match(Token::Type::kU32, &source)) {
-        return builder_.ty.u32(source);
-    }
-
-    if (t.IsVector()) {
-        next();  // Consume the peek
-        return expect_type_decl_vector(t);
-    }
-
-    if (match(Token::Type::kPtr)) {
-        return expect_type_decl_pointer(t);
+    if (t.Is(Token::Type::kArray) && peek_is(Token::Type::kLessThan, 1)) {
+        if (match(Token::Type::kArray)) {
+            return expect_type_decl_array(t.source());
+        }
     }
 
     if (match(Token::Type::kAtomic)) {
-        return expect_type_decl_atomic(t);
+        return expect_type_decl_atomic(t.source());
     }
 
-    if (match(Token::Type::kArray, &source)) {
-        return expect_type_decl_array(t);
+    if (match(Token::Type::kPtr)) {
+        return expect_type_decl_pointer(t.source());
     }
 
-    if (t.IsMatrix()) {
-        next();  // Consume the peek
-        return expect_type_decl_matrix(t);
+    if (t.IsMatrix() && peek_is(Token::Type::kLessThan, 1)) {
+        auto mat = mat_prefix();
+        if (mat.matched) {
+            return expect_type_decl_matrix(t.source(), mat.value);
+        }
+    }
+
+    if (t.IsVector() && peek_is(Token::Type::kLessThan, 1)) {
+        auto vec = vec_prefix();
+        if (vec.matched) {
+            return expect_type_decl_vector(t.source(), vec.value);
+        }
     }
 
     auto texture_or_sampler = texture_and_sampler_types();
@@ -1138,6 +1180,19 @@ Maybe<const ast::Type*> ParserImpl::type_decl() {
     return Failure::kNoMatch;
 }
 
+// type_decl
+//   : IDENTIFIER
+//   | type_decl_without_ident
+Maybe<const ast::Type*> ParserImpl::type_decl() {
+    auto& t = peek();
+    Source source;
+    if (match(Token::Type::kIdentifier, &source)) {
+        return builder_.create<ast::TypeName>(source, builder_.Symbols().Register(t.to_str()));
+    }
+
+    return type_decl_without_ident();
+}
+
 Expect<const ast::Type*> ParserImpl::expect_type(std::string_view use) {
     auto type = type_decl();
     if (type.errored) {
@@ -1149,7 +1204,8 @@ Expect<const ast::Type*> ParserImpl::expect_type(std::string_view use) {
     return type.value;
 }
 
-Expect<const ast::Type*> ParserImpl::expect_type_decl_pointer(const Token& t) {
+// LESS_THAN address_space COMMA type_decl ( COMMA access_mode )? GREATER_THAN
+Expect<const ast::Type*> ParserImpl::expect_type_decl_pointer(const Source& s) {
     const char* use = "ptr declaration";
 
     auto storage_class = ast::StorageClass::kNone;
@@ -1186,11 +1242,11 @@ Expect<const ast::Type*> ParserImpl::expect_type_decl_pointer(const Token& t) {
         return Failure::kErrored;
     }
 
-    return builder_.ty.pointer(make_source_range_from(t.source()), subtype.value, storage_class,
-                               access);
+    return builder_.ty.pointer(make_source_range_from(s), subtype.value, storage_class, access);
 }
 
-Expect<const ast::Type*> ParserImpl::expect_type_decl_atomic(const Token& t) {
+// LESS_THAN type_decl GREATER_THAN
+Expect<const ast::Type*> ParserImpl::expect_type_decl_atomic(const Source& s) {
     const char* use = "atomic declaration";
 
     auto subtype = expect_lt_gt_block(use, [&] { return expect_type(use); });
@@ -1198,31 +1254,22 @@ Expect<const ast::Type*> ParserImpl::expect_type_decl_atomic(const Token& t) {
         return Failure::kErrored;
     }
 
-    return builder_.ty.atomic(make_source_range_from(t.source()), subtype.value);
+    return builder_.ty.atomic(make_source_range_from(s), subtype.value);
 }
 
-Expect<const ast::Type*> ParserImpl::expect_type_decl_vector(const Token& t) {
-    uint32_t count = 2;
-    if (t.Is(Token::Type::kVec3)) {
-        count = 3;
-    } else if (t.Is(Token::Type::kVec4)) {
-        count = 4;
+// LESS_THAN type_decl GREATER_THAN
+Expect<const ast::Type*> ParserImpl::expect_type_decl_vector(const Source& s, uint32_t count) {
+    const char* use = "vector";
+    auto ty = expect_lt_gt_block(use, [&] { return expect_type(use); });
+    if (ty.errored) {
+        return Failure::kErrored;
     }
 
-    const ast::Type* subtype = nullptr;
-    if (peek_is(Token::Type::kLessThan)) {
-        const char* use = "vector";
-        auto ty = expect_lt_gt_block(use, [&] { return expect_type(use); });
-        if (ty.errored) {
-            return Failure::kErrored;
-        }
-        subtype = ty.value;
-    }
-
-    return builder_.ty.vec(make_source_range_from(t.source()), subtype, count);
+    return builder_.ty.vec(make_source_range_from(s), ty.value, count);
 }
 
-Expect<const ast::Type*> ParserImpl::expect_type_decl_array(const Token& t) {
+// LESS_THAN type_decl ( COMMA element_count_expression )? GREATER_THAN
+Expect<const ast::Type*> ParserImpl::expect_type_decl_array(const Source& s) {
     const char* use = "array declaration";
 
     struct TypeAndSize {
@@ -1231,7 +1278,7 @@ Expect<const ast::Type*> ParserImpl::expect_type_decl_array(const Token& t) {
     };
 
     if (!peek_is(Token::Type::kLessThan)) {
-        return builder_.ty.array(make_source_range_from(t.source()), nullptr, nullptr);
+        return add_error(peek(), "expected < for array");
     }
 
     auto type_size = expect_lt_gt_block(use, [&]() -> Expect<TypeAndSize> {
@@ -1259,34 +1306,19 @@ Expect<const ast::Type*> ParserImpl::expect_type_decl_array(const Token& t) {
         return Failure::kErrored;
     }
 
-    return builder_.ty.array(make_source_range_from(t.source()), type_size->type, type_size->size);
+    return builder_.ty.array(make_source_range_from(s), type_size->type, type_size->size);
 }
 
-Expect<const ast::Type*> ParserImpl::expect_type_decl_matrix(const Token& t) {
-    uint32_t rows = 2;
-    uint32_t columns = 2;
-    if (t.IsMat3xN()) {
-        columns = 3;
-    } else if (t.IsMat4xN()) {
-        columns = 4;
-    }
-    if (t.IsMatNx3()) {
-        rows = 3;
-    } else if (t.IsMatNx4()) {
-        rows = 4;
+// LESS_THAN type_decl GREATER_THAN
+Expect<const ast::Type*> ParserImpl::expect_type_decl_matrix(const Source& s,
+                                                             const MatrixDimensions& dims) {
+    const char* use = "matrix";
+    auto ty = expect_lt_gt_block(use, [&] { return expect_type(use); });
+    if (ty.errored) {
+        return Failure::kErrored;
     }
 
-    const ast::Type* subtype = nullptr;
-    if (peek_is(Token::Type::kLessThan)) {
-        const char* use = "matrix";
-        auto ty = expect_lt_gt_block(use, [&] { return expect_type(use); });
-        if (ty.errored) {
-            return Failure::kErrored;
-        }
-        subtype = ty.value;
-    }
-
-    return builder_.ty.mat(make_source_range_from(t.source()), subtype, columns, rows);
+    return builder_.ty.mat(make_source_range_from(s), ty.value, dims.columns, dims.rows);
 }
 
 // address_space
@@ -1888,7 +1920,7 @@ Maybe<const ast::VariableDeclStatement*> ParserImpl::variable_statement() {
             return Failure::kErrored;
         }
 
-        auto initializer = expression();
+        auto initializer = maybe_expression();
         if (initializer.errored) {
             return Failure::kErrored;
         }
@@ -1915,7 +1947,7 @@ Maybe<const ast::VariableDeclStatement*> ParserImpl::variable_statement() {
             return Failure::kErrored;
         }
 
-        auto initializer = expression();
+        auto initializer = maybe_expression();
         if (initializer.errored) {
             return Failure::kErrored;
         }
@@ -1942,7 +1974,7 @@ Maybe<const ast::VariableDeclStatement*> ParserImpl::variable_statement() {
 
     const ast::Expression* initializer = nullptr;
     if (match(Token::Type::kEqual)) {
-        auto initializer_expr = expression();
+        auto initializer_expr = maybe_expression();
         if (initializer_expr.errored) {
             return Failure::kErrored;
         }
@@ -2435,31 +2467,61 @@ Maybe<const ast::BlockStatement*> ParserImpl::continuing_statement() {
     return continuing_compound_statement();
 }
 
-// primary_expression
-//   : IDENT argument_expression_list?
-//   | type_decl argument_expression_list
-//   | const_literal
-//   | paren_expression
-//   | BITCAST LESS_THAN type_decl GREATER_THAN paren_expression
-Maybe<const ast::Expression*> ParserImpl::primary_expression() {
+// callable
+//   : type_decl_without_ident
+//   | ARRAY
+//   | mat_prefix
+//   | vec_prefix
+//
+//  Note, `ident` is pulled out to `primary_expression` as it's the only one that
+//  doesn't create a `type`. Then we can just return a `type` from here on match and
+//  deal with `ident` in `primary_expression.
+Maybe<const ast::Type*> ParserImpl::callable() {
     auto& t = peek();
 
-    auto lit = const_literal();
-    if (lit.errored) {
+    //  This _must_ match `type_decl_without_ident` before any of the other types as they're all
+    //  prefixes of the types and we want to match the longer `vec3<f32>` then the shorter
+    //  prefix match of `vec3`.
+    auto ty = type_decl_without_ident();
+    if (ty.errored) {
         return Failure::kErrored;
     }
-    if (lit.matched) {
-        return lit.value;
+    if (ty.matched) {
+        return ty.value;
     }
 
-    if (t.Is(Token::Type::kParenLeft)) {
-        auto paren = expect_paren_expression();
-        if (paren.errored) {
-            return Failure::kErrored;
-        }
-
-        return paren.value;
+    if (match(Token::Type::kArray)) {
+        return builder_.ty.array(make_source_range_from(t.source()), nullptr, nullptr);
     }
+
+    auto vec = vec_prefix();
+    if (vec.matched) {
+        return builder_.ty.vec(make_source_range_from(t.source()), nullptr, vec.value);
+    }
+
+    auto mat = mat_prefix();
+    if (mat.matched) {
+        return builder_.ty.mat(make_source_range_from(t.source()), nullptr, mat.value.columns,
+                               mat.value.rows);
+    }
+
+    return Failure::kNoMatch;
+}
+
+// primary_expression
+//   : BITCAST LESS_THAN type_decl GREATER_THAN paren_expression
+//   | callable argument_expression_list
+//   | const_literal
+//   | IDENT argument_expression_list?
+//   | paren_expression
+//
+// Note, PAREN_LEFT ( expression ( COMMA expression ) * COMMA? )? PAREN_RIGHT is replaced
+// with `argument_expression_list`.
+//
+// Note, this is matching the `callable` ident here instead of having to come from
+// callable so we can return a `type` from callable.
+Maybe<const ast::Expression*> ParserImpl::primary_expression() {
+    auto& t = peek();
 
     if (match(Token::Type::kBitcast)) {
         const char* use = "bitcast expression";
@@ -2475,6 +2537,27 @@ Maybe<const ast::Expression*> ParserImpl::primary_expression() {
         }
 
         return create<ast::BitcastExpression>(t.source(), type.value, params.value);
+    }
+
+    auto call = callable();
+    if (call.errored) {
+        return Failure::kErrored;
+    }
+    if (call.matched) {
+        auto params = expect_argument_expression_list("type constructor");
+        if (params.errored) {
+            return Failure::kErrored;
+        }
+
+        return builder_.Construct(t.source(), call.value, std::move(params.value));
+    }
+
+    auto lit = const_literal();
+    if (lit.errored) {
+        return Failure::kErrored;
+    }
+    if (lit.matched) {
+        return lit.value;
     }
 
     if (t.IsIdentifier()) {
@@ -2495,17 +2578,13 @@ Maybe<const ast::Expression*> ParserImpl::primary_expression() {
         return ident;
     }
 
-    auto type = type_decl();
-    if (type.errored) {
-        return Failure::kErrored;
-    }
-    if (type.matched) {
-        auto params = expect_argument_expression_list("type constructor");
-        if (params.errored) {
+    if (t.Is(Token::Type::kParenLeft)) {
+        auto paren = expect_paren_expression();
+        if (paren.errored) {
             return Failure::kErrored;
         }
 
-        return builder_.Construct(t.source(), type.value, std::move(params.value));
+        return paren.value;
     }
 
     return Failure::kNoMatch;
@@ -2814,11 +2893,11 @@ Maybe<const ast::Expression*> ParserImpl::maybe_shift_expression() {
 }
 
 // shift_expression.post.unary_expression
-//   : multiplicative_expression.post.unary_expression?
+//   : math_expression.post.unary_expression?
 //   | SHIFT_LEFT unary_expression
 //   | SHIFT_RIGHT unary_expression
 //
-// Note, add the `multiplicative_expression.post.unary_expression` is added here to make
+// Note, add the `math_expression.post.unary_expression` is added here to make
 // implementation simpler.
 Expect<const ast::Expression*> ParserImpl::expect_shift_expression_post_unary_expression(
     const ast::Expression* lhs) {
@@ -2845,7 +2924,7 @@ Expect<const ast::Expression*> ParserImpl::expect_shift_expression_post_unary_ex
         return create<ast::BinaryExpression>(t.source(), op, lhs, rhs.value);
     }
 
-    return expect_multiplicative_expression_post_unary_expression(lhs);
+    return expect_math_expression_post_unary_expression(lhs);
 }
 
 // relational_expression
@@ -2892,6 +2971,10 @@ Expect<const ast::Expression*> ParserImpl::expect_relational_expression_post_una
             op = ast::BinaryOp::kLessThanEqual;
         } else if (t.Is(Token::Type::kGreaterThanEqual)) {
             op = ast::BinaryOp::kGreaterThanEqual;
+        } else if (t.Is(Token::Type::kEqualEqual)) {
+            op = ast::BinaryOp::kEqual;
+        } else if (t.Is(Token::Type::kNotEqual)) {
+            op = ast::BinaryOp::kNotEqual;
         }
 
         auto& next = peek();
@@ -2906,6 +2989,74 @@ Expect<const ast::Expression*> ParserImpl::expect_relational_expression_post_una
         lhs = create<ast::BinaryExpression>(t.source(), op, lhs, rhs.value);
     }
     return lhs;
+}
+
+// expression
+//   : unary_expression bitwise_expression.post.unary_expression
+//   | unary_expression relational_expression.post.unary_expression
+//   | unary_expression relational_expression.post.unary_expression and_and
+//        relational_expression ( and_and relational_expression )*
+//   | unary_expression relational_expression.post.unary_expression or_or
+//        relational_expression ( or_or relational_expression )*
+//
+// Note, a `relational_expression` element was added to simplify many of the right sides
+Maybe<const ast::Expression*> ParserImpl::maybe_expression() {
+    auto lhs = unary_expression();
+    if (lhs.errored) {
+        return Failure::kErrored;
+    }
+    if (!lhs.matched) {
+        return Failure::kNoMatch;
+    }
+
+    auto bitwise = bitwise_expression_post_unary_expression(lhs.value);
+    if (bitwise.errored) {
+        return Failure::kErrored;
+    }
+    if (bitwise.matched) {
+        return bitwise.value;
+    }
+
+    auto relational = expect_relational_expression_post_unary_expression(lhs.value);
+    if (relational.errored) {
+        return Failure::kErrored;
+    }
+    auto* ret = relational.value;
+
+    auto& t = peek();
+    if (t.Is(Token::Type::kAndAnd) || t.Is(Token::Type::kOrOr)) {
+        ast::BinaryOp op = ast::BinaryOp::kNone;
+        if (t.Is(Token::Type::kAndAnd)) {
+            op = ast::BinaryOp::kLogicalAnd;
+        } else if (t.Is(Token::Type::kOrOr)) {
+            op = ast::BinaryOp::kLogicalOr;
+        }
+
+        while (continue_parsing()) {
+            auto& n = peek();
+            if (!n.Is(t.type())) {
+                if (n.Is(Token::Type::kAndAnd) || n.Is(Token::Type::kOrOr)) {
+                    return add_error(
+                        n.source(), std::string("mixing '") + std::string(t.to_name()) + "' and '" +
+                                        std::string(n.to_name()) + "' requires parenthesis");
+                }
+                break;
+            }
+            next();
+
+            auto rhs = relational_expression();
+            if (rhs.errored) {
+                return Failure::kErrored;
+            }
+            if (!rhs.matched) {
+                return add_error(peek(), std::string("unable to parse right side of ") +
+                                             std::string(t.to_name()) + " expression");
+            }
+
+            ret = create<ast::BinaryExpression>(t.source(), op, ret, rhs.value);
+        }
+    }
+    return ret;
 }
 
 // singular_expression

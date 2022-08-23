@@ -952,6 +952,7 @@ if(TINT_BUILD_TESTS)
       reader/wgsl/parser_impl_break_stmt_test.cc
       reader/wgsl/parser_impl_bug_cases_test.cc
       reader/wgsl/parser_impl_call_stmt_test.cc
+      reader/wgsl/parser_impl_callable_test.cc
       reader/wgsl/parser_impl_case_body_test.cc
       reader/wgsl/parser_impl_compound_stmt_test.cc
       reader/wgsl/parser_impl_const_literal_test.cc
@@ -961,11 +962,12 @@ if(TINT_BUILD_TESTS)
       reader/wgsl/parser_impl_depth_texture_test.cc
       reader/wgsl/parser_impl_element_count_expression_test.cc
       reader/wgsl/parser_impl_enable_directive_test.cc
-      reader/wgsl/parser_impl_external_texture_test.cc
       reader/wgsl/parser_impl_equality_expression_test.cc
       reader/wgsl/parser_impl_error_msg_test.cc
       reader/wgsl/parser_impl_error_resync_test.cc
       reader/wgsl/parser_impl_exclusive_or_expression_test.cc
+      reader/wgsl/parser_impl_expression_test.cc
+      reader/wgsl/parser_impl_external_texture_test.cc
       reader/wgsl/parser_impl_for_stmt_test.cc
       reader/wgsl/parser_impl_function_decl_test.cc
       reader/wgsl/parser_impl_function_attribute_list_test.cc
@@ -1012,6 +1014,7 @@ if(TINT_BUILD_TESTS)
       reader/wgsl/parser_impl_texture_sampler_test.cc
       reader/wgsl/parser_impl_type_alias_test.cc
       reader/wgsl/parser_impl_type_decl_test.cc
+      reader/wgsl/parser_impl_type_decl_without_ident_test.cc
       reader/wgsl/parser_impl_unary_expression_test.cc
       reader/wgsl/parser_impl_variable_decl_test.cc
       reader/wgsl/parser_impl_variable_attribute_list_test.cc
@@ -1019,6 +1022,7 @@ if(TINT_BUILD_TESTS)
       reader/wgsl/parser_impl_variable_ident_decl_test.cc
       reader/wgsl/parser_impl_variable_stmt_test.cc
       reader/wgsl/parser_impl_variable_qualifier_test.cc
+      reader/wgsl/parser_impl_vec_mat_prefix_test.cc
       reader/wgsl/parser_impl_while_stmt_test.cc
       reader/wgsl/token_test.cc
     )

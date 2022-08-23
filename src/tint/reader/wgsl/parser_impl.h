@@ -309,6 +309,14 @@ class ParserImpl {
         ast::Access access = ast::Access::kUndefined;
     };
 
+    /// MatrixDimensions contains the column and row information for a matrix
+    struct MatrixDimensions {
+        /// The number of columns
+        uint32_t columns = 0;
+        /// The number of rows
+        uint32_t rows = 0;
+    };
+
     /// Creates a new parser using the given file
     /// @param file the input source file to parse
     explicit ParserImpl(Source::File const* file);
@@ -435,6 +443,18 @@ class ParserImpl {
     /// Parses a `type_alias_decl` grammar element
     /// @returns the type alias or nullptr on error
     Maybe<const ast::Alias*> type_alias_decl();
+    /// Parses a `callable` grammar element
+    /// @returns the type or nullptr
+    Maybe<const ast::Type*> callable();
+    /// Parses a `vec_prefix` grammar element
+    /// @returns the vector size or nullptr
+    Maybe<uint32_t> vec_prefix();
+    /// Parses a `mat_prefix` grammar element
+    /// @returns the matrix dimensions or nullptr
+    Maybe<MatrixDimensions> mat_prefix();
+    /// Parses a `type_decl_without_ident` grammar element
+    /// @returns the parsed Type or nullptr if none matched.
+    Maybe<const ast::Type*> type_decl_without_ident();
     /// Parses a `type_decl` grammar element
     /// @returns the parsed Type or nullptr if none matched.
     Maybe<const ast::Type*> type_decl();
@@ -630,6 +650,9 @@ class ParserImpl {
     /// @param lhs the left side of the expression
     /// @returns the parsed expression or nullptr
     Expect<const ast::Expression*> expect_relational_expr(const ast::Expression* lhs);
+    /// Parses the `expression` grammar rule
+    /// @returns the parsed expression or nullptr
+    Maybe<const ast::Expression*> maybe_expression();
     /// Parses the `relational_expression` grammar element
     /// @returns the parsed expression or nullptr
     Maybe<const ast::Expression*> relational_expression();
@@ -758,6 +781,11 @@ class ParserImpl {
     /// @see #attribute for the full list of attributes this method parses.
     /// @return the parsed attribute, or nullptr on error.
     Expect<const ast::Attribute*> expect_attribute();
+
+    /// Splits a peekable token into to parts filling in the peekable fields.
+    /// @param lhs the token to set in the current position
+    /// @param rhs the token to set in the placeholder
+    void split_token(Token::Type lhs, Token::Type rhs);
 
   private:
     /// ReturnType resolves to the return type for the function or lambda F.
@@ -916,19 +944,17 @@ class ParserImpl {
     /// Used to ensure that all attributes are consumed.
     bool expect_attributes_consumed(utils::VectorRef<const ast::Attribute*> list);
 
-    Expect<const ast::Type*> expect_type_decl_pointer(const Token& t);
-    Expect<const ast::Type*> expect_type_decl_atomic(const Token& t);
-    Expect<const ast::Type*> expect_type_decl_vector(const Token& t);
-    Expect<const ast::Type*> expect_type_decl_array(const Token& t);
-    Expect<const ast::Type*> expect_type_decl_matrix(const Token& t);
+    Expect<const ast::Type*> expect_type_decl_pointer(const Source& s);
+    Expect<const ast::Type*> expect_type_decl_atomic(const Source& s);
+    Expect<const ast::Type*> expect_type_decl_vector(const Source& s, uint32_t count);
+    Expect<const ast::Type*> expect_type_decl_array(const Source& s);
+    Expect<const ast::Type*> expect_type_decl_matrix(const Source& s, const MatrixDimensions& dims);
 
     Expect<const ast::Type*> expect_type(std::string_view use);
 
     Maybe<const ast::Statement*> non_block_statement();
     Maybe<const ast::Statement*> for_header_initializer();
     Maybe<const ast::Statement*> for_header_continuing();
-
-    void split_token(Token::Type lhs, Token::Type rhs);
 
     class MultiTokenSource;
     MultiTokenSource make_source_range();
