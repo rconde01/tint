@@ -1743,31 +1743,15 @@ bool GeneratorImpl::EmitExpression(std::ostream& out, const ast::Expression* exp
         }
     }
     return Switch(
-        expr,
-        [&](const ast::IndexAccessorExpression* a) {  //
-            return EmitIndexAccessor(out, a);
-        },
-        [&](const ast::BinaryExpression* b) {  //
-            return EmitBinary(out, b);
-        },
-        [&](const ast::BitcastExpression* b) {  //
-            return EmitBitcast(out, b);
-        },
-        [&](const ast::CallExpression* c) {  //
-            return EmitCall(out, c);
-        },
-        [&](const ast::IdentifierExpression* i) {  //
-            return EmitIdentifier(out, i);
-        },
-        [&](const ast::LiteralExpression* l) {  //
-            return EmitLiteral(out, l);
-        },
-        [&](const ast::MemberAccessorExpression* m) {  //
-            return EmitMemberAccessor(out, m);
-        },
-        [&](const ast::UnaryOpExpression* u) {  //
-            return EmitUnaryOp(out, u);
-        },
+        expr,  //
+        [&](const ast::IndexAccessorExpression* a) { return EmitIndexAccessor(out, a); },
+        [&](const ast::BinaryExpression* b) { return EmitBinary(out, b); },
+        [&](const ast::BitcastExpression* b) { return EmitBitcast(out, b); },
+        [&](const ast::CallExpression* c) { return EmitCall(out, c); },
+        [&](const ast::IdentifierExpression* i) { return EmitIdentifier(out, i); },
+        [&](const ast::LiteralExpression* l) { return EmitLiteral(out, l); },
+        [&](const ast::MemberAccessorExpression* m) { return EmitMemberAccessor(out, m); },
+        [&](const ast::UnaryOpExpression* u) { return EmitUnaryOp(out, u); },
         [&](Default) {  //
             diagnostics_.add_error(diag::System::Writer, "unknown expression type: " +
                                                              std::string(expr->TypeInfo().name));
@@ -1922,10 +1906,10 @@ bool GeneratorImpl::EmitUniformVariable(const ast::Var* var, const sem::Variable
         TINT_ICE(Writer, builder_.Diagnostics()) << "storage variable must be of struct type";
         return false;
     }
-    ast::VariableBindingPoint bp = var->BindingPoint();
+    auto bp = sem->As<sem::GlobalVariable>()->BindingPoint();
     {
         auto out = line();
-        out << "layout(binding = " << bp.binding->value;
+        out << "layout(binding = " << bp.binding;
         if (version_.IsDesktop()) {
             out << ", std140";
         }
@@ -1946,8 +1930,8 @@ bool GeneratorImpl::EmitStorageVariable(const ast::Var* var, const sem::Variable
         TINT_ICE(Writer, builder_.Diagnostics()) << "storage variable must be of struct type";
         return false;
     }
-    ast::VariableBindingPoint bp = var->BindingPoint();
-    line() << "layout(binding = " << bp.binding->value << ", std430) buffer "
+    auto bp = sem->As<sem::GlobalVariable>()->BindingPoint();
+    line() << "layout(binding = " << bp.binding << ", std430) buffer "
            << UniqueIdentifier(StructName(str)) << " {";
     EmitStructMembers(current_buffer_, str, /* emit_offsets */ true);
     auto name = builder_.Symbols().NameFor(var->symbol);

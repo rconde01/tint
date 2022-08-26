@@ -136,15 +136,15 @@ bool PrintF16(std::ostream& out, float value) {
 // Helper for writing " : register(RX, spaceY)", where R is the register, X is
 // the binding point binding value, and Y is the binding point group value.
 struct RegisterAndSpace {
-    RegisterAndSpace(char r, ast::VariableBindingPoint bp) : reg(r), binding_point(bp) {}
+    RegisterAndSpace(char r, sem::BindingPoint bp) : reg(r), binding_point(bp) {}
 
     const char reg;
-    ast::VariableBindingPoint const binding_point;
+    sem::BindingPoint const binding_point;
 };
 
 std::ostream& operator<<(std::ostream& s, const RegisterAndSpace& rs) {
-    s << " : register(" << rs.reg << rs.binding_point.binding->value << ", space"
-      << rs.binding_point.group->value << ")";
+    s << " : register(" << rs.reg << rs.binding_point.binding << ", space" << rs.binding_point.group
+      << ")";
     return s;
 }
 
@@ -2631,32 +2631,16 @@ bool GeneratorImpl::EmitExpression(std::ostream& out, const ast::Expression* exp
         }
     }
     return Switch(
-        expr,
-        [&](const ast::IndexAccessorExpression* a) {  //
-            return EmitIndexAccessor(out, a);
-        },
-        [&](const ast::BinaryExpression* b) {  //
-            return EmitBinary(out, b);
-        },
-        [&](const ast::BitcastExpression* b) {  //
-            return EmitBitcast(out, b);
-        },
-        [&](const ast::CallExpression* c) {  //
-            return EmitCall(out, c);
-        },
-        [&](const ast::IdentifierExpression* i) {  //
-            return EmitIdentifier(out, i);
-        },
-        [&](const ast::LiteralExpression* l) {  //
-            return EmitLiteral(out, l);
-        },
-        [&](const ast::MemberAccessorExpression* m) {  //
-            return EmitMemberAccessor(out, m);
-        },
-        [&](const ast::UnaryOpExpression* u) {  //
-            return EmitUnaryOp(out, u);
-        },
-        [&](Default) {  //
+        expr,  //
+        [&](const ast::IndexAccessorExpression* a) { return EmitIndexAccessor(out, a); },
+        [&](const ast::BinaryExpression* b) { return EmitBinary(out, b); },
+        [&](const ast::BitcastExpression* b) { return EmitBitcast(out, b); },
+        [&](const ast::CallExpression* c) { return EmitCall(out, c); },
+        [&](const ast::IdentifierExpression* i) { return EmitIdentifier(out, i); },
+        [&](const ast::LiteralExpression* l) { return EmitLiteral(out, l); },
+        [&](const ast::MemberAccessorExpression* m) { return EmitMemberAccessor(out, m); },
+        [&](const ast::UnaryOpExpression* u) { return EmitUnaryOp(out, u); },
+        [&](Default) {
             diagnostics_.add_error(diag::System::Writer, "unknown expression type: " +
                                                              std::string(expr->TypeInfo().name));
             return false;
@@ -2877,7 +2861,7 @@ bool GeneratorImpl::EmitGlobalVariable(const ast::Variable* global) {
 }
 
 bool GeneratorImpl::EmitUniformVariable(const ast::Var* var, const sem::Variable* sem) {
-    auto binding_point = var->BindingPoint();
+    auto binding_point = sem->As<sem::GlobalVariable>()->BindingPoint();
     auto* type = sem->Type()->UnwrapRef();
     auto name = builder_.Symbols().NameFor(var->symbol);
     line() << "cbuffer cbuffer_" << name << RegisterAndSpace('b', binding_point) << " {";
@@ -2904,7 +2888,9 @@ bool GeneratorImpl::EmitStorageVariable(const ast::Var* var, const sem::Variable
         return false;
     }
 
-    out << RegisterAndSpace(sem->Access() == ast::Access::kRead ? 't' : 'u', var->BindingPoint())
+    auto* global_sem = sem->As<sem::GlobalVariable>();
+    out << RegisterAndSpace(sem->Access() == ast::Access::kRead ? 't' : 'u',
+                            global_sem->BindingPoint())
         << ";";
 
     return true;
@@ -2932,9 +2918,8 @@ bool GeneratorImpl::EmitHandleVariable(const ast::Var* var, const sem::Variable*
     }
 
     if (register_space) {
-        auto bp = var->BindingPoint();
-        out << " : register(" << register_space << bp.binding->value << ", space" << bp.group->value
-            << ")";
+        auto bp = sem->As<sem::GlobalVariable>()->BindingPoint();
+        out << " : register(" << register_space << bp.binding << ", space" << bp.group << ")";
     }
 
     out << ";";

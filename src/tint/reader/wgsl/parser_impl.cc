@@ -1920,7 +1920,7 @@ Maybe<const ast::VariableDeclStatement*> ParserImpl::variable_statement() {
             return Failure::kErrored;
         }
 
-        auto initializer = maybe_expression();
+        auto initializer = expression();
         if (initializer.errored) {
             return Failure::kErrored;
         }
@@ -1947,7 +1947,7 @@ Maybe<const ast::VariableDeclStatement*> ParserImpl::variable_statement() {
             return Failure::kErrored;
         }
 
-        auto initializer = maybe_expression();
+        auto initializer = expression();
         if (initializer.errored) {
             return Failure::kErrored;
         }
@@ -1974,7 +1974,7 @@ Maybe<const ast::VariableDeclStatement*> ParserImpl::variable_statement() {
 
     const ast::Expression* initializer = nullptr;
     if (match(Token::Type::kEqual)) {
-        auto initializer_expr = maybe_expression();
+        auto initializer_expr = expression();
         if (initializer_expr.errored) {
             return Failure::kErrored;
         }
@@ -2881,7 +2881,7 @@ Maybe<const ast::Expression*> ParserImpl::element_count_expression() {
 
 // shift_expression
 //   : unary_expression shift_expression.post.unary_expression
-Maybe<const ast::Expression*> ParserImpl::maybe_shift_expression() {
+Maybe<const ast::Expression*> ParserImpl::shift_expression() {
     auto lhs = unary_expression();
     if (lhs.errored) {
         return Failure::kErrored;
@@ -2913,12 +2913,13 @@ Expect<const ast::Expression*> ParserImpl::expect_shift_expression_post_unary_ex
             name = ">>";
         }
 
+        auto& rhs_start = peek();
         auto rhs = unary_expression();
         if (rhs.errored) {
             return Failure::kErrored;
         }
         if (!rhs.matched) {
-            return add_error(t,
+            return add_error(rhs_start,
                              std::string("unable to parse right side of ") + name + " expression");
         }
         return create<ast::BinaryExpression>(t.source(), op, lhs, rhs.value);
@@ -2929,7 +2930,7 @@ Expect<const ast::Expression*> ParserImpl::expect_shift_expression_post_unary_ex
 
 // relational_expression
 //   : unary_expression relational_expression.post.unary_expression
-Maybe<const ast::Expression*> ParserImpl::maybe_relational_expression() {
+Maybe<const ast::Expression*> ParserImpl::relational_expression() {
     auto lhs = unary_expression();
     if (lhs.errored) {
         return Failure::kErrored;
@@ -2978,7 +2979,7 @@ Expect<const ast::Expression*> ParserImpl::expect_relational_expression_post_una
         }
 
         auto& next = peek();
-        auto rhs = maybe_shift_expression();
+        auto rhs = shift_expression();
         if (rhs.errored) {
             return Failure::kErrored;
         }
@@ -3000,7 +3001,7 @@ Expect<const ast::Expression*> ParserImpl::expect_relational_expression_post_una
 //        relational_expression ( or_or relational_expression )*
 //
 // Note, a `relational_expression` element was added to simplify many of the right sides
-Maybe<const ast::Expression*> ParserImpl::maybe_expression() {
+Maybe<const ast::Expression*> ParserImpl::expression() {
     auto lhs = unary_expression();
     if (lhs.errored) {
         return Failure::kErrored;
@@ -3128,437 +3129,6 @@ Maybe<const ast::Expression*> ParserImpl::unary_expression() {
     }
 
     return create<ast::UnaryOpExpression>(t.source(), op, expr.value);
-}
-
-// multiplicative_expr
-//   :
-//   | STAR unary_expression multiplicative_expr
-//   | FORWARD_SLASH unary_expression multiplicative_expr
-//   | MODULO unary_expression multiplicative_expr
-Expect<const ast::Expression*> ParserImpl::expect_multiplicative_expr(const ast::Expression* lhs) {
-    while (continue_parsing()) {
-        ast::BinaryOp op = ast::BinaryOp::kNone;
-        if (peek_is(Token::Type::kStar)) {
-            op = ast::BinaryOp::kMultiply;
-        } else if (peek_is(Token::Type::kForwardSlash)) {
-            op = ast::BinaryOp::kDivide;
-        } else if (peek_is(Token::Type::kMod)) {
-            op = ast::BinaryOp::kModulo;
-        } else {
-            return lhs;
-        }
-
-        auto& t = next();
-
-        auto rhs = unary_expression();
-        if (rhs.errored) {
-            return Failure::kErrored;
-        }
-        if (!rhs.matched) {
-            return add_error(peek(), "unable to parse right side of " + std::string(t.to_name()) +
-                                         " expression");
-        }
-
-        lhs = create<ast::BinaryExpression>(t.source(), op, lhs, rhs.value);
-    }
-    return Failure::kErrored;
-}
-
-// multiplicative_expression
-//   : unary_expression multiplicative_expr
-Maybe<const ast::Expression*> ParserImpl::multiplicative_expression() {
-    auto lhs = unary_expression();
-    if (lhs.errored) {
-        return Failure::kErrored;
-    }
-    if (!lhs.matched) {
-        return Failure::kNoMatch;
-    }
-
-    return expect_multiplicative_expr(lhs.value);
-}
-
-// additive_expr
-//   :
-//   | PLUS multiplicative_expression additive_expr
-//   | MINUS multiplicative_expression additive_expr
-Expect<const ast::Expression*> ParserImpl::expect_additive_expr(const ast::Expression* lhs) {
-    while (continue_parsing()) {
-        ast::BinaryOp op = ast::BinaryOp::kNone;
-        if (peek_is(Token::Type::kPlus)) {
-            op = ast::BinaryOp::kAdd;
-        } else if (peek_is(Token::Type::kMinus)) {
-            op = ast::BinaryOp::kSubtract;
-        } else {
-            return lhs;
-        }
-
-        auto& t = next();
-
-        auto rhs = multiplicative_expression();
-        if (rhs.errored) {
-            return Failure::kErrored;
-        }
-        if (!rhs.matched) {
-            return add_error(peek(), "unable to parse right side of + expression");
-        }
-
-        lhs = create<ast::BinaryExpression>(t.source(), op, lhs, rhs.value);
-    }
-    return Failure::kErrored;
-}
-
-// additive_expression
-//   : multiplicative_expression additive_expr
-Maybe<const ast::Expression*> ParserImpl::additive_expression() {
-    auto lhs = multiplicative_expression();
-    if (lhs.errored) {
-        return Failure::kErrored;
-    }
-    if (!lhs.matched) {
-        return Failure::kNoMatch;
-    }
-
-    return expect_additive_expr(lhs.value);
-}
-
-// shift_expr
-//   :
-//   | SHIFT_LEFT additive_expression shift_expr
-//   | SHIFT_RIGHT additive_expression shift_expr
-Expect<const ast::Expression*> ParserImpl::expect_shift_expr(const ast::Expression* lhs) {
-    while (continue_parsing()) {
-        auto* name = "";
-        ast::BinaryOp op = ast::BinaryOp::kNone;
-        if (peek_is(Token::Type::kShiftLeft)) {
-            op = ast::BinaryOp::kShiftLeft;
-            name = "<<";
-        } else if (peek_is(Token::Type::kShiftRight)) {
-            op = ast::BinaryOp::kShiftRight;
-            name = ">>";
-        } else {
-            return lhs;
-        }
-
-        auto& t = next();
-        auto rhs = additive_expression();
-        if (rhs.errored) {
-            return Failure::kErrored;
-        }
-        if (!rhs.matched) {
-            return add_error(peek(),
-                             std::string("unable to parse right side of ") + name + " expression");
-        }
-
-        return lhs = create<ast::BinaryExpression>(t.source(), op, lhs, rhs.value);
-    }
-    return Failure::kErrored;
-}
-
-// shift_expression
-//   : additive_expression shift_expr
-Maybe<const ast::Expression*> ParserImpl::shift_expression() {
-    auto lhs = additive_expression();
-    if (lhs.errored) {
-        return Failure::kErrored;
-    }
-    if (!lhs.matched) {
-        return Failure::kNoMatch;
-    }
-
-    return expect_shift_expr(lhs.value);
-}
-
-// relational_expr
-//   :
-//   | LESS_THAN shift_expression relational_expr
-//   | GREATER_THAN shift_expression relational_expr
-//   | LESS_THAN_EQUAL shift_expression relational_expr
-//   | GREATER_THAN_EQUAL shift_expression relational_expr
-Expect<const ast::Expression*> ParserImpl::expect_relational_expr(const ast::Expression* lhs) {
-    while (continue_parsing()) {
-        ast::BinaryOp op = ast::BinaryOp::kNone;
-        if (peek_is(Token::Type::kLessThan)) {
-            op = ast::BinaryOp::kLessThan;
-        } else if (peek_is(Token::Type::kGreaterThan)) {
-            op = ast::BinaryOp::kGreaterThan;
-        } else if (peek_is(Token::Type::kLessThanEqual)) {
-            op = ast::BinaryOp::kLessThanEqual;
-        } else if (peek_is(Token::Type::kGreaterThanEqual)) {
-            op = ast::BinaryOp::kGreaterThanEqual;
-        } else {
-            return lhs;
-        }
-
-        auto& t = next();
-
-        auto rhs = shift_expression();
-        if (rhs.errored) {
-            return Failure::kErrored;
-        }
-        if (!rhs.matched) {
-            return add_error(peek(), "unable to parse right side of " + std::string(t.to_name()) +
-                                         " expression");
-        }
-
-        lhs = create<ast::BinaryExpression>(t.source(), op, lhs, rhs.value);
-    }
-    return Failure::kErrored;
-}
-
-// relational_expression
-//   : shift_expression relational_expr
-Maybe<const ast::Expression*> ParserImpl::relational_expression() {
-    auto lhs = shift_expression();
-    if (lhs.errored) {
-        return Failure::kErrored;
-    }
-    if (!lhs.matched) {
-        return Failure::kNoMatch;
-    }
-
-    return expect_relational_expr(lhs.value);
-}
-
-// equality_expr
-//   :
-//   | EQUAL_EQUAL relational_expression equality_expr
-//   | NOT_EQUAL relational_expression equality_expr
-Expect<const ast::Expression*> ParserImpl::expect_equality_expr(const ast::Expression* lhs) {
-    while (continue_parsing()) {
-        ast::BinaryOp op = ast::BinaryOp::kNone;
-        if (peek_is(Token::Type::kEqualEqual)) {
-            op = ast::BinaryOp::kEqual;
-        } else if (peek_is(Token::Type::kNotEqual)) {
-            op = ast::BinaryOp::kNotEqual;
-        } else {
-            return lhs;
-        }
-
-        auto& t = next();
-
-        auto rhs = relational_expression();
-        if (rhs.errored) {
-            return Failure::kErrored;
-        }
-        if (!rhs.matched) {
-            return add_error(peek(), "unable to parse right side of " + std::string(t.to_name()) +
-                                         " expression");
-        }
-
-        lhs = create<ast::BinaryExpression>(t.source(), op, lhs, rhs.value);
-    }
-    return Failure::kErrored;
-}
-
-// equality_expression
-//   : relational_expression equality_expr
-Maybe<const ast::Expression*> ParserImpl::equality_expression() {
-    auto lhs = relational_expression();
-    if (lhs.errored) {
-        return Failure::kErrored;
-    }
-    if (!lhs.matched) {
-        return Failure::kNoMatch;
-    }
-
-    return expect_equality_expr(lhs.value);
-}
-
-// and_expr
-//   :
-//   | AND equality_expression and_expr
-Expect<const ast::Expression*> ParserImpl::expect_and_expr(const ast::Expression* lhs) {
-    while (continue_parsing()) {
-        if (!peek_is(Token::Type::kAnd)) {
-            return lhs;
-        }
-
-        auto& t = next();
-
-        auto rhs = equality_expression();
-        if (rhs.errored) {
-            return Failure::kErrored;
-        }
-        if (!rhs.matched) {
-            return add_error(peek(), "unable to parse right side of & expression");
-        }
-
-        lhs = create<ast::BinaryExpression>(t.source(), ast::BinaryOp::kAnd, lhs, rhs.value);
-    }
-    return Failure::kErrored;
-}
-
-// and_expression
-//   : equality_expression and_expr
-Maybe<const ast::Expression*> ParserImpl::and_expression() {
-    auto lhs = equality_expression();
-    if (lhs.errored) {
-        return Failure::kErrored;
-    }
-    if (!lhs.matched) {
-        return Failure::kNoMatch;
-    }
-
-    return expect_and_expr(lhs.value);
-}
-
-// exclusive_or_expr
-//   :
-//   | XOR and_expression exclusive_or_expr
-Expect<const ast::Expression*> ParserImpl::expect_exclusive_or_expr(const ast::Expression* lhs) {
-    while (continue_parsing()) {
-        Source source;
-        if (!match(Token::Type::kXor, &source)) {
-            return lhs;
-        }
-
-        auto rhs = and_expression();
-        if (rhs.errored) {
-            return Failure::kErrored;
-        }
-        if (!rhs.matched) {
-            return add_error(peek(), "unable to parse right side of ^ expression");
-        }
-
-        lhs = create<ast::BinaryExpression>(source, ast::BinaryOp::kXor, lhs, rhs.value);
-    }
-    return Failure::kErrored;
-}
-
-// exclusive_or_expression
-//   : and_expression exclusive_or_expr
-Maybe<const ast::Expression*> ParserImpl::exclusive_or_expression() {
-    auto lhs = and_expression();
-    if (lhs.errored) {
-        return Failure::kErrored;
-    }
-    if (!lhs.matched) {
-        return Failure::kNoMatch;
-    }
-
-    return expect_exclusive_or_expr(lhs.value);
-}
-
-// inclusive_or_expr
-//   :
-//   | OR exclusive_or_expression inclusive_or_expr
-Expect<const ast::Expression*> ParserImpl::expect_inclusive_or_expr(const ast::Expression* lhs) {
-    while (continue_parsing()) {
-        Source source;
-        if (!match(Token::Type::kOr, &source)) {
-            return lhs;
-        }
-
-        auto rhs = exclusive_or_expression();
-        if (rhs.errored) {
-            return Failure::kErrored;
-        }
-        if (!rhs.matched) {
-            return add_error(peek(), "unable to parse right side of | expression");
-        }
-
-        lhs = create<ast::BinaryExpression>(source, ast::BinaryOp::kOr, lhs, rhs.value);
-    }
-    return Failure::kErrored;
-}
-
-// inclusive_or_expression
-//   : exclusive_or_expression inclusive_or_expr
-Maybe<const ast::Expression*> ParserImpl::inclusive_or_expression() {
-    auto lhs = exclusive_or_expression();
-    if (lhs.errored) {
-        return Failure::kErrored;
-    }
-    if (!lhs.matched) {
-        return Failure::kNoMatch;
-    }
-
-    return expect_inclusive_or_expr(lhs.value);
-}
-
-// logical_and_expr
-//   :
-//   | AND_AND inclusive_or_expression logical_and_expr
-Expect<const ast::Expression*> ParserImpl::expect_logical_and_expr(const ast::Expression* lhs) {
-    while (continue_parsing()) {
-        if (!peek_is(Token::Type::kAndAnd)) {
-            return lhs;
-        }
-
-        auto& t = next();
-
-        auto rhs = inclusive_or_expression();
-        if (rhs.errored) {
-            return Failure::kErrored;
-        }
-        if (!rhs.matched) {
-            return add_error(peek(), "unable to parse right side of && expression");
-        }
-
-        lhs = create<ast::BinaryExpression>(t.source(), ast::BinaryOp::kLogicalAnd, lhs, rhs.value);
-    }
-    return Failure::kErrored;
-}
-
-// logical_and_expression
-//   : inclusive_or_expression logical_and_expr
-Maybe<const ast::Expression*> ParserImpl::logical_and_expression() {
-    auto lhs = inclusive_or_expression();
-    if (lhs.errored) {
-        return Failure::kErrored;
-    }
-    if (!lhs.matched) {
-        return Failure::kNoMatch;
-    }
-
-    return expect_logical_and_expr(lhs.value);
-}
-
-// logical_or_expr
-//   :
-//   | OR_OR logical_and_expression logical_or_expr
-Expect<const ast::Expression*> ParserImpl::expect_logical_or_expr(const ast::Expression* lhs) {
-    while (continue_parsing()) {
-        Source source;
-        if (!match(Token::Type::kOrOr, &source)) {
-            return lhs;
-        }
-
-        auto rhs = logical_and_expression();
-        if (rhs.errored) {
-            return Failure::kErrored;
-        }
-        if (!rhs.matched) {
-            return add_error(peek(), "unable to parse right side of || expression");
-        }
-
-        lhs = create<ast::BinaryExpression>(source, ast::BinaryOp::kLogicalOr, lhs, rhs.value);
-    }
-    return Failure::kErrored;
-}
-
-// logical_or_expression
-//   : logical_and_expression logical_or_expr
-Maybe<const ast::Expression*> ParserImpl::logical_or_expression() {
-    auto lhs = logical_and_expression();
-    if (lhs.errored) {
-        return Failure::kErrored;
-    }
-    if (!lhs.matched) {
-        return Failure::kNoMatch;
-    }
-
-    return expect_logical_or_expr(lhs.value);
-}
-
-// expression:
-//   : relational_expression
-//   | short_circuit_or_expression or_or relational_expression
-//   | short_circuit_and_expression and_and relational_expression
-//   | bitwise_expression
-Maybe<const ast::Expression*> ParserImpl::expression() {
-    return logical_or_expression();
 }
 
 // compound_assignment_operator
@@ -3835,28 +3405,25 @@ Expect<const ast::Attribute*> ParserImpl::expect_attribute() {
 }
 
 // attribute
-//   : ATTR 'align' PAREN_LEFT expression attrib_end
-//   | ATTR 'binding' PAREN_LEFT expression attrib_end
-//   | ATTR 'builtin' PAREN_LEFT builtin_value_name attrib_end
+//   : ATTR 'align' PAREN_LEFT expression COMMA? PAREN_RIGHT
+//   | ATTR 'binding' PAREN_LEFT expression COMMA? PAREN_RIGHT
+//   | ATTR 'builtin' PAREN_LEFT builtin_value_name COMMA? PAREN_RIGHT
 //   | ATTR 'const'
-//   | ATTR 'group' PAREN_LEFT expression attrib_end
-//   | ATTR 'id' PAREN_LEFT expression attrib_end
-//   | ATTR 'interpolate' PAREN_LEFT interpolation_type_name attrib_end
+//   | ATTR 'group' PAREN_LEFT expression COMMA? PAREN_RIGHT
+//   | ATTR 'id' PAREN_LEFT expression COMMA? PAREN_RIGHT
+//   | ATTR 'interpolate' PAREN_LEFT interpolation_type_name COMMA? PAREN_RIGHT
 //   | ATTR 'interpolate' PAREN_LEFT interpolation_type_name COMMA
-//                                   interpolation_sample_name attrib_end
+//                                   interpolation_sample_name COMMA? PAREN_RIGHT
 //   | ATTR 'invariant'
-//   | ATTR 'location' PAREN_LEFT expression attrib_end
-//   | ATTR 'size' PAREN_LEFT expression attrib_end
-//   | ATTR 'workgroup_size' PAREN_LEFT expression attrib_end
-//   | ATTR 'workgroup_size' PAREN_LEFT expression COMMA expression attrib_end
-//   | ATTR 'workgroup_size' PAREN_LEFT expression COMMA expression COMMA expression attrib_end
+//   | ATTR 'location' PAREN_LEFT expression COMMA? PAREN_RIGHT
+//   | ATTR 'size' PAREN_LEFT expression COMMA? PAREN_RIGHT
+//   | ATTR 'workgroup_size' PAREN_LEFT expression COMMA? PAREN_RIGHT
+//   | ATTR 'workgroup_size' PAREN_LEFT expression COMMA expression COMMA? PAREN_RIGHT
+//   | ATTR 'workgroup_size' PAREN_LEFT expression COMMA expression COMMA
+//                                      expression COMMA? PAREN_RIGHT
 //   | ATTR 'vertex'
 //   | ATTR 'fragment'
 //   | ATTR 'compute'
-//
-// attrib_end
-//   : COMMA? PAREN_RIGHT
-//
 Maybe<const ast::Attribute*> ParserImpl::attribute() {
     using Result = Maybe<const ast::Attribute*>;
     auto& t = next();
@@ -3874,7 +3441,9 @@ Maybe<const ast::Attribute*> ParserImpl::attribute() {
             }
             match(Token::Type::kComma);
 
-            return create<ast::StructMemberAlignAttribute>(t.source(), val.value);
+            return create<ast::StructMemberAlignAttribute>(
+                t.source(), create<ast::IntLiteralExpression>(
+                                val.value, ast::IntLiteralExpression::Suffix::kNone));
         });
     }
 
@@ -4031,7 +3600,7 @@ Maybe<const ast::Attribute*> ParserImpl::attribute() {
             const ast::Expression* y = nullptr;
             const ast::Expression* z = nullptr;
 
-            auto expr = primary_expression();
+            auto expr = expression();
             if (expr.errored) {
                 return Failure::kErrored;
             } else if (!expr.matched) {
@@ -4041,7 +3610,7 @@ Maybe<const ast::Attribute*> ParserImpl::attribute() {
 
             if (match(Token::Type::kComma)) {
                 if (!peek_is(Token::Type::kParenRight)) {
-                    expr = primary_expression();
+                    expr = expression();
                     if (expr.errored) {
                         return Failure::kErrored;
                     } else if (!expr.matched) {
@@ -4051,7 +3620,7 @@ Maybe<const ast::Attribute*> ParserImpl::attribute() {
 
                     if (match(Token::Type::kComma)) {
                         if (!peek_is(Token::Type::kParenRight)) {
-                            expr = primary_expression();
+                            expr = expression();
                             if (expr.errored) {
                                 return Failure::kErrored;
                             } else if (!expr.matched) {
