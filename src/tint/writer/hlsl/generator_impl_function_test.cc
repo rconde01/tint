@@ -360,7 +360,8 @@ tint_symbol_1 vert_main2() {
 
 TEST_F(HlslGeneratorImplTest_Function, Emit_Attribute_EntryPoint_With_Uniform) {
     auto* ubo_ty = Structure("UBO", utils::Vector{Member("coord", ty.vec4<f32>())});
-    auto* ubo = GlobalVar("ubo", ty.Of(ubo_ty), ast::StorageClass::kUniform, Binding(0), Group(1));
+    auto* ubo =
+        GlobalVar("ubo", ty.Of(ubo_ty), ast::StorageClass::kUniform, Binding(0_a), Group(1_a));
 
     Func("sub_func",
          utils::Vector{
@@ -403,7 +404,7 @@ void frag_main() {
 TEST_F(HlslGeneratorImplTest_Function, Emit_Attribute_EntryPoint_With_UniformStruct) {
     auto* s = Structure("Uniforms", utils::Vector{Member("coord", ty.vec4<f32>())});
 
-    GlobalVar("uniforms", ty.Of(s), ast::StorageClass::kUniform, Binding(0), Group(1));
+    GlobalVar("uniforms", ty.Of(s), ast::StorageClass::kUniform, Binding(0_a), Group(1_a));
 
     auto* var = Var("v", ty.f32(), MemberAccessor(MemberAccessor("uniforms", "coord"), "x"));
 
@@ -436,8 +437,8 @@ TEST_F(HlslGeneratorImplTest_Function, Emit_Attribute_EntryPoint_With_RW_Storage
                                     Member("b", ty.f32()),
                                 });
 
-    GlobalVar("coord", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kReadWrite, Binding(0),
-              Group(1));
+    GlobalVar("coord", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kReadWrite, Binding(0_a),
+              Group(1_a));
 
     auto* var = Var("v", ty.f32(), MemberAccessor("coord", "b"));
 
@@ -469,8 +470,8 @@ TEST_F(HlslGeneratorImplTest_Function, Emit_Attribute_EntryPoint_With_RO_Storage
                                     Member("b", ty.f32()),
                                 });
 
-    GlobalVar("coord", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead, Binding(0),
-              Group(1));
+    GlobalVar("coord", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kRead, Binding(0_a),
+              Group(1_a));
 
     auto* var = Var("v", ty.f32(), MemberAccessor("coord", "b"));
 
@@ -502,8 +503,8 @@ TEST_F(HlslGeneratorImplTest_Function, Emit_Attribute_EntryPoint_With_WO_Storage
                                     Member("b", ty.f32()),
                                 });
 
-    GlobalVar("coord", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kReadWrite, Binding(0),
-              Group(1));
+    GlobalVar("coord", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kReadWrite, Binding(0_a),
+              Group(1_a));
 
     Func("frag_main", utils::Empty, ty.void_(),
          utils::Vector{
@@ -533,8 +534,8 @@ TEST_F(HlslGeneratorImplTest_Function, Emit_Attribute_EntryPoint_With_StorageBuf
                                     Member("b", ty.f32()),
                                 });
 
-    GlobalVar("coord", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kReadWrite, Binding(0),
-              Group(1));
+    GlobalVar("coord", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kReadWrite, Binding(0_a),
+              Group(1_a));
 
     Func("frag_main", utils::Empty, ty.void_(),
          utils::Vector{
@@ -560,7 +561,7 @@ void frag_main() {
 
 TEST_F(HlslGeneratorImplTest_Function, Emit_Attribute_Called_By_EntryPoint_With_Uniform) {
     auto* s = Structure("S", utils::Vector{Member("x", ty.f32())});
-    GlobalVar("coord", ty.Of(s), ast::StorageClass::kUniform, Binding(0), Group(1));
+    GlobalVar("coord", ty.Of(s), ast::StorageClass::kUniform, Binding(0_a), Group(1_a));
 
     Func("sub_func",
          utils::Vector{
@@ -602,8 +603,8 @@ void frag_main() {
 
 TEST_F(HlslGeneratorImplTest_Function, Emit_Attribute_Called_By_EntryPoint_With_StorageBuffer) {
     auto* s = Structure("S", utils::Vector{Member("x", ty.f32())});
-    GlobalVar("coord", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kReadWrite, Binding(0),
-              Group(1));
+    GlobalVar("coord", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kReadWrite, Binding(0_a),
+              Group(1_a));
 
     Func("sub_func",
          utils::Vector{
@@ -845,8 +846,8 @@ TEST_F(HlslGeneratorImplTest_Function, Emit_Multiple_EntryPoint_With_Same_Module
 
     auto* s = Structure("Data", utils::Vector{Member("d", ty.f32())});
 
-    GlobalVar("data", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kReadWrite, Binding(0),
-              Group(0));
+    GlobalVar("data", ty.Of(s), ast::StorageClass::kStorage, ast::Access::kReadWrite, Binding(0_a),
+              Group(0_a));
 
     {
         auto* var = Var("v", ty.f32(), MemberAccessor("data", "d"));

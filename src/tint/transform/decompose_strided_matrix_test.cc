@@ -76,7 +76,7 @@ TEST_F(DecomposeStridedMatrixTest, ReadUniformMatrix) {
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kUniform, b.Group(0), b.Binding(0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kUniform, b.Group(0_a), b.Binding(0_a));
     b.Func("f", utils::Empty, b.ty.void_(),
            utils::Vector{
                b.Decl(b.Let("x", b.ty.mat2x2<f32>(), b.MemberAccessor("s", "m"))),
@@ -132,7 +132,7 @@ TEST_F(DecomposeStridedMatrixTest, ReadUniformColumn) {
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kUniform, b.Group(0), b.Binding(0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kUniform, b.Group(0_a), b.Binding(0_a));
     b.Func(
         "f", utils::Empty, b.ty.void_(),
         utils::Vector{
@@ -185,7 +185,7 @@ TEST_F(DecomposeStridedMatrixTest, ReadUniformMatrix_DefaultStride) {
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kUniform, b.Group(0), b.Binding(0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kUniform, b.Group(0_a), b.Binding(0_a));
     b.Func("f", utils::Empty, b.ty.void_(),
            utils::Vector{
                b.Decl(b.Let("x", b.ty.mat2x2<f32>(), b.MemberAccessor("s", "m"))),
@@ -238,8 +238,8 @@ TEST_F(DecomposeStridedMatrixTest, ReadStorageMatrix) {
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite, b.Group(0),
-                b.Binding(0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite, b.Group(0_a),
+                b.Binding(0_a));
     b.Func("f", utils::Empty, b.ty.void_(),
            utils::Vector{
                b.Decl(b.Let("x", b.ty.mat2x2<f32>(), b.MemberAccessor("s", "m"))),
@@ -295,8 +295,8 @@ TEST_F(DecomposeStridedMatrixTest, ReadStorageColumn) {
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite, b.Group(0),
-                b.Binding(0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite, b.Group(0_a),
+                b.Binding(0_a));
     b.Func(
         "f", utils::Empty, b.ty.void_(),
         utils::Vector{
@@ -349,8 +349,8 @@ TEST_F(DecomposeStridedMatrixTest, WriteStorageMatrix) {
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite, b.Group(0),
-                b.Binding(0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite, b.Group(0_a),
+                b.Binding(0_a));
     b.Func("f", utils::Empty, b.ty.void_(),
            utils::Vector{
                b.Assign(b.MemberAccessor("s", "m"),
@@ -407,8 +407,8 @@ TEST_F(DecomposeStridedMatrixTest, WriteStorageColumn) {
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite, b.Group(0),
-                b.Binding(0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite, b.Group(0_a),
+                b.Binding(0_a));
     b.Func("f", utils::Empty, b.ty.void_(),
            utils::Vector{
                b.Assign(b.IndexAccessor(b.MemberAccessor("s", "m"), 1_i), b.vec2<f32>(1_f, 2_f)),
@@ -466,8 +466,8 @@ TEST_F(DecomposeStridedMatrixTest, ReadWriteViaPointerLets) {
                               b.Disable(ast::DisabledValidation::kIgnoreStrideAttribute),
                           }),
              });
-    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite, b.Group(0),
-                b.Binding(0));
+    b.GlobalVar("s", b.ty.Of(S), ast::StorageClass::kStorage, ast::Access::kReadWrite, b.Group(0_a),
+                b.Binding(0_a));
     b.Func("f", utils::Empty, b.ty.void_(),
            utils::Vector{
                b.Decl(b.Let("a", b.AddressOf(b.MemberAccessor("s", "m")))),
