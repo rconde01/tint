@@ -459,6 +459,8 @@ set(TINT_LIB_SRCS
   transform/utils/hoist_to_decl_before.h
   transform/var_for_dynamic_index.cc
   transform/var_for_dynamic_index.h
+  transform/vectorize_matrix_conversions.cc
+  transform/vectorize_matrix_conversions.h
   transform/vectorize_scalar_matrix_constructors.cc
   transform/vectorize_scalar_matrix_constructors.h
   transform/vertex_pulling.cc
@@ -736,7 +738,6 @@ if(TINT_BUILD_TESTS)
     ast/module_clone_test.cc
     ast/module_test.cc
     ast/multisampled_texture_test.cc
-    ast/override_test.cc
     ast/phony_expression_test.cc
     ast/pointer_test.cc
     ast/return_statement_test.cc
@@ -1132,6 +1133,7 @@ if(TINT_BUILD_TESTS)
       transform/unshadow_test.cc
       transform/unwind_discard_functions_test.cc
       transform/var_for_dynamic_index_test.cc
+      transform/vectorize_matrix_conversions_test.cc
       transform/vectorize_scalar_matrix_constructors_test.cc
       transform/vertex_pulling_test.cc
       transform/while_to_loop_test.cc
