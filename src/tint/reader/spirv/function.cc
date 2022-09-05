@@ -5000,7 +5000,7 @@ TypedExpression FunctionEmitter::MakeSimpleSelect(const spvtools::opt::Instructi
     // - true_value false_value, and result type to match.
     // - you can't select over pointers or pointer vectors, unless you also have
     //   a VariablePointers* capability, which is not allowed in by WebGPU.
-    auto* op_ty = true_value.type;
+    auto* op_ty = true_value.type->UnwrapRef();
     if (op_ty->Is<Vector>() || op_ty->IsFloatScalar() || op_ty->IsIntegerScalar() ||
         op_ty->Is<Bool>()) {
         ExpressionList params;
@@ -5636,7 +5636,9 @@ FunctionEmitter::ExpressionList FunctionEmitter::MakeCoordinateOperandsForImageA
 
     const auto num_coords_required = num_axes + (is_arrayed ? 1 : 0) + (is_proj ? 1 : 0);
     uint32_t num_coords_supplied = 0;
-    auto* component_type = raw_coords.type;
+    // Get the component type.  The raw_coords might have been hoisted into
+    // a 'var' declaration, so unwrap the referenece if needed.
+    auto* component_type = raw_coords.type->UnwrapRef();
     if (component_type->IsFloatScalar() || component_type->IsIntegerScalar()) {
         num_coords_supplied = 1;
     } else if (auto* vec_type = As<Vector>(raw_coords.type)) {
@@ -5714,7 +5716,7 @@ const ast::Expression* FunctionEmitter::ConvertTexelForStorage(
     TypedExpression texel,
     const Texture* texture_type) {
     auto* storage_texture_type = As<StorageTexture>(texture_type);
-    auto* src_type = texel.type;
+    auto* src_type = texel.type->UnwrapRef();
     if (!storage_texture_type) {
         Fail() << "writing to other than storage texture: " << inst.PrettyPrint();
         return nullptr;
@@ -5738,8 +5740,8 @@ const ast::Expression* FunctionEmitter::ConvertTexelForStorage(
 
     // Component type must match floatness, or integral signedness.
     if ((src_type->IsFloatScalarOrVector() != dest_type->IsFloatVector()) ||
-        (src_type->IsUnsignedIntegerVector() != dest_type->IsUnsignedIntegerVector()) ||
-        (src_type->IsSignedIntegerVector() != dest_type->IsSignedIntegerVector())) {
+        (src_type->IsUnsignedScalarOrVector() != dest_type->IsUnsignedIntegerVector()) ||
+        (src_type->IsSignedScalarOrVector() != dest_type->IsSignedIntegerVector())) {
         Fail() << "invalid texel type for storage texture write: component must be "
                   "float, signed integer, or unsigned integer "
                   "to match the texture channel type: "
@@ -5762,14 +5764,14 @@ const ast::Expression* FunctionEmitter::ConvertTexelForStorage(
 
     if (src_count < dest_count) {
         // Expand the texel to a 4 element vector.
-        auto* component_type = texel.type->IsScalar() ? texel.type : texel.type->As<Vector>()->type;
-        texel.type = ty_.Vector(component_type, dest_count);
+        auto* component_type = src_type->IsScalar() ? src_type : src_type->As<Vector>()->type;
+        src_type = ty_.Vector(component_type, dest_count);
         ExpressionList exprs;
         exprs.Push(texel.expr);
         for (auto i = src_count; i < dest_count; i++) {
             exprs.Push(parser_impl_.MakeNullExpression(component_type).expr);
         }
-        texel.expr = builder_.Construct(Source{}, texel.type->Build(builder_), std::move(exprs));
+        texel.expr = builder_.Construct(Source{}, src_type->Build(builder_), std::move(exprs));
     }
 
     return texel.expr;

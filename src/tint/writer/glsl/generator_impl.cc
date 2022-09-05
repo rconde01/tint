@@ -46,8 +46,8 @@
 #include "src/tint/sem/type_constructor.h"
 #include "src/tint/sem/type_conversion.h"
 #include "src/tint/sem/variable.h"
+#include "src/tint/transform/add_block_attribute.h"
 #include "src/tint/transform/add_empty_entry_point.h"
-#include "src/tint/transform/add_spirv_block_attribute.h"
 #include "src/tint/transform/binding_remapper.h"
 #include "src/tint/transform/builtin_polyfill.h"
 #include "src/tint/transform/canonicalize_entry_point_io.h"
@@ -150,25 +150,22 @@ const char* convert_texel_format_to_glsl(const ast::TexelFormat format) {
 }
 
 void PrintF32(std::ostream& out, float value) {
-    // Note: Currently inf and nan should not be constructable, but this is implemented for the day
-    // we support them.
     if (std::isinf(value)) {
-        out << (value >= 0 ? "uintBitsToFloat(0x7f800000u)" : "uintBitsToFloat(0xff800000u)");
+        out << "0.0f " << (value >= 0 ? "/* inf */" : "/* -inf */");
     } else if (std::isnan(value)) {
-        out << "uintBitsToFloat(0x7fc00000u)";
+        out << "0.0f /* nan */";
     } else {
         out << FloatToString(value) << "f";
     }
 }
 
-bool PrintF16(std::ostream& out, float value) {
-    // Note: Currently inf and nan should not be constructable, and there is no solid way to
-    // generate constant/literal f16 Inf or NaN.
-    if (std::isinf(value) || std::isnan(value)) {
-        return false;
+void PrintF16(std::ostream& out, float value) {
+    if (std::isinf(value)) {
+        out << "0.0hf " << (value >= 0 ? "/* inf */" : "/* -inf */");
+    } else if (std::isnan(value)) {
+        out << "0.0hf /* nan */";
     } else {
         out << FloatToString(value) << "hf";
-        return true;
     }
 }
 
@@ -244,7 +241,7 @@ SanitizedResult Sanitize(const Program* in,
 
     manager.Add<transform::PromoteInitializersToLet>();
     manager.Add<transform::AddEmptyEntryPoint>();
-    manager.Add<transform::AddSpirvBlockAttribute>();
+    manager.Add<transform::AddBlockAttribute>();
     data.Add<transform::CanonicalizeEntryPointIO::Config>(
         transform::CanonicalizeEntryPointIO::ShaderStyle::kGlsl);
 
@@ -284,18 +281,15 @@ bool GeneratorImpl::Generate() {
                 return false;
             }
         } else if (auto* str = decl->As<ast::Struct>()) {
-            // Skip emission if the struct contains a runtime-sized array, since its
-            // only use will be as the store-type of a buffer and we emit those
-            // elsewhere.
-            // TODO(crbug.com/tint/1339): We could also avoid emitting any other
-            // struct that is only used as a buffer store type.
-            const sem::Struct* sem_str = builder_.Sem().Get(str);
-            const auto& members = sem_str->Members();
-            TINT_ASSERT(Writer, members.size() > 0);
-            auto* last_member = members[members.size() - 1];
-            auto* arr = last_member->Type()->As<sem::Array>();
-            if (!arr || !arr->IsRuntimeSized()) {
-                if (!EmitStructType(current_buffer_, sem_str)) {
+            auto* sem = builder_.Sem().Get(str);
+            bool has_rt_arr = false;
+            if (auto* arr = sem->Members().back()->Type()->As<sem::Array>()) {
+                has_rt_arr = arr->IsRuntimeSized();
+            }
+            bool is_block =
+                ast::HasAttribute<transform::AddBlockAttribute::BlockAttribute>(str->attributes);
+            if (!has_rt_arr && !is_block) {
+                if (!EmitStructType(current_buffer_, sem)) {
                     return false;
                 }
             }
@@ -1915,7 +1909,7 @@ bool GeneratorImpl::EmitUniformVariable(const ast::Var* var, const sem::Variable
         if (version_.IsDesktop()) {
             out << ", std140";
         }
-        out << ") uniform " << UniqueIdentifier(StructName(str)) << " {";
+        out << ") uniform " << UniqueIdentifier(StructName(str) + "_ubo") << " {";
     }
     EmitStructMembers(current_buffer_, str, /* emit_offsets */ true);
     auto name = builder_.Symbols().NameFor(var->symbol);
@@ -1934,10 +1928,12 @@ bool GeneratorImpl::EmitStorageVariable(const ast::Var* var, const sem::Variable
     }
     auto bp = sem->As<sem::GlobalVariable>()->BindingPoint();
     line() << "layout(binding = " << bp.binding << ", std430) buffer "
-           << UniqueIdentifier(StructName(str)) << " {";
+           << UniqueIdentifier(StructName(str) + "_ssbo") << " {";
     EmitStructMembers(current_buffer_, str, /* emit_offsets */ true);
     auto name = builder_.Symbols().NameFor(var->symbol);
     line() << "} " << name << ";";
+    line();
+
     return true;
 }
 
@@ -2186,7 +2182,10 @@ bool GeneratorImpl::EmitConstant(std::ostream& out, const sem::Constant* constan
             PrintF32(out, constant->As<float>());
             return true;
         },
-        [&](const sem::F16*) { return PrintF16(out, constant->As<float>()); },
+        [&](const sem::F16*) {
+            PrintF16(out, constant->As<float>());
+            return true;
+        },
         [&](const sem::I32*) {
             out << constant->As<AInt>();
             return true;
@@ -2286,9 +2285,10 @@ bool GeneratorImpl::EmitLiteral(std::ostream& out, const ast::LiteralExpression*
         },
         [&](const ast::FloatLiteralExpression* l) {
             if (l->suffix == ast::FloatLiteralExpression::Suffix::kH) {
-                return PrintF16(out, static_cast<float>(l->value));
+                PrintF16(out, static_cast<float>(l->value));
+            } else {
+                PrintF32(out, static_cast<float>(l->value));
             }
-            PrintF32(out, static_cast<float>(l->value));
             return true;
         },
         [&](const ast::IntLiteralExpression* l) {

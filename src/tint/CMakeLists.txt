@@ -252,6 +252,7 @@ set(TINT_LIB_SRCS
   program_id.h
   program.cc
   program.h
+  reflection.h
   reader/reader.cc
   reader/reader.h
   resolver/const_eval.cc
@@ -383,8 +384,8 @@ set(TINT_LIB_SRCS
   traits.h
   transform/add_empty_entry_point.cc
   transform/add_empty_entry_point.h
-  transform/add_spirv_block_attribute.cc
-  transform/add_spirv_block_attribute.h
+  transform/add_block_attribute.cc
+  transform/add_block_attribute.h
   transform/array_length_from_uniform.cc
   transform/array_length_from_uniform.h
   transform/binding_remapper.cc
@@ -478,6 +479,7 @@ set(TINT_LIB_SRCS
   utils/concat.h
   utils/crc32.h
   utils/enum_set.h
+  utils/foreach_macro.h
   utils/hash.h
   utils/hashmap.h
   utils/hashset.h
@@ -777,6 +779,7 @@ if(TINT_BUILD_TESTS)
     number_test.cc
     program_builder_test.cc
     program_test.cc
+    reflection_test.cc
     resolver/array_accessor_test.cc
     resolver/assignment_validation_test.cc
     resolver/atomics_test.cc
@@ -1099,7 +1102,7 @@ if(TINT_BUILD_TESTS)
   if(${TINT_BUILD_WGSL_READER} AND ${TINT_BUILD_WGSL_WRITER})
     list(APPEND TINT_TEST_SRCS
       transform/add_empty_entry_point_test.cc
-      transform/add_spirv_block_attribute_test.cc
+      transform/add_block_attribute_test.cc
       transform/array_length_from_uniform_test.cc
       transform/binding_remapper_test.cc
       transform/builtin_polyfill_test.cc
