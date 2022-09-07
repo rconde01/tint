@@ -716,9 +716,14 @@ sem::Parameter* Resolver::Parameter(const ast::Parameter* param, uint32_t index)
         }
     }
 
-    auto* sem = builder_->create<sem::Parameter>(param, index, ty, ast::StorageClass::kNone,
-                                                 ast::Access::kUndefined,
-                                                 sem::ParameterUsage::kNone, binding_point);
+    std::optional<uint32_t> location;
+    if (auto* l = ast::GetAttribute<ast::LocationAttribute>(param->attributes)) {
+        location = l->value;
+    }
+
+    auto* sem = builder_->create<sem::Parameter>(
+        param, index, ty, ast::StorageClass::kNone, ast::Access::kUndefined,
+        sem::ParameterUsage::kNone, binding_point, location);
     builder_->Sem().Add(param, sem);
     return sem;
 }
@@ -906,6 +911,19 @@ sem::Function* Resolver::Function(const ast::Function* decl) {
         return_type = builder_->create<sem::Void>();
     }
 
+    // Determine if the return type has a location
+    std::optional<uint32_t> return_location;
+    for (auto* attr : decl->return_type_attributes) {
+        Mark(attr);
+
+        if (auto* a = attr->As<ast::LocationAttribute>()) {
+            return_location = a->value;
+        }
+    }
+    if (!validator_.NoDuplicateAttributes(decl->attributes)) {
+        return nullptr;
+    }
+
     if (auto* str = return_type->As<sem::Struct>()) {
         if (!ApplyStorageClassUsageToType(ast::StorageClass::kNone, str, decl->source)) {
             AddNote(
@@ -929,7 +947,8 @@ sem::Function* Resolver::Function(const ast::Function* decl) {
         }
     }
 
-    auto* func = builder_->create<sem::Function>(decl, return_type, std::move(parameters));
+    auto* func =
+        builder_->create<sem::Function>(decl, return_type, return_location, std::move(parameters));
     builder_->Sem().Add(decl, func);
 
     TINT_SCOPED_ASSIGNMENT(current_function_, func);
@@ -968,13 +987,7 @@ sem::Function* Resolver::Function(const ast::Function* decl) {
     for (auto* attr : decl->attributes) {
         Mark(attr);
     }
-    if (!validator_.NoDuplicateAttributes(decl->attributes)) {
-        return nullptr;
-    }
 
-    for (auto* attr : decl->return_type_attributes) {
-        Mark(attr);
-    }
     if (!validator_.NoDuplicateAttributes(decl->return_type_attributes)) {
         return nullptr;
     }
@@ -2747,6 +2760,7 @@ sem::Struct* Resolver::Structure(const ast::Struct* str) {
         bool has_offset_attr = false;
         bool has_align_attr = false;
         bool has_size_attr = false;
+        std::optional<uint32_t> location;
         for (auto* attr : member->attributes) {
             Mark(attr);
             if (auto* o = attr->As<ast::StructMemberOffsetAttribute>()) {
@@ -2760,11 +2774,7 @@ sem::Struct* Resolver::Structure(const ast::Struct* str) {
                 align = 1;
                 has_offset_attr = true;
             } else if (auto* a = attr->As<ast::StructMemberAlignAttribute>()) {
-                const auto* expr = Expression(a->align);
-                if (!expr) {
-                    return nullptr;
-                }
-                auto* materialized = Materialize(expr);
+                auto* materialized = Materialize(Expression(a->align));
                 if (!materialized) {
                     return nullptr;
                 }
@@ -2790,6 +2800,8 @@ sem::Struct* Resolver::Structure(const ast::Struct* str) {
                 }
                 size = s->size;
                 has_size_attr = true;
+            } else if (auto* l = attr->As<ast::LocationAttribute>()) {
+                location = l->value;
             }
         }
 
@@ -2811,7 +2823,7 @@ sem::Struct* Resolver::Structure(const ast::Struct* str) {
         auto* sem_member = builder_->create<sem::StructMember>(
             member, member->symbol, type, static_cast<uint32_t>(sem_members.size()),
             static_cast<uint32_t>(offset), static_cast<uint32_t>(align),
-            static_cast<uint32_t>(size));
+            static_cast<uint32_t>(size), location);
         builder_->Sem().Add(member, sem_member);
         sem_members.emplace_back(sem_member);
 
