@@ -2498,34 +2498,16 @@ TEST_F(ResolverConstEvalTest, Vec3_Index_OOB_High) {
     auto* expr = IndexAccessor(vec3<i32>(1_i, 2_i, 3_i), Expr(Source{{12, 34}}, 3_i));
     WrapInFunction(expr);
 
-    EXPECT_TRUE(r()->Resolve()) << r()->error();
-    EXPECT_EQ(r()->error(), "12:34 warning: index 3 out of bounds [0..2]. Clamping index to 2");
-
-    auto* sem = Sem().Get(expr);
-    ASSERT_NE(sem, nullptr);
-    ASSERT_TRUE(sem->Type()->Is<sem::I32>());
-    EXPECT_TYPE(sem->ConstantValue()->Type(), sem->Type());
-    EXPECT_TRUE(sem->ConstantValue()->AllEqual());
-    EXPECT_FALSE(sem->ConstantValue()->AnyZero());
-    EXPECT_FALSE(sem->ConstantValue()->AllZero());
-    EXPECT_EQ(sem->ConstantValue()->As<i32>(), 3_i);
+    EXPECT_FALSE(r()->Resolve()) << r()->error();
+    EXPECT_EQ(r()->error(), "12:34 error: index 3 out of bounds [0..2]");
 }
 
 TEST_F(ResolverConstEvalTest, Vec3_Index_OOB_Low) {
     auto* expr = IndexAccessor(vec3<i32>(1_i, 2_i, 3_i), Expr(Source{{12, 34}}, -3_i));
     WrapInFunction(expr);
 
-    EXPECT_TRUE(r()->Resolve()) << r()->error();
-    EXPECT_EQ(r()->error(), "12:34 warning: index -3 out of bounds [0..2]. Clamping index to 0");
-
-    auto* sem = Sem().Get(expr);
-    ASSERT_NE(sem, nullptr);
-    ASSERT_TRUE(sem->Type()->Is<sem::I32>());
-    EXPECT_TYPE(sem->ConstantValue()->Type(), sem->Type());
-    EXPECT_TRUE(sem->ConstantValue()->AllEqual());
-    EXPECT_FALSE(sem->ConstantValue()->AnyZero());
-    EXPECT_FALSE(sem->ConstantValue()->AllZero());
-    EXPECT_EQ(sem->ConstantValue()->As<i32>(), 1_i);
+    EXPECT_FALSE(r()->Resolve()) << r()->error();
+    EXPECT_EQ(r()->error(), "12:34 error: index -3 out of bounds [0..2]");
 }
 
 TEST_F(ResolverConstEvalTest, Vec3_Swizzle_Scalar) {
@@ -2616,25 +2598,8 @@ TEST_F(ResolverConstEvalTest, Mat3x2_Index_OOB_High) {
         Expr(Source{{12, 34}}, 3_i));
     WrapInFunction(expr);
 
-    EXPECT_TRUE(r()->Resolve()) << r()->error();
-    EXPECT_EQ(r()->error(), "12:34 warning: index 3 out of bounds [0..2]. Clamping index to 2");
-
-    auto* sem = Sem().Get(expr);
-    ASSERT_NE(sem, nullptr);
-    auto* vec = sem->Type()->As<sem::Vector>();
-    ASSERT_NE(vec, nullptr);
-    EXPECT_EQ(vec->Width(), 2u);
-    EXPECT_TYPE(sem->ConstantValue()->Type(), sem->Type());
-
-    EXPECT_TRUE(sem->ConstantValue()->Index(0)->AllEqual());
-    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AnyZero());
-    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AllZero());
-    EXPECT_EQ(sem->ConstantValue()->Index(0)->As<f32>(), 5._a);
-
-    EXPECT_TRUE(sem->ConstantValue()->Index(1)->AllEqual());
-    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AnyZero());
-    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AllZero());
-    EXPECT_EQ(sem->ConstantValue()->Index(1)->As<f32>(), 6._a);
+    EXPECT_FALSE(r()->Resolve()) << r()->error();
+    EXPECT_EQ(r()->error(), "12:34 error: index 3 out of bounds [0..2]");
 }
 
 TEST_F(ResolverConstEvalTest, Mat3x2_Index_OOB_Low) {
@@ -2643,25 +2608,8 @@ TEST_F(ResolverConstEvalTest, Mat3x2_Index_OOB_Low) {
         Expr(Source{{12, 34}}, -3_i));
     WrapInFunction(expr);
 
-    EXPECT_TRUE(r()->Resolve()) << r()->error();
-    EXPECT_EQ(r()->error(), "12:34 warning: index -3 out of bounds [0..2]. Clamping index to 0");
-
-    auto* sem = Sem().Get(expr);
-    ASSERT_NE(sem, nullptr);
-    auto* vec = sem->Type()->As<sem::Vector>();
-    ASSERT_NE(vec, nullptr);
-    EXPECT_EQ(vec->Width(), 2u);
-    EXPECT_TYPE(sem->ConstantValue()->Type(), sem->Type());
-
-    EXPECT_TRUE(sem->ConstantValue()->Index(0)->AllEqual());
-    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AnyZero());
-    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AllZero());
-    EXPECT_EQ(sem->ConstantValue()->Index(0)->As<f32>(), 1._a);
-
-    EXPECT_TRUE(sem->ConstantValue()->Index(1)->AllEqual());
-    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AnyZero());
-    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AllZero());
-    EXPECT_EQ(sem->ConstantValue()->Index(1)->As<f32>(), 2._a);
+    EXPECT_FALSE(r()->Resolve()) << r()->error();
+    EXPECT_EQ(r()->error(), "12:34 error: index -3 out of bounds [0..2]");
 }
 
 TEST_F(ResolverConstEvalTest, Array_vec3_f32_Index) {
@@ -2702,31 +2650,8 @@ TEST_F(ResolverConstEvalTest, Array_vec3_f32_Index_OOB_High) {
                                Expr(Source{{12, 34}}, 2_i));
     WrapInFunction(expr);
 
-    EXPECT_TRUE(r()->Resolve()) << r()->error();
-    EXPECT_EQ(r()->error(), "12:34 warning: index 2 out of bounds [0..1]. Clamping index to 1");
-
-    auto* sem = Sem().Get(expr);
-    ASSERT_NE(sem, nullptr);
-    auto* vec = sem->Type()->As<sem::Vector>();
-    ASSERT_NE(vec, nullptr);
-    EXPECT_TRUE(vec->type()->Is<sem::F32>());
-    EXPECT_EQ(vec->Width(), 3u);
-    EXPECT_TYPE(sem->ConstantValue()->Type(), sem->Type());
-
-    EXPECT_TRUE(sem->ConstantValue()->Index(0)->AllEqual());
-    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AnyZero());
-    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AllZero());
-    EXPECT_EQ(sem->ConstantValue()->Index(0)->As<f32>(), 4_f);
-
-    EXPECT_TRUE(sem->ConstantValue()->Index(1)->AllEqual());
-    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AnyZero());
-    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AllZero());
-    EXPECT_EQ(sem->ConstantValue()->Index(1)->As<f32>(), 5_f);
-
-    EXPECT_TRUE(sem->ConstantValue()->Index(2)->AllEqual());
-    EXPECT_FALSE(sem->ConstantValue()->Index(2)->AnyZero());
-    EXPECT_FALSE(sem->ConstantValue()->Index(2)->AllZero());
-    EXPECT_EQ(sem->ConstantValue()->Index(2)->As<f32>(), 6_f);
+    EXPECT_FALSE(r()->Resolve()) << r()->error();
+    EXPECT_EQ(r()->error(), "12:34 error: index 2 out of bounds [0..1]");
 }
 
 TEST_F(ResolverConstEvalTest, Array_vec3_f32_Index_OOB_Low) {
@@ -2735,34 +2660,18 @@ TEST_F(ResolverConstEvalTest, Array_vec3_f32_Index_OOB_Low) {
                                Expr(Source{{12, 34}}, -2_i));
     WrapInFunction(expr);
 
-    EXPECT_TRUE(r()->Resolve()) << r()->error();
-    EXPECT_EQ(r()->error(), "12:34 warning: index -2 out of bounds [0..1]. Clamping index to 0");
+    EXPECT_FALSE(r()->Resolve()) << r()->error();
+    EXPECT_EQ(r()->error(), "12:34 error: index -2 out of bounds [0..1]");
+}
 
-    auto* sem = Sem().Get(expr);
-    ASSERT_NE(sem, nullptr);
-    auto* vec = sem->Type()->As<sem::Vector>();
-    ASSERT_NE(vec, nullptr);
-    EXPECT_TRUE(vec->type()->Is<sem::F32>());
-    EXPECT_EQ(vec->Width(), 3u);
-    EXPECT_TYPE(sem->ConstantValue()->Type(), sem->Type());
-    EXPECT_FALSE(sem->ConstantValue()->AllEqual());
-    EXPECT_FALSE(sem->ConstantValue()->AnyZero());
-    EXPECT_FALSE(sem->ConstantValue()->AllZero());
+TEST_F(ResolverConstEvalTest, RuntimeArray_vec3_f32_Index_OOB_Low) {
+    auto* sb = GlobalVar("sb", ty.array(ty.vec3<f32>()), Group(0_a), Binding(0_a),
+                         ast::StorageClass::kStorage);
+    auto* expr = IndexAccessor(sb, Expr(Source{{12, 34}}, -2_i));
+    WrapInFunction(expr);
 
-    EXPECT_TRUE(sem->ConstantValue()->Index(0)->AllEqual());
-    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AnyZero());
-    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AllZero());
-    EXPECT_EQ(sem->ConstantValue()->Index(0)->As<f32>(), 1_f);
-
-    EXPECT_TRUE(sem->ConstantValue()->Index(1)->AllEqual());
-    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AnyZero());
-    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AllZero());
-    EXPECT_EQ(sem->ConstantValue()->Index(1)->As<f32>(), 2_f);
-
-    EXPECT_TRUE(sem->ConstantValue()->Index(2)->AllEqual());
-    EXPECT_FALSE(sem->ConstantValue()->Index(2)->AnyZero());
-    EXPECT_FALSE(sem->ConstantValue()->Index(2)->AllZero());
-    EXPECT_EQ(sem->ConstantValue()->Index(2)->As<f32>(), 3_f);
+    EXPECT_FALSE(r()->Resolve()) << r()->error();
+    EXPECT_EQ(r()->error(), "12:34 error: index -2 out of bounds");
 }
 
 TEST_F(ResolverConstEvalTest, ChainedIndex) {
@@ -2861,105 +2770,6 @@ TEST_F(ResolverConstEvalTest, ChainedIndex) {
     }
 }
 
-TEST_F(ResolverConstEvalTest, ChainedIndex_OOB) {
-    auto* arr_expr = Construct(ty.array(ty.mat2x3<f32>(), 2_u),        // array<mat2x3<f32>, 2u>
-                               mat2x3<f32>(vec3<f32>(1_f, 2_f, 3_f),   //
-                                           vec3<f32>(4_f, 5_f, 6_f)),  //
-                               mat2x3<f32>(vec3<f32>(7_f, 8_f, 9_f),   //
-                                           vec3<f32>(10_f, 11_f, 12_f)));
-
-    auto* mat_expr = IndexAccessor(arr_expr, Expr(Source{{1, 2}}, -3_i));  // arr[3]
-    auto* vec_expr = IndexAccessor(mat_expr, Expr(Source{{3, 4}}, -2_i));  // arr[3][-2]
-    auto* f32_expr = IndexAccessor(vec_expr, Expr(Source{{5, 6}}, 4_i));   // arr[3][-2][4]
-    WrapInFunction(f32_expr);
-
-    EXPECT_TRUE(r()->Resolve()) << r()->error();
-    EXPECT_EQ(r()->error(), R"(1:2 warning: index -3 out of bounds [0..1]. Clamping index to 0
-3:4 warning: index -2 out of bounds [0..1]. Clamping index to 0
-5:6 warning: index 4 out of bounds [0..2]. Clamping index to 2)");
-
-    {
-        auto* mat = Sem().Get(mat_expr);
-        EXPECT_NE(mat, nullptr);
-        auto* ty = mat->Type()->As<sem::Matrix>();
-        ASSERT_NE(mat->Type(), nullptr);
-        EXPECT_TRUE(ty->ColumnType()->Is<sem::Vector>());
-        EXPECT_EQ(ty->columns(), 2u);
-        EXPECT_EQ(ty->rows(), 3u);
-        EXPECT_EQ(mat->ConstantValue()->Type(), mat->Type());
-        EXPECT_FALSE(mat->ConstantValue()->AllEqual());
-        EXPECT_FALSE(mat->ConstantValue()->AnyZero());
-        EXPECT_FALSE(mat->ConstantValue()->AllZero());
-
-        EXPECT_TRUE(mat->ConstantValue()->Index(0)->Index(0)->AllEqual());
-        EXPECT_FALSE(mat->ConstantValue()->Index(0)->Index(0)->AnyZero());
-        EXPECT_FALSE(mat->ConstantValue()->Index(0)->Index(0)->AllZero());
-        EXPECT_EQ(mat->ConstantValue()->Index(0)->Index(0)->As<f32>(), 1_f);
-
-        EXPECT_TRUE(mat->ConstantValue()->Index(0)->Index(1)->AllEqual());
-        EXPECT_FALSE(mat->ConstantValue()->Index(0)->Index(1)->AnyZero());
-        EXPECT_FALSE(mat->ConstantValue()->Index(0)->Index(1)->AllZero());
-        EXPECT_EQ(mat->ConstantValue()->Index(0)->Index(1)->As<f32>(), 2_f);
-
-        EXPECT_TRUE(mat->ConstantValue()->Index(0)->Index(2)->AllEqual());
-        EXPECT_FALSE(mat->ConstantValue()->Index(0)->Index(2)->AnyZero());
-        EXPECT_FALSE(mat->ConstantValue()->Index(0)->Index(2)->AllZero());
-        EXPECT_EQ(mat->ConstantValue()->Index(0)->Index(2)->As<f32>(), 3_f);
-
-        EXPECT_TRUE(mat->ConstantValue()->Index(1)->Index(0)->AllEqual());
-        EXPECT_FALSE(mat->ConstantValue()->Index(1)->Index(0)->AnyZero());
-        EXPECT_FALSE(mat->ConstantValue()->Index(1)->Index(0)->AllZero());
-        EXPECT_EQ(mat->ConstantValue()->Index(1)->Index(0)->As<f32>(), 4_f);
-
-        EXPECT_TRUE(mat->ConstantValue()->Index(1)->Index(1)->AllEqual());
-        EXPECT_FALSE(mat->ConstantValue()->Index(1)->Index(1)->AnyZero());
-        EXPECT_FALSE(mat->ConstantValue()->Index(1)->Index(1)->AllZero());
-        EXPECT_EQ(mat->ConstantValue()->Index(1)->Index(1)->As<f32>(), 5_f);
-
-        EXPECT_TRUE(mat->ConstantValue()->Index(1)->Index(2)->AllEqual());
-        EXPECT_FALSE(mat->ConstantValue()->Index(1)->Index(2)->AnyZero());
-        EXPECT_FALSE(mat->ConstantValue()->Index(1)->Index(2)->AllZero());
-        EXPECT_EQ(mat->ConstantValue()->Index(1)->Index(2)->As<f32>(), 6_f);
-    }
-    {
-        auto* vec = Sem().Get(vec_expr);
-        EXPECT_NE(vec, nullptr);
-        auto* ty = vec->Type()->As<sem::Vector>();
-        ASSERT_NE(vec->Type(), nullptr);
-        EXPECT_TRUE(ty->type()->Is<sem::F32>());
-        EXPECT_EQ(ty->Width(), 3u);
-        EXPECT_EQ(vec->ConstantValue()->Type(), vec->Type());
-        EXPECT_FALSE(vec->ConstantValue()->AllEqual());
-        EXPECT_FALSE(vec->ConstantValue()->AnyZero());
-        EXPECT_FALSE(vec->ConstantValue()->AllZero());
-
-        EXPECT_TRUE(vec->ConstantValue()->Index(0)->AllEqual());
-        EXPECT_FALSE(vec->ConstantValue()->Index(0)->AnyZero());
-        EXPECT_FALSE(vec->ConstantValue()->Index(0)->AllZero());
-        EXPECT_EQ(vec->ConstantValue()->Index(0)->As<f32>(), 1_f);
-
-        EXPECT_TRUE(vec->ConstantValue()->Index(1)->AllEqual());
-        EXPECT_FALSE(vec->ConstantValue()->Index(1)->AnyZero());
-        EXPECT_FALSE(vec->ConstantValue()->Index(1)->AllZero());
-        EXPECT_EQ(vec->ConstantValue()->Index(1)->As<f32>(), 2_f);
-
-        EXPECT_TRUE(vec->ConstantValue()->Index(2)->AllEqual());
-        EXPECT_FALSE(vec->ConstantValue()->Index(2)->AnyZero());
-        EXPECT_FALSE(vec->ConstantValue()->Index(2)->AllZero());
-        EXPECT_EQ(vec->ConstantValue()->Index(2)->As<f32>(), 3_f);
-    }
-    {
-        auto* f = Sem().Get(f32_expr);
-        EXPECT_NE(f, nullptr);
-        EXPECT_TRUE(f->Type()->Is<sem::F32>());
-        EXPECT_EQ(f->ConstantValue()->Type(), f->Type());
-        EXPECT_TRUE(f->ConstantValue()->AllEqual());
-        EXPECT_FALSE(f->ConstantValue()->AnyZero());
-        EXPECT_FALSE(f->ConstantValue()->AllZero());
-        EXPECT_EQ(f->ConstantValue()->As<f32>(), 3_f);
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Member accessing
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3040,30 +2850,140 @@ TEST_F(ResolverConstEvalTest, Matrix_AFloat_Construct_From_AInt_Vectors) {
     EXPECT_EQ(std::get<AFloat>(c1->Index(1)->Value()), 4.0);
 }
 
+using builder::IsValue;
+using builder::Mat;
+using builder::Val;
+using builder::Value;
+using builder::Vec;
+
+using Types = std::variant<  //
+    Value<AInt>,
+    Value<AFloat>,
+    Value<u32>,
+    Value<i32>,
+    Value<f32>,
+    Value<f16>,
+    Value<bool>,
+
+    Value<builder::vec2<AInt>>,
+    Value<builder::vec2<AFloat>>,
+    Value<builder::vec2<u32>>,
+    Value<builder::vec2<i32>>,
+    Value<builder::vec2<f32>>,
+    Value<builder::vec2<f16>>,
+    Value<builder::vec2<bool>>,
+
+    Value<builder::vec3<AInt>>,
+    Value<builder::vec3<AFloat>>,
+    Value<builder::vec3<u32>>,
+    Value<builder::vec3<i32>>,
+    Value<builder::vec3<f32>>,
+    Value<builder::vec3<f16>>,
+
+    Value<builder::vec4<AInt>>,
+    Value<builder::vec4<AFloat>>,
+    Value<builder::vec4<u32>>,
+    Value<builder::vec4<i32>>,
+    Value<builder::vec4<f32>>,
+    Value<builder::vec4<f16>>,
+
+    Value<builder::mat2x2<AInt>>,
+    Value<builder::mat2x2<AFloat>>,
+    Value<builder::mat2x2<f32>>,
+    Value<builder::mat2x2<f16>>,
+
+    Value<builder::mat2x3<AInt>>,
+    Value<builder::mat2x3<AFloat>>,
+    Value<builder::mat2x3<f32>>,
+    Value<builder::mat2x3<f16>>,
+
+    Value<builder::mat3x2<AInt>>,
+    Value<builder::mat3x2<AFloat>>,
+    Value<builder::mat3x2<f32>>,
+    Value<builder::mat3x2<f16>>
+    //
+    >;
+
+std::ostream& operator<<(std::ostream& o, const Types& types) {
+    std::visit(
+        [&](auto&& v) {
+            using ValueType = std::decay_t<decltype(v)>;
+            o << ValueType::DataType::Name() << "(";
+            for (auto& a : v.args.values) {
+                o << std::get<typename ValueType::ElementType>(a);
+                if (&a != &v.args.values.Back()) {
+                    o << ", ";
+                }
+            }
+            o << ")";
+        },
+        types);
+    return o;
+}
+
+// Calls `f` on deepest elements of both `a` and `b`. If function returns Action::kStop, it stops
+// traversing, and return Action::kStop; if the function returns Action::kContinue, it continues and
+// returns Action::kContinue when done.
+// TODO(amaiorano): Move to Constant.h?
+enum class Action { kStop, kContinue };
+template <typename Func>
+Action ForEachElemPair(const sem::Constant* a, const sem::Constant* b, Func&& f) {
+    EXPECT_EQ(a->Type(), b->Type());
+    size_t i = 0;
+    while (true) {
+        auto* a_elem = a->Index(i);
+        if (!a_elem) {
+            break;
+        }
+        auto* b_elem = b->Index(i);
+        if (ForEachElemPair(a_elem, b_elem, f) == Action::kStop) {
+            return Action::kStop;
+        }
+        i++;
+    }
+    if (i == 0) {
+        return f(a, b);
+    }
+    return Action::kContinue;
+}
+
+template <typename T>
+struct BitValues {
+    using UT = UnwrapNumber<T>;
+    static constexpr size_t NumBits = sizeof(UT) * 8;
+    static inline const T All = T{~T{0}};
+    static inline const T LeftMost = T{T{1} << (NumBits - 1u)};
+    static inline const T AllButLeftMost = T{~LeftMost};
+    static inline const T RightMost = T{1};
+    static inline const T AllButRightMost = T{~RightMost};
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Unary op
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 namespace unary_op {
-
-template <typename T>
-struct Values {
-    T input;
-    T expect;
-};
+using resolver::operator<<;
 
 struct Case {
-    std::variant<Values<AInt>, Values<AFloat>, Values<u32>, Values<i32>, Values<f32>, Values<f16>>
-        values;
+    Types input;
+    Types expected;
 };
 
 static std::ostream& operator<<(std::ostream& o, const Case& c) {
-    std::visit([&](auto&& v) { o << v.input; }, c.values);
+    o << "input: " << c.input << ", expected: " << c.expected;
     return o;
 }
 
-template <typename T>
-Case C(T input, T expect) {
-    return Case{Values<T>{input, expect}};
+/// Creates a Case with Values of any type
+template <typename T, typename U>
+Case C(Value<T> input, Value<U> expected) {
+    return Case{std::move(input), std::move(expected)};
+}
+
+/// Convenience overload to creates a Case with just scalars
+template <typename T, typename U, typename = std::enable_if_t<!IsValue<T>>>
+Case C(T input, U expected) {
+    return Case{Val(input), Val(expected)};
 }
 
 using ResolverConstEvalUnaryOpTest = ResolverTestWithParam<std::tuple<ast::UnaryOp, Case>>;
@@ -3072,28 +2992,39 @@ TEST_P(ResolverConstEvalUnaryOpTest, Test) {
     Enable(ast::Extension::kF16);
 
     auto op = std::get<0>(GetParam());
-    auto c = std::get<1>(GetParam());
+    auto& c = std::get<1>(GetParam());
     std::visit(
-        [&](auto&& values) {
-            using T = decltype(values.expect);
-            auto* expr = create<ast::UnaryOpExpression>(op, Expr(values.input));
-            GlobalConst("C", expr);
+        [&](auto&& expected) {
+            using T = typename std::decay_t<decltype(expected)>::ElementType;
+
+            auto* input_expr = std::visit([&](auto&& value) { return value.Expr(*this); }, c.input);
+            auto* expected_expr = create<ast::UnaryOpExpression>(op, input_expr);
+            GlobalConst("C", expected_expr);
 
             EXPECT_TRUE(r()->Resolve()) << r()->error();
 
-            auto* sem = Sem().Get(expr);
+            auto* sem = Sem().Get(expected_expr);
             const sem::Constant* value = sem->ConstantValue();
             ASSERT_NE(value, nullptr);
             EXPECT_TYPE(value->Type(), sem->Type());
-            EXPECT_EQ(value->As<T>(), values.expect);
 
-            if constexpr (IsIntegral<UnwrapNumber<T>>) {
-                // Check that the constant's integer doesn't contain unexpected data in the MSBs
-                // that are outside of the bit-width of T.
-                EXPECT_EQ(value->As<AInt>(), AInt(values.expect));
-            }
+            auto* expected_sem = Sem().Get(expected_expr);
+            const sem::Constant* expected_value = expected_sem->ConstantValue();
+            ASSERT_NE(expected_value, nullptr);
+            EXPECT_TYPE(expected_value->Type(), expected_sem->Type());
+
+            ForEachElemPair(value, expected_value,
+                            [&](const sem::Constant* a, const sem::Constant* b) {
+                                EXPECT_EQ(a->As<T>(), b->As<T>());
+                                if constexpr (IsIntegral<UnwrapNumber<T>>) {
+                                    // Check that the constant's integer doesn't contain unexpected
+                                    // data in the MSBs that are outside of the bit-width of T.
+                                    EXPECT_EQ(a->As<AInt>(), b->As<AInt>());
+                                }
+                                return HasFailure() ? Action::kStop : Action::kContinue;
+                            });
         },
-        c.values);
+        c.expected);
 }
 INSTANTIATE_TEST_SUITE_P(Complement,
                          ResolverConstEvalUnaryOpTest,
@@ -3182,6 +3113,18 @@ TEST_F(ResolverConstEvalTest, UnaryNegateLowestAbstract) {
     EXPECT_EQ(sem->ConstantValue()->As<AInt>(), 9223372036854775808_a);
 }
 
+INSTANTIATE_TEST_SUITE_P(Not,
+                         ResolverConstEvalUnaryOpTest,
+                         testing::Combine(testing::Values(ast::UnaryOp::kNot),
+                                          testing::ValuesIn({
+                                              C(true, false),
+                                              C(false, true),
+                                              C(Vec(true, true), Vec(false, false)),
+                                              C(Vec(true, false), Vec(false, true)),
+                                              C(Vec(false, true), Vec(true, false)),
+                                              C(Vec(false, false), Vec(true, true)),
+                                          })));
+
 }  // namespace unary_op
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3189,59 +3132,7 @@ TEST_F(ResolverConstEvalTest, UnaryNegateLowestAbstract) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace binary_op {
-
-using builder::IsValue;
-using builder::Mat;
-using builder::Val;
-using builder::Value;
-using builder::Vec;
-
-using Types = std::variant<Value<AInt>,
-                           Value<AFloat>,
-                           Value<u32>,
-                           Value<i32>,
-                           Value<f32>,
-                           Value<f16>,
-                           Value<bool>,
-
-                           Value<builder::vec2<AInt>>,
-                           Value<builder::vec2<AFloat>>,
-                           Value<builder::vec2<u32>>,
-                           Value<builder::vec2<i32>>,
-                           Value<builder::vec2<f32>>,
-                           Value<builder::vec2<f16>>,
-                           Value<builder::vec2<bool>>,
-
-                           Value<builder::vec3<AInt>>,
-                           Value<builder::vec3<AFloat>>,
-                           Value<builder::vec3<u32>>,
-                           Value<builder::vec3<i32>>,
-                           Value<builder::vec3<f32>>,
-                           Value<builder::vec3<f16>>,
-
-                           Value<builder::vec4<AInt>>,
-                           Value<builder::vec4<AFloat>>,
-                           Value<builder::vec4<u32>>,
-                           Value<builder::vec4<i32>>,
-                           Value<builder::vec4<f32>>,
-                           Value<builder::vec4<f16>>,
-
-                           Value<builder::mat2x2<AInt>>,
-                           Value<builder::mat2x2<AFloat>>,
-                           Value<builder::mat2x2<f32>>,
-                           Value<builder::mat2x2<f16>>,
-
-                           Value<builder::mat2x3<AInt>>,
-                           Value<builder::mat2x3<AFloat>>,
-                           Value<builder::mat2x3<f32>>,
-                           Value<builder::mat2x3<f16>>,
-
-                           Value<builder::mat3x2<AInt>>,
-                           Value<builder::mat3x2<AFloat>>,
-                           Value<builder::mat3x2<f32>>,
-                           Value<builder::mat3x2<f16>>
-                           //
-                           >;
+using resolver::operator<<;
 
 struct Case {
     Types lhs;
@@ -3262,51 +3153,10 @@ Case C(T lhs, U rhs, V expected, bool overflow = false) {
     return Case{Val(lhs), Val(rhs), Val(expected), overflow};
 }
 
-static std::ostream& operator<<(std::ostream& o, const Types& types) {
-    std::visit(
-        [&](auto&& v) {
-            using ValueType = std::decay_t<decltype(v)>;
-            o << ValueType::DataType::Name() << "(";
-            for (auto& a : v.args.values) {
-                o << std::get<typename ValueType::ElementType>(a);
-                if (&a != &v.args.values.Back()) {
-                    o << ", ";
-                }
-            }
-            o << ")";
-        },
-        types);
-    return o;
-}
-
 static std::ostream& operator<<(std::ostream& o, const Case& c) {
     o << "lhs: " << c.lhs << ", rhs: " << c.rhs << ", expected: " << c.expected
       << ", overflow: " << c.overflow;
     return o;
-}
-
-// Calls `f` on deepest elements of both `a` and `b`. If function returns false, it stops
-// traversing, and return false, otherwise it continues and returns true.
-// TODO(amaiorano): Move to Constant.h?
-template <typename Func>
-bool ForEachElemPair(const sem::Constant* a, const sem::Constant* b, Func&& f) {
-    EXPECT_EQ(a->Type(), b->Type());
-    size_t i = 0;
-    while (true) {
-        auto* a_elem = a->Index(i);
-        if (!a_elem) {
-            break;
-        }
-        auto* b_elem = b->Index(i);
-        if (!ForEachElemPair(a_elem, b_elem, f)) {
-            return false;
-        }
-        i++;
-    }
-    if (i == 0) {
-        return f(a, b);
-    }
-    return true;
 }
 
 using ResolverConstEvalBinaryOpTest = ResolverTestWithParam<std::tuple<ast::BinaryOp, Case>>;
@@ -3352,7 +3202,7 @@ TEST_P(ResolverConstEvalBinaryOpTest, Test) {
                                     // data in the MSBs that are outside of the bit-width of T.
                                     EXPECT_EQ(a->As<AInt>(), b->As<AInt>());
                                 }
-                                return !HasFailure();
+                                return HasFailure() ? Action::kStop : Action::kContinue;
                             });
         },
         c.expected);
@@ -3694,6 +3544,136 @@ INSTANTIATE_TEST_SUITE_P(LessThanEqual,
                                  OpGreaterThanCases<AFloat, false>(),
                                  OpGreaterThanCases<f32, false>(),
                                  OpGreaterThanCases<f16, false>()))));
+
+static std::vector<Case> OpAndBoolCases() {
+    return {
+        C(true, true, true),
+        C(true, false, false),
+        C(false, true, false),
+        C(false, false, false),
+        C(Vec(true, true), Vec(true, false), Vec(true, false)),
+        C(Vec(true, true), Vec(false, true), Vec(false, true)),
+        C(Vec(true, false), Vec(true, false), Vec(true, false)),
+        C(Vec(false, true), Vec(true, false), Vec(false, false)),
+        C(Vec(false, false), Vec(true, false), Vec(false, false)),
+    };
+}
+template <typename T>
+std::vector<Case> OpAndIntCases() {
+    using B = BitValues<T>;
+    return {
+        C(T{0b1010}, T{0b1111}, T{0b1010}),
+        C(T{0b1010}, T{0b0000}, T{0b0000}),
+        C(T{0b1010}, T{0b0011}, T{0b0010}),
+        C(T{0b1010}, T{0b1100}, T{0b1000}),
+        C(T{0b1010}, T{0b0101}, T{0b0000}),
+        C(B::All, B::All, B::All),
+        C(B::LeftMost, B::LeftMost, B::LeftMost),
+        C(B::RightMost, B::RightMost, B::RightMost),
+        C(B::All, T{0}, T{0}),
+        C(T{0}, B::All, T{0}),
+        C(B::LeftMost, B::AllButLeftMost, T{0}),
+        C(B::AllButLeftMost, B::LeftMost, T{0}),
+        C(B::RightMost, B::AllButRightMost, T{0}),
+        C(B::AllButRightMost, B::RightMost, T{0}),
+        C(Vec(B::All, B::LeftMost, B::RightMost),      //
+          Vec(B::All, B::All, B::All),                 //
+          Vec(B::All, B::LeftMost, B::RightMost)),     //
+        C(Vec(B::All, B::LeftMost, B::RightMost),      //
+          Vec(T{0}, T{0}, T{0}),                       //
+          Vec(T{0}, T{0}, T{0})),                      //
+        C(Vec(B::LeftMost, B::RightMost),              //
+          Vec(B::AllButLeftMost, B::AllButRightMost),  //
+          Vec(T{0}, T{0})),
+    };
+}
+INSTANTIATE_TEST_SUITE_P(And,
+                         ResolverConstEvalBinaryOpTest,
+                         testing::Combine(  //
+                             testing::Values(ast::BinaryOp::kAnd),
+                             testing::ValuesIn(            //
+                                 Concat(OpAndBoolCases(),  //
+                                        OpAndIntCases<AInt>(),
+                                        OpAndIntCases<i32>(),
+                                        OpAndIntCases<u32>()))));
+
+static std::vector<Case> OpOrBoolCases() {
+    return {
+        C(true, true, true),
+        C(true, false, true),
+        C(false, true, true),
+        C(false, false, false),
+        C(Vec(true, true), Vec(true, false), Vec(true, true)),
+        C(Vec(true, true), Vec(false, true), Vec(true, true)),
+        C(Vec(true, false), Vec(true, false), Vec(true, false)),
+        C(Vec(false, true), Vec(true, false), Vec(true, true)),
+        C(Vec(false, false), Vec(true, false), Vec(true, false)),
+    };
+}
+template <typename T>
+std::vector<Case> OpOrIntCases() {
+    using B = BitValues<T>;
+    return {
+        C(T{0b1010}, T{0b1111}, T{0b1111}),
+        C(T{0b1010}, T{0b0000}, T{0b1010}),
+        C(T{0b1010}, T{0b0011}, T{0b1011}),
+        C(T{0b1010}, T{0b1100}, T{0b1110}),
+        C(T{0b1010}, T{0b0101}, T{0b1111}),
+        C(B::All, B::All, B::All),
+        C(B::LeftMost, B::LeftMost, B::LeftMost),
+        C(B::RightMost, B::RightMost, B::RightMost),
+        C(B::All, T{0}, B::All),
+        C(T{0}, B::All, B::All),
+        C(B::LeftMost, B::AllButLeftMost, B::All),
+        C(B::AllButLeftMost, B::LeftMost, B::All),
+        C(B::RightMost, B::AllButRightMost, B::All),
+        C(B::AllButRightMost, B::RightMost, B::All),
+        C(Vec(B::All, B::LeftMost, B::RightMost),      //
+          Vec(B::All, B::All, B::All),                 //
+          Vec(B::All, B::All, B::All)),                //
+        C(Vec(B::All, B::LeftMost, B::RightMost),      //
+          Vec(T{0}, T{0}, T{0}),                       //
+          Vec(B::All, B::LeftMost, B::RightMost)),     //
+        C(Vec(B::LeftMost, B::RightMost),              //
+          Vec(B::AllButLeftMost, B::AllButRightMost),  //
+          Vec(B::All, B::All)),
+    };
+}
+INSTANTIATE_TEST_SUITE_P(Or,
+                         ResolverConstEvalBinaryOpTest,
+                         testing::Combine(  //
+                             testing::Values(ast::BinaryOp::kOr),
+                             testing::ValuesIn(Concat(OpOrBoolCases(),
+                                                      OpOrIntCases<AInt>(),
+                                                      OpOrIntCases<i32>(),
+                                                      OpOrIntCases<u32>()))));
+
+TEST_F(ResolverConstEvalTest, NotAndOrOfVecs) {
+    // const C = !((vec2(true, true) & vec2(true, false)) | vec2(false, true));
+    auto v1 = Vec(true, true).Expr(*this);
+    auto v2 = Vec(true, false).Expr(*this);
+    auto v3 = Vec(false, true).Expr(*this);
+    auto expr = Not(Or(And(v1, v2), v3));
+    GlobalConst("C", expr);
+    auto expected_expr = Vec(false, false).Expr(*this);
+    GlobalConst("E", expected_expr);
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+
+    auto* sem = Sem().Get(expr);
+    const sem::Constant* value = sem->ConstantValue();
+    ASSERT_NE(value, nullptr);
+    EXPECT_TYPE(value->Type(), sem->Type());
+
+    auto* expected_sem = Sem().Get(expected_expr);
+    const sem::Constant* expected_value = expected_sem->ConstantValue();
+    ASSERT_NE(expected_value, nullptr);
+    EXPECT_TYPE(expected_value->Type(), expected_sem->Type());
+
+    ForEachElemPair(value, expected_value, [&](const sem::Constant* a, const sem::Constant* b) {
+        EXPECT_EQ(a->As<bool>(), b->As<bool>());
+        return HasFailure() ? Action::kStop : Action::kContinue;
+    });
+}
 
 // Tests for errors on overflow/underflow of binary operations with abstract numbers
 struct OverflowCase {

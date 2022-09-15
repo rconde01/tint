@@ -67,6 +67,18 @@ auto Dispatch_ia_iu32(F&& f, CONSTANTS&&... cs) {
 /// Helper that calls `f` passing in the value of all `cs`.
 /// Assumes all `cs` are of the same type.
 template <typename F, typename... CONSTANTS>
+auto Dispatch_ia_iu32_bool(F&& f, CONSTANTS&&... cs) {
+    return Switch(
+        First(cs...)->Type(),  //
+        [&](const sem::AbstractInt*) { return f(cs->template As<AInt>()...); },
+        [&](const sem::I32*) { return f(cs->template As<i32>()...); },
+        [&](const sem::U32*) { return f(cs->template As<u32>()...); },
+        [&](const sem::Bool*) { return f(cs->template As<bool>()...); });
+}
+
+/// Helper that calls `f` passing in the value of all `cs`.
+/// Assumes all `cs` are of the same type.
+template <typename F, typename... CONSTANTS>
 auto Dispatch_fia_fi32_f16(F&& f, CONSTANTS&&... cs) {
     return Switch(
         First(cs...)->Type(),  //
@@ -115,6 +127,13 @@ auto Dispatch_fa_f32_f16(F&& f, CONSTANTS&&... cs) {
         [&](const sem::AbstractFloat*) { return f(cs->template As<AFloat>()...); },
         [&](const sem::F32*) { return f(cs->template As<f32>()...); },
         [&](const sem::F16*) { return f(cs->template As<f16>()...); });
+}
+
+/// Helper that calls `f` passing in the value of all `cs`.
+/// Assumes all `cs` are of the same type.
+template <typename F, typename... CONSTANTS>
+auto Dispatch_bool(F&& f, CONSTANTS&&... cs) {
+    return f(cs->template As<bool>()...);
 }
 
 /// ZeroTypeDispatch is a helper for calling the function `f`, passing a single zero-value argument
@@ -880,27 +899,28 @@ ConstEval::ConstantResult ConstEval::MatCtorV(const sem::Type* ty,
 
 ConstEval::ConstantResult ConstEval::Index(const sem::Expression* obj_expr,
                                            const sem::Expression* idx_expr) {
-    auto obj_val = obj_expr->ConstantValue();
-    if (!obj_val) {
-        return nullptr;
-    }
-
     auto idx_val = idx_expr->ConstantValue();
     if (!idx_val) {
         return nullptr;
     }
 
     uint32_t el_count = 0;
-    sem::Type::ElementOf(obj_val->Type(), &el_count);
+    sem::Type::ElementOf(obj_expr->Type()->UnwrapRef(), &el_count);
 
     AInt idx = idx_val->As<AInt>();
-    if (idx < 0 || idx >= el_count) {
-        auto clamped = std::min<AInt::type>(std::max<AInt::type>(idx, 0), el_count - 1);
-        AddWarning("index " + std::to_string(idx) + " out of bounds [0.." +
-                       std::to_string(el_count - 1) + "]. Clamping index to " +
-                       std::to_string(clamped),
-                   idx_expr->Declaration()->source);
-        idx = clamped;
+    if (idx < 0 || (el_count > 0 && idx >= el_count)) {
+        std::string range;
+        if (el_count > 0) {
+            range = " [0.." + std::to_string(el_count - 1) + "]";
+        }
+        AddError("index " + std::to_string(idx) + " out of bounds" + range,
+                 idx_expr->Declaration()->source);
+        return utils::Failure;
+    }
+
+    auto obj_val = obj_expr->ConstantValue();
+    if (!obj_val) {
+        return nullptr;
     }
 
     return obj_val->Index(static_cast<size_t>(idx));
@@ -969,6 +989,16 @@ ConstEval::ConstantResult ConstEval::OpUnaryMinus(const sem::Type* ty,
             }
         };
         return Dispatch_fia_fi32_f16(create, c);
+    };
+    return TransformElements(builder, ty, transform, args[0]);
+}
+
+ConstEval::ConstantResult ConstEval::OpNot(const sem::Type* ty,
+                                           utils::VectorRef<const sem::Constant*> args,
+                                           const Source&) {
+    auto transform = [&](const sem::Constant* c) {
+        auto create = [&](auto i) { return CreateElement(builder, c->Type(), decltype(i)(!i)); };
+        return Dispatch_bool(create, c);
     };
     return TransformElements(builder, ty, transform, args[0]);
 }
@@ -1358,6 +1388,54 @@ ConstEval::ConstantResult ConstEval::OpGreaterThanEqual(const sem::Type* ty,
             return CreateElement(builder, sem::Type::DeepestElementOf(ty), i >= j);
         };
         return Dispatch_fia_fiu32_f16(create, c0, c1);
+    };
+
+    auto r = TransformElements(builder, ty, transform, args[0], args[1]);
+    if (builder.Diagnostics().contains_errors()) {
+        return utils::Failure;
+    }
+    return r;
+}
+
+ConstEval::ConstantResult ConstEval::OpAnd(const sem::Type* ty,
+                                           utils::VectorRef<const sem::Constant*> args,
+                                           const Source&) {
+    auto transform = [&](const sem::Constant* c0, const sem::Constant* c1) {
+        auto create = [&](auto i, auto j) -> const Constant* {
+            using T = decltype(i);
+            T result;
+            if constexpr (std::is_same_v<T, bool>) {
+                result = i && j;
+            } else {  // integral
+                result = i & j;
+            }
+            return CreateElement(builder, sem::Type::DeepestElementOf(ty), result);
+        };
+        return Dispatch_ia_iu32_bool(create, c0, c1);
+    };
+
+    auto r = TransformElements(builder, ty, transform, args[0], args[1]);
+    if (builder.Diagnostics().contains_errors()) {
+        return utils::Failure;
+    }
+    return r;
+}
+
+ConstEval::ConstantResult ConstEval::OpOr(const sem::Type* ty,
+                                          utils::VectorRef<const sem::Constant*> args,
+                                          const Source&) {
+    auto transform = [&](const sem::Constant* c0, const sem::Constant* c1) {
+        auto create = [&](auto i, auto j) -> const Constant* {
+            using T = decltype(i);
+            T result;
+            if constexpr (std::is_same_v<T, bool>) {
+                result = i || j;
+            } else {  // integral
+                result = i | j;
+            }
+            return CreateElement(builder, sem::Type::DeepestElementOf(ty), result);
+        };
+        return Dispatch_ia_iu32_bool(create, c0, c1);
     };
 
     auto r = TransformElements(builder, ty, transform, args[0], args[1]);
