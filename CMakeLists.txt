@@ -294,6 +294,10 @@ function(tint_core_compile_options TARGET)
     endif()
   endif(COMPILER_IS_LIKE_GNU)
 
+  if(MSVC)
+    target_compile_options(${TARGET} PRIVATE /utf-8)
+  endif()
+
   if (TINT_EMIT_COVERAGE)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
         target_compile_options(${TARGET} PRIVATE "--coverage")
