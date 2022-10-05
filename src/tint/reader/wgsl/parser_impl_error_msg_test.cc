@@ -851,17 +851,9 @@ struct S { 1 : i32, };
 }
 
 TEST_F(ParserImplErrorTest, GlobalDeclStructMemberAlignInvaldValue) {
-    EXPECT("struct S { @align(x) i : i32, };",
-           R"(test.wgsl:1:19 error: expected signed integer literal for align attribute
-struct S { @align(x) i : i32, };
-                  ^
-)");
-}
-
-TEST_F(ParserImplErrorTest, GlobalDeclStructMemberAlignNegativeValue) {
-    EXPECT("struct S { @align(-2) i : i32, };",
-           R"(test.wgsl:1:19 error: align attribute must be positive
-struct S { @align(-2) i : i32, };
+    EXPECT("struct S { @align(fn) i : i32, };",
+           R"(test.wgsl:1:19 error: expected align expression
+struct S { @align(fn) i : i32, };
                   ^^
 )");
 }
@@ -1113,9 +1105,9 @@ var i : ptr<private u32>;
 )");
 }
 
-TEST_F(ParserImplErrorTest, GlobalDeclVarPtrMissingStorageClass) {
+TEST_F(ParserImplErrorTest, GlobalDeclVarPtrMissingAddressSpace) {
     EXPECT("var i : ptr<meow, u32>;",
-           R"(test.wgsl:1:13 error: invalid storage class for ptr declaration
+           R"(test.wgsl:1:13 error: invalid address space for ptr declaration
 var i : ptr<meow, u32>;
             ^^^^
 )");
@@ -1147,7 +1139,7 @@ var i : atomic<u32 x;
 
 TEST_F(ParserImplErrorTest, GlobalDeclVarStorageDeclInvalidClass) {
     EXPECT("var<fish> i : i32",
-           R"(test.wgsl:1:5 error: invalid storage class for variable declaration
+           R"(test.wgsl:1:5 error: invalid address space for variable declaration
 var<fish> i : i32
     ^^^^
 )");
