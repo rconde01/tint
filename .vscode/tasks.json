@@ -10,46 +10,42 @@
     // ${cwd}: the current working directory of the spawned process
     "version": "2.0.0",
     "tasks": [
+        // Invokes ninja in the 'out/active' directory, which is created with
+        // the 'gn gen' task (see below).
         {
-            "label": "make",
+            "label": "build",
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
             "type": "shell",
-            "osx": {
-                "command": "sh",
-                "args": [
-                    "-c",
-                    "cmake --build . && echo Done"
-                ],
-                "options": {
-                    "cwd": "${workspaceRoot}/build",
-                },
-            },
             "linux": {
                 "command": "sh",
                 "args": [
                     "-c",
-                    "cmake --build . && echo Done"
-                ],
-                "options": {
-                    "cwd": "${workspaceRoot}/build",
-                },
-            },
-            "windows": {
-                // Invokes ninja in the 'out/active' directory, which is created
-                // with the 'generate' task (see below).
-                "command": "/C",
-                "args": [
                     "ninja && echo Done"
                 ],
+            },
+            "osx": {
+                "command": "sh",
+                "args": [
+                    "-c",
+                    "ninja && echo Done"
+                ],
+            },
+            "windows": {
+                "command": "/C",
+                "args": [
+                    "ninja && echo Done",
+                ],
                 "options": {
-                    "cwd": "${workspaceRoot}/out/active",
                     "shell": {
                         "executable": "cmd"
-                    }
-                },
+                    },
+                }
+            },
+            "options": {
+                "cwd": "${workspaceRoot}/out/active",
             },
             "presentation": {
                 "echo": false,
@@ -72,36 +68,28 @@
                 }
             }
         },
+        // Generates a GN build directory at 'out/<build-type>' with the
+        // is_debug argument set to to true iff the build-type is Debug.
+        // A symbolic link to this build directory is created at 'out/active'
+        // which is used to track the active build directory.
         {
-            "label": "configure",
+            "label": "gn gen",
             "type": "shell",
-            "osx": {
-                "command": "cmake",
-                "args": [
-                    "..",
-                    "-GNinja",
-                    "-DCMAKE_BUILD_TYPE=${input:buildType}",
-                ],
-                "options": {
-                    "cwd": "${workspaceRoot}/build"
-                },
-            },
             "linux": {
-                "command": "cmake",
+                "command": "./tools/setup-build",
                 "args": [
-                    "..",
-                    "-GNinja",
-                    "-DCMAKE_BUILD_TYPE=${input:buildType}",
+                    "gn",
+                    "${input:buildType}",
                 ],
-                "options": {
-                    "cwd": "${workspaceRoot}/build"
-                },
+            },
+            "osx": {
+                "command": "./tools/setup-build",
+                "args": [
+                    "gn",
+                    "${input:buildType}",
+                ],
             },
             "windows": {
-                // Generates a GN build directory at 'out/<build-type>' with the
-                // is_debug argument set to true iff the build-type is Debug.
-                // A symbolic link to this build directory is created at 'out/active'
-                // which is used to track the active build directory.
                 "command": "/C",
                 "args": [
                     "(IF \"${input:buildType}\" == \"Debug\" ( gn gen \"out\\${input:buildType}\" --args=is_debug=true ) ELSE ( gn gen \"out\\${input:buildType}\" --args=is_debug=false )) && (IF EXIST \"out\\active\" rmdir \"out\\active\" /q /s) && (mklink /j \"out\\active\" \"out\\${input:buildType}\")",
@@ -109,13 +97,85 @@
                 "options": {
                     "shell": {
                         "executable": "cmd"
-                    }
-                },
+                    },
+                }
+            },
+            "options": {
+                "cwd": "${workspaceRoot}"
             },
             "problemMatcher": [],
         },
         {
-            "label": "Push branch for review",
+            "label": "cmake gen",
+            "type": "shell",
+            "linux": {
+                "command": "./tools/setup-build",
+                "args": [
+                    "cmake",
+                    "${input:buildType}",
+                ],
+            },
+            "osx": {
+                "command": "./tools/setup-build",
+                "args": [
+                    "cmake",
+                    "${input:buildType}",
+                ],
+            },
+            "windows": {
+                "command": "/C",
+                "args": [
+                    "echo TODO",
+                ],
+                "options": {
+                    "shell": {
+                        "executable": "cmd"
+                    },
+                }
+            },
+            "options": {
+                "cwd": "${workspaceRoot}"
+            },
+            "problemMatcher": [],
+        },
+        // Rebases the current branch on to origin/main and then calls
+        // `gclient sync`.
+        {
+            "label": "sync",
+            "type": "shell",
+            "linux": {
+                "command": "sh",
+                "args": [
+                    "-c",
+                    "git fetch origin && git rebase origin/main && gclient sync && echo Done"
+                ],
+            },
+            "osx": {
+                "command": "sh",
+                "args": [
+                    "-c",
+                    "git fetch origin && git rebase origin/main && gclient sync && echo Done"
+                ],
+            },
+            "windows": {
+                "command": "/C",
+                "args": [
+                    "git fetch origin && git rebase origin/main && gclient sync && echo Done",
+                ],
+                "options": {
+                    "shell": {
+                        "executable": "cmd"
+                    },
+                }
+            },
+            "options": {
+                "cwd": "${workspaceRoot}"
+            },
+            "problemMatcher": [],
+        },
+        // Pushes the changes at HEAD to gerrit for review
+        {
+            "label": "push",
             "type": "shell",
             "command": "git",
             "args": [
@@ -136,8 +196,6 @@
             "options": [
                 "Debug",
                 "Release",
-                "MinSizeRel",
-                "RelWithDebInfo",
             ],
             "default": "Debug",
             "description": "The type of build",
