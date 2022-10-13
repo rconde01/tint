@@ -43,6 +43,7 @@
 #include "src/tint/sem/external_texture.h"
 #include "src/tint/sem/multisampled_texture.h"
 #include "src/tint/sem/sampled_texture.h"
+#include "src/tint/utils/string.h"
 
 namespace tint::reader::wgsl {
 namespace {
@@ -370,40 +371,36 @@ Maybe<Void> ParserImpl::enable_directive() {
         }
 
         // Match the extension name.
-        Expect<std::string> name = {""};
         auto& t = peek();
-        if (t.IsIdentifier()) {
-            synchronized_ = true;
-            next();
-            name = {t.to_str(), t.source()};
-        } else if (t.Is(Token::Type::kF16)) {
-            // `f16` is a valid extension name and also a keyword
-            synchronized_ = true;
-            next();
-            name = {"f16", t.source()};
-        } else if (t.Is(Token::Type::kParenLeft)) {
+        if (handle_error(t)) {
+            // The token might itself be an error.
+            return Failure::kErrored;
+        }
+
+        if (t.Is(Token::Type::kParenLeft)) {
             // A common error case is writing `enable(foo);` instead of `enable foo;`.
             synchronized_ = false;
             return add_error(t.source(), "enable directives don't take parenthesis");
-        } else if (handle_error(t)) {
-            // The token might itself be an error.
-            return Failure::kErrored;
+        }
+
+        auto extension = ast::Extension::kInvalid;
+        if (t.Is(Token::Type::kF16)) {
+            // `f16` is a valid extension name and also a keyword
+            synchronized_ = true;
+            next();
+            extension = ast::Extension::kF16;
         } else {
-            // Failed to match an extension name.
-            synchronized_ = false;
-            return add_error(t.source(), "invalid extension name");
+            auto ext = expect_enum("extension", ast::ParseExtension, ast::kExtensionStrings);
+            if (ext.errored) {
+                return Failure::kErrored;
+            }
+            extension = ext.value;
         }
 
         if (!expect("enable directive", Token::Type::kSemicolon)) {
             return Failure::kErrored;
         }
-
-        auto extension = ast::ParseExtension(name.value);
-        if (extension == ast::Extension::kInvalid) {
-            return add_error(name.source, "unsupported extension: '" + name.value + "'");
-        }
-        builder_.AST().AddEnable(create<ast::Enable>(name.source, extension));
-
+        builder_.AST().AddEnable(create<ast::Enable>(t.source(), extension));
         return kSuccess;
     });
 
@@ -763,7 +760,7 @@ Maybe<const ast::Type*> ParserImpl::texture_and_sampler_types() {
                 return Failure::kErrored;
             }
 
-            auto access = expect_access_mode("access control");
+            auto access = expect_access_mode(use);
             if (access.errored) {
                 return Failure::kErrored;
             }
@@ -920,12 +917,7 @@ Maybe<const ast::Type*> ParserImpl::depth_texture_type() {
 //  | 'rgba32sint'
 //  | 'rgba32float'
 Expect<ast::TexelFormat> ParserImpl::expect_texel_format(std::string_view use) {
-    auto& t = next();
-    auto fmt = ast::ParseTexelFormat(t.to_str());
-    if (fmt == ast::TexelFormat::kInvalid) {
-        return add_error(t.source(), "invalid format", use);
-    }
-    return fmt;
+    return expect_enum("texel format", ast::ParseTexelFormat, ast::kTexelFormatStrings, use);
 }
 
 Expect<ParserImpl::TypedIdentifier> ParserImpl::expect_ident_with_optional_type_specifier(
@@ -975,22 +967,7 @@ Expect<ParserImpl::TypedIdentifier> ParserImpl::expect_ident_with_type_specifier
 //   | 'write'
 //   | 'read_write'
 Expect<ast::Access> ParserImpl::expect_access_mode(std::string_view use) {
-    auto ident = expect_ident(use);
-    if (ident.errored) {
-        return Failure::kErrored;
-    }
-
-    if (ident.value == "read") {
-        return {ast::Access::kRead, ident.source};
-    }
-    if (ident.value == "write") {
-        return {ast::Access::kWrite, ident.source};
-    }
-    if (ident.value == "read_write") {
-        return {ast::Access::kReadWrite, ident.source};
-    }
-
-    return add_error(ident.source, "invalid value for access control");
+    return expect_enum("access control", ast::ParseAccess, ast::kAccessStrings, use);
 }
 
 // variable_qualifier
@@ -1014,7 +991,7 @@ Maybe<ParserImpl::VariableQualifier> ParserImpl::variable_qualifier() {
             }
             return VariableQualifier{sc.value, ac.value};
         }
-        return Expect<VariableQualifier>{VariableQualifier{sc.value, ast::Access::kUndefined},
+        return Expect<VariableQualifier>{VariableQualifier{sc.value, ast::Access::kInvalid},
                                          source};
     });
 
@@ -1194,6 +1171,66 @@ Maybe<const ast::Type*> ParserImpl::type_specifier() {
     return type_specifier_without_ident();
 }
 
+template <typename ENUM, size_t N>
+Expect<ENUM> ParserImpl::expect_enum(std::string_view name,
+                                     ENUM (*parse)(std::string_view str),
+                                     const char* const (&strings)[N],
+                                     std::string_view use) {
+    auto& t = peek();
+    if (t.IsIdentifier()) {
+        auto val = parse(t.to_str());
+        if (val != ENUM::kInvalid) {
+            synchronized_ = true;
+            next();
+            return {val, t.source()};
+        }
+    }
+
+    // Was the token itself an error?
+    if (handle_error(t)) {
+        return Failure::kErrored;
+    }
+
+    /// Create a sensible error message
+    std::stringstream err;
+    err << "expected " << name;
+
+    if (!use.empty()) {
+        err << " for " << use;
+    }
+
+    // If the string typed was within kSuggestionDistance of one of the possible enum values,
+    // suggest that. Don't bother with suggestions if the string was extremely long.
+    constexpr size_t kSuggestionDistance = 5;
+    constexpr size_t kSuggestionMaxLength = 64;
+    if (auto got = t.to_str(); !got.empty() && got.size() < kSuggestionMaxLength) {
+        size_t candidate_dist = kSuggestionDistance;
+        const char* candidate = nullptr;
+        for (auto* str : strings) {
+            auto dist = utils::Distance(str, got);
+            if (dist < candidate_dist) {
+                candidate = str;
+                candidate_dist = dist;
+            }
+        }
+        if (candidate) {
+            err << ". Did you mean '" << candidate << "'?";
+        }
+    }
+
+    // List all the possible enumerator values
+    err << "\nPossible values: ";
+    for (auto* str : strings) {
+        if (str != strings[0]) {
+            err << ", ";
+        }
+        err << "'" << str << "'";
+    }
+
+    synchronized_ = false;
+    return add_error(t.source(), err.str());
+}
+
 Expect<const ast::Type*> ParserImpl::expect_type(std::string_view use) {
     auto type = type_specifier();
     if (type.errored) {
@@ -1210,7 +1247,7 @@ Expect<const ast::Type*> ParserImpl::expect_type_specifier_pointer(const Source&
     const char* use = "ptr declaration";
 
     auto address_space = ast::AddressSpace::kNone;
-    auto access = ast::Access::kUndefined;
+    auto access = ast::Access::kInvalid;
 
     auto subtype = expect_lt_gt_block(use, [&]() -> Expect<const ast::Type*> {
         auto sc = expect_address_space(use);
@@ -1229,7 +1266,7 @@ Expect<const ast::Type*> ParserImpl::expect_type_specifier_pointer(const Source&
         }
 
         if (match(Token::Type::kComma)) {
-            auto ac = expect_access_mode("access control");
+            auto ac = expect_access_mode(use);
             if (ac.errored) {
                 return Failure::kErrored;
             }
@@ -1331,18 +1368,7 @@ Expect<const ast::Type*> ParserImpl::expect_type_specifier_matrix(const Source& 
 //
 // Note, we also parse `push_constant` from the experimental extension
 Expect<ast::AddressSpace> ParserImpl::expect_address_space(std::string_view use) {
-    auto& t = peek();
-    auto ident = expect_ident("address space");
-    if (ident.errored) {
-        return Failure::kErrored;
-    }
-
-    auto address_space = ast::ParseAddressSpace(ident.value);
-    if (address_space == ast::AddressSpace::kInvalid) {
-        return add_error(t.source(), "invalid address space", use);
-    }
-
-    return {address_space, t.source()};
+    return expect_enum("address space", ast::ParseAddressSpace, ast::kAddressSpaceStrings, use);
 }
 
 // struct_decl
@@ -1605,25 +1631,12 @@ Expect<ast::PipelineStage> ParserImpl::expect_pipeline_stage() {
 }
 
 // interpolation_sample_name
-//   :  'center'
+//   : 'center'
 //   | 'centroid'
 //   | 'sample'
 Expect<ast::InterpolationSampling> ParserImpl::expect_interpolation_sample_name() {
-    auto ident = expect_ident("interpolation sample name");
-    if (ident.errored) {
-        return Failure::kErrored;
-    }
-
-    if (ident.value == "center") {
-        return {ast::InterpolationSampling::kCenter, ident.source};
-    }
-    if (ident.value == "centroid") {
-        return {ast::InterpolationSampling::kCentroid, ident.source};
-    }
-    if (ident.value == "sample") {
-        return {ast::InterpolationSampling::kSample, ident.source};
-    }
-    return add_error(ident.source, "invalid interpolation sampling");
+    return expect_enum("interpolation sampling", ast::ParseInterpolationSampling,
+                       ast::kInterpolationSamplingStrings);
 }
 
 // interpolation_type_name
@@ -1631,22 +1644,8 @@ Expect<ast::InterpolationSampling> ParserImpl::expect_interpolation_sample_name(
 //   | 'linear'
 //   | 'flat'
 Expect<ast::InterpolationType> ParserImpl::expect_interpolation_type_name() {
-    auto ident = expect_ident("interpolation type name");
-    if (ident.errored) {
-        return Failure::kErrored;
-    }
-
-    if (ident.value == "perspective") {
-        return {ast::InterpolationType::kPerspective, ident.source};
-    }
-    if (ident.value == "linear") {
-        return {ast::InterpolationType::kLinear, ident.source};
-    }
-    if (ident.value == "flat") {
-        return {ast::InterpolationType::kFlat, ident.source};
-    }
-
-    return add_error(ident.source, "invalid interpolation type");
+    return expect_enum("interpolation type", ast::ParseInterpolationType,
+                       ast::kInterpolationTypeStrings);
 }
 
 // builtin_value_name
@@ -1663,17 +1662,7 @@ Expect<ast::InterpolationType> ParserImpl::expect_interpolation_type_name() {
 //   | vertex_index
 //   | workgroup_id
 Expect<ast::BuiltinValue> ParserImpl::expect_builtin() {
-    auto ident = expect_ident("builtin");
-    if (ident.errored) {
-        return Failure::kErrored;
-    }
-
-    ast::BuiltinValue builtin = ast::ParseBuiltinValue(ident.value);
-    if (builtin == ast::BuiltinValue::kInvalid) {
-        return add_error(ident.source, "invalid value for builtin attribute");
-    }
-
-    return {builtin, ident.source};
+    return expect_enum("builtin", ast::ParseBuiltinValue, ast::kBuiltinValueStrings);
 }
 
 // compound_statement
@@ -3523,7 +3512,7 @@ Maybe<const ast::Attribute*> ParserImpl::attribute() {
                 return Failure::kErrored;
             }
 
-            ast::InterpolationSampling sampling = ast::InterpolationSampling::kNone;
+            ast::InterpolationSampling sampling = ast::InterpolationSampling::kInvalid;
             if (match(Token::Type::kComma)) {
                 if (!peek_is(Token::Type::kParenRight)) {
                     auto sample = expect_interpolation_sample_name();

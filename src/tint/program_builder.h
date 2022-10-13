@@ -173,7 +173,7 @@ class ProgramBuilder {
 
         const ast::Type* type = nullptr;
         ast::AddressSpace address_space = ast::AddressSpace::kNone;
-        ast::Access access = ast::Access::kUndefined;
+        ast::Access access = ast::Access::kInvalid;
         const ast::Expression* constructor = nullptr;
         utils::Vector<const ast::Attribute*, 4> attributes;
 
@@ -478,11 +478,6 @@ class ProgramBuilder {
     /// returned`Type` will also be destructed.
     /// Types are unique (de-aliased), and so calling create() for the same `T`
     /// and arguments will return the same pointer.
-    /// @warning Use this method to acquire a type only if all of its type
-    /// information is provided in the constructor arguments `args`.<br>
-    /// If the type requires additional configuration after construction that
-    /// affect its fundamental type, build the type with `std::make_unique`, make
-    /// any necessary alterations and then call unique_type() instead.
     /// @param args the arguments to pass to the type constructor
     /// @returns the de-aliased type pointer
     template <typename T, typename... ARGS>
@@ -907,7 +902,7 @@ class ProgramBuilder {
         /// @return the pointer to `type` with the given ast::AddressSpace
         const ast::Pointer* pointer(const ast::Type* type,
                                     ast::AddressSpace address_space,
-                                    ast::Access access = ast::Access::kUndefined) const {
+                                    ast::Access access = ast::Access::kInvalid) const {
             return builder->create<ast::Pointer>(type, address_space, access);
         }
 
@@ -919,7 +914,7 @@ class ProgramBuilder {
         const ast::Pointer* pointer(const Source& source,
                                     const ast::Type* type,
                                     ast::AddressSpace address_space,
-                                    ast::Access access = ast::Access::kUndefined) const {
+                                    ast::Access access = ast::Access::kInvalid) const {
             return builder->create<ast::Pointer>(source, type, address_space, access);
         }
 
@@ -928,7 +923,7 @@ class ProgramBuilder {
         /// @return the pointer to type `T` with the given ast::AddressSpace.
         template <typename T>
         const ast::Pointer* pointer(ast::AddressSpace address_space,
-                                    ast::Access access = ast::Access::kUndefined) const {
+                                    ast::Access access = ast::Access::kInvalid) const {
             return pointer(Of<T>(), address_space, access);
         }
 
@@ -939,7 +934,7 @@ class ProgramBuilder {
         template <typename T>
         const ast::Pointer* pointer(const Source& source,
                                     ast::AddressSpace address_space,
-                                    ast::Access access = ast::Access::kUndefined) const {
+                                    ast::Access access = ast::Access::kInvalid) const {
             return pointer(source, Of<T>(), address_space, access);
         }
 
@@ -2914,7 +2909,7 @@ class ProgramBuilder {
     const ast::InterpolateAttribute* Interpolate(
         const Source& source,
         ast::InterpolationType type,
-        ast::InterpolationSampling sampling = ast::InterpolationSampling::kNone) {
+        ast::InterpolationSampling sampling = ast::InterpolationSampling::kInvalid) {
         return create<ast::InterpolateAttribute>(source, type, sampling);
     }
 
@@ -2924,7 +2919,7 @@ class ProgramBuilder {
     /// @returns the interpolate attribute pointer
     const ast::InterpolateAttribute* Interpolate(
         ast::InterpolationType type,
-        ast::InterpolationSampling sampling = ast::InterpolationSampling::kNone) {
+        ast::InterpolationSampling sampling = ast::InterpolationSampling::kInvalid) {
         return create<ast::InterpolateAttribute>(source_, type, sampling);
     }
 

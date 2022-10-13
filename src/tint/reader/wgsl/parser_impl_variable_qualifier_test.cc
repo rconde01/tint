@@ -47,11 +47,11 @@ INSTANTIATE_TEST_SUITE_P(
     ParserImplTest,
     VariableQualifierTest,
     testing::Values(
-        VariableStorageData{"uniform", ast::AddressSpace::kUniform, ast::Access::kUndefined},
-        VariableStorageData{"workgroup", ast::AddressSpace::kWorkgroup, ast::Access::kUndefined},
-        VariableStorageData{"storage", ast::AddressSpace::kStorage, ast::Access::kUndefined},
-        VariableStorageData{"private", ast::AddressSpace::kPrivate, ast::Access::kUndefined},
-        VariableStorageData{"function", ast::AddressSpace::kFunction, ast::Access::kUndefined},
+        VariableStorageData{"uniform", ast::AddressSpace::kUniform, ast::Access::kInvalid},
+        VariableStorageData{"workgroup", ast::AddressSpace::kWorkgroup, ast::Access::kInvalid},
+        VariableStorageData{"storage", ast::AddressSpace::kStorage, ast::Access::kInvalid},
+        VariableStorageData{"private", ast::AddressSpace::kPrivate, ast::Access::kInvalid},
+        VariableStorageData{"function", ast::AddressSpace::kFunction, ast::Access::kInvalid},
         VariableStorageData{"storage, read", ast::AddressSpace::kStorage, ast::Access::kRead},
         VariableStorageData{"storage, write", ast::AddressSpace::kStorage, ast::Access::kWrite},
         VariableStorageData{"storage, read_write", ast::AddressSpace::kStorage,
@@ -63,7 +63,8 @@ TEST_F(ParserImplTest, VariableQualifier_NoMatch) {
     EXPECT_TRUE(p->has_error());
     EXPECT_TRUE(sc.errored);
     EXPECT_FALSE(sc.matched);
-    EXPECT_EQ(p->error(), "1:2: invalid address space for variable declaration");
+    EXPECT_EQ(p->error(), R"(1:2: expected address space for variable declaration
+Possible values: 'function', 'private', 'push_constant', 'storage', 'uniform', 'workgroup')");
 }
 
 TEST_F(ParserImplTest, VariableQualifier_Empty) {
@@ -72,7 +73,8 @@ TEST_F(ParserImplTest, VariableQualifier_Empty) {
     EXPECT_TRUE(p->has_error());
     EXPECT_TRUE(sc.errored);
     EXPECT_FALSE(sc.matched);
-    EXPECT_EQ(p->error(), "1:2: expected identifier for address space");
+    EXPECT_EQ(p->error(), R"(1:2: expected address space for variable declaration
+Possible values: 'function', 'private', 'push_constant', 'storage', 'uniform', 'workgroup')");
 }
 
 TEST_F(ParserImplTest, VariableQualifier_MissingLessThan) {

@@ -272,7 +272,8 @@ TEST_F(ParserImplTest, TypeDecl_Ptr_MissingAddressSpace) {
     EXPECT_FALSE(t.matched);
     ASSERT_EQ(t.value, nullptr);
     ASSERT_TRUE(p->has_error());
-    ASSERT_EQ(p->error(), "1:5: expected identifier for address space");
+    ASSERT_EQ(p->error(), R"(1:5: expected address space for ptr declaration
+Possible values: 'function', 'private', 'push_constant', 'storage', 'uniform', 'workgroup')");
 }
 
 TEST_F(ParserImplTest, TypeDecl_Ptr_MissingType) {
@@ -292,7 +293,8 @@ TEST_F(ParserImplTest, TypeDecl_Ptr_MissingAccess) {
     EXPECT_FALSE(t.matched);
     ASSERT_EQ(t.value, nullptr);
     ASSERT_TRUE(p->has_error());
-    ASSERT_EQ(p->error(), "1:20: expected identifier for access control");
+    ASSERT_EQ(p->error(), R"(1:20: expected access control for ptr declaration
+Possible values: 'read', 'read_write', 'write')");
 }
 
 TEST_F(ParserImplTest, TypeDecl_Ptr_MissingParams) {
@@ -302,7 +304,8 @@ TEST_F(ParserImplTest, TypeDecl_Ptr_MissingParams) {
     EXPECT_FALSE(t.matched);
     ASSERT_EQ(t.value, nullptr);
     ASSERT_TRUE(p->has_error());
-    ASSERT_EQ(p->error(), "1:5: expected identifier for address space");
+    ASSERT_EQ(p->error(), R"(1:5: expected address space for ptr declaration
+Possible values: 'function', 'private', 'push_constant', 'storage', 'uniform', 'workgroup')");
 }
 
 TEST_F(ParserImplTest, TypeDecl_Ptr_BadAddressSpace) {
@@ -312,7 +315,9 @@ TEST_F(ParserImplTest, TypeDecl_Ptr_BadAddressSpace) {
     EXPECT_FALSE(t.matched);
     ASSERT_EQ(t.value, nullptr);
     ASSERT_TRUE(p->has_error());
-    ASSERT_EQ(p->error(), "1:5: invalid address space for ptr declaration");
+    ASSERT_EQ(p->error(),
+              R"(1:5: expected address space for ptr declaration. Did you mean 'uniform'?
+Possible values: 'function', 'private', 'push_constant', 'storage', 'uniform', 'workgroup')");
 }
 
 TEST_F(ParserImplTest, TypeDecl_Ptr_BadAccess) {
@@ -322,7 +327,8 @@ TEST_F(ParserImplTest, TypeDecl_Ptr_BadAccess) {
     EXPECT_FALSE(t.matched);
     ASSERT_EQ(t.value, nullptr);
     ASSERT_TRUE(p->has_error());
-    ASSERT_EQ(p->error(), "1:20: invalid value for access control");
+    ASSERT_EQ(p->error(), R"(1:20: expected access control for ptr declaration
+Possible values: 'read', 'read_write', 'write')");
 }
 
 TEST_F(ParserImplTest, TypeDecl_Atomic) {
