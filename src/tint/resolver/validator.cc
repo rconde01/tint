@@ -263,7 +263,7 @@ bool Validator::StorageTexture(const ast::StorageTexture* t) const {
     switch (t->access) {
         case ast::Access::kWrite:
             break;
-        case ast::Access::kInvalid:
+        case ast::Access::kUndefined:
             AddError("storage texture missing access control", t->source);
             return false;
         default:
@@ -593,7 +593,7 @@ bool Validator::GlobalVariable(
         [&](const ast::Var* var) {
             if (auto* init = global->Constructor();
                 init && init->Stage() > sem::EvaluationStage::kOverride) {
-                AddError("module-scope 'var' initializer must be a constant or override expression",
+                AddError("module-scope 'var' initializer must be a constant or override-expression",
                          init->Declaration()->source);
                 return false;
             }
@@ -621,7 +621,7 @@ bool Validator::GlobalVariable(
             // https://gpuweb.github.io/gpuweb/wgsl/#variable-declaration
             // The access mode always has a default, and except for variables in the storage address
             // space, must not be written.
-            if (var->declared_access != ast::Access::kInvalid) {
+            if (var->declared_access != ast::Access::kUndefined) {
                 if (global->AddressSpace() == ast::AddressSpace::kStorage) {
                     // The access mode for the storage address space can only be 'read' or
                     // 'read_write'.
@@ -795,7 +795,7 @@ bool Validator::Override(
     auto* storage_ty = v->Type()->UnwrapRef();
 
     if (auto* init = v->Constructor(); init && init->Stage() > sem::EvaluationStage::kOverride) {
-        AddError("'override' initializer must be an override expression",
+        AddError("'override' initializer must be an override-expression",
                  init->Declaration()->source);
         return false;
     }
@@ -1021,7 +1021,7 @@ bool Validator::InterpolateAttribute(const ast::InterpolateAttribute* attr,
     }
 
     if (attr->type == ast::InterpolationType::kFlat &&
-        attr->sampling != ast::InterpolationSampling::kInvalid) {
+        attr->sampling != ast::InterpolationSampling::kUndefined) {
         AddError("flat interpolation attribute must not have a sampling parameter", attr->source);
         return false;
     }
@@ -1299,7 +1299,7 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
                         member->Declaration()->attributes, member->Type(),
                         member->Declaration()->source, param_or_ret,
                         /*is_struct_member*/ true, member->Location())) {
-                    AddNote("while analysing entry point '" + symbols_.NameFor(decl->symbol) + "'",
+                    AddNote("while analyzing entry point '" + symbols_.NameFor(decl->symbol) + "'",
                             decl->source);
                     return false;
                 }
@@ -1388,6 +1388,30 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
         }
     }
 
+    return true;
+}
+
+bool Validator::EvaluationStage(const sem::Expression* expr,
+                                sem::EvaluationStage latest_stage,
+                                std::string_view constraint) const {
+    if (expr->Stage() > latest_stage) {
+        auto stage_name = [](sem::EvaluationStage stage) -> std::string {
+            switch (stage) {
+                case sem::EvaluationStage::kRuntime:
+                    return "a runtime-expression";
+                case sem::EvaluationStage::kOverride:
+                    return "an override-expression";
+                case sem::EvaluationStage::kConstant:
+                    return "a const-expression";
+            }
+            return "<unknown>";
+        };
+
+        AddError(std::string(constraint) + " requires " + stage_name(latest_stage) +
+                     ", but expression is " + stage_name(expr->Stage()),
+                 expr->Declaration()->source);
+        return false;
+    }
     return true;
 }
 
@@ -1663,52 +1687,31 @@ bool Validator::TextureBuiltinFunction(const sem::Call* call) const {
         std::string name = sem::str(usage);
         auto* arg = call->Arguments()[index];
         if (auto values = arg->ConstantValue()) {
-            // Assert that the constant values are of the expected type.
-            if (!values->Type()->is_integer_scalar_or_vector()) {
-                TINT_ICE(Resolver, diagnostics_)
-                    << "failed to resolve '" + func_name + "' " << name << " parameter type";
-                return false;
-            }
-
-            // Currently const_expr is restricted to literals and type constructors.
-            // Check that that's all we have for the parameter.
-            bool is_const_expr = true;
-            ast::TraverseExpressions(
-                arg->Declaration(), diagnostics_, [&](const ast::Expression* e) {
-                    if (e->IsAnyOf<ast::LiteralExpression, ast::CallExpression>()) {
-                        return ast::TraverseAction::Descend;
-                    }
-                    is_const_expr = false;
-                    return ast::TraverseAction::Stop;
-                });
-            if (is_const_expr) {
-                if (auto* vector = builtin->Parameters()[index]->Type()->As<sem::Vector>()) {
-                    for (size_t i = 0; i < vector->Width(); i++) {
-                        auto value = values->Index(i)->As<AInt>();
-                        if (value < min || value > max) {
-                            AddError("each component of the " + name +
-                                         " argument must be at least " + std::to_string(min) +
-                                         " and at most " + std::to_string(max) + ". " + name +
-                                         " component " + std::to_string(i) + " is " +
-                                         std::to_string(value),
-                                     arg->Declaration()->source);
-                            return false;
-                        }
-                    }
-                } else {
-                    auto value = values->As<AInt>();
+            if (auto* vector = values->Type()->As<sem::Vector>()) {
+                for (size_t i = 0; i < vector->Width(); i++) {
+                    auto value = values->Index(i)->As<AInt>();
                     if (value < min || value > max) {
-                        AddError("the " + name + " argument must be at least " +
+                        AddError("each component of the " + name + " argument must be at least " +
                                      std::to_string(min) + " and at most " + std::to_string(max) +
-                                     ". " + name + " is " + std::to_string(value),
+                                     ". " + name + " component " + std::to_string(i) + " is " +
+                                     std::to_string(value),
                                  arg->Declaration()->source);
                         return false;
                     }
                 }
-                return true;
+            } else {
+                auto value = values->As<AInt>();
+                if (value < min || value > max) {
+                    AddError("the " + name + " argument must be at least " + std::to_string(min) +
+                                 " and at most " + std::to_string(max) + ". " + name + " is " +
+                                 std::to_string(value),
+                             arg->Declaration()->source);
+                    return false;
+                }
             }
+            return true;
         }
-        AddError("the " + name + " argument must be a const_expression",
+        AddError("the " + name + " argument must be a const-expression",
                  arg->Declaration()->source);
         return false;
     };
@@ -1726,7 +1729,7 @@ bool Validator::RequiredExtensionForBuiltinFunction(
     }
 
     const auto extension = builtin->RequiredExtension();
-    if (extension == ast::Extension::kInvalid) {
+    if (extension == ast::Extension::kUndefined) {
         return true;
     }
 
@@ -1902,7 +1905,7 @@ bool Validator::ArrayConstructor(const ast::CallExpression* ctor,
     }
 
     if (array_type->IsOverrideSized()) {
-        AddError("cannot construct an array that has an override expression count", ctor->source);
+        AddError("cannot construct an array that has an override-expression count", ctor->source);
         return false;
     }
 

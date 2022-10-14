@@ -721,7 +721,7 @@ TEST_F(StructMemberAttributeTest, Align_Attribute_ConstAFloat) {
 }
 
 TEST_F(StructMemberAttributeTest, Align_Attribute_Var) {
-    GlobalVar(Source{{1, 2}}, "val", ty.f32(), ast::AddressSpace::kPrivate, ast::Access::kInvalid,
+    GlobalVar(Source{{1, 2}}, "val", ty.f32(), ast::AddressSpace::kPrivate, ast::Access::kUndefined,
               Expr(1.23_f));
 
     Structure(Source{{6, 4}}, "mystruct",
@@ -738,7 +738,9 @@ TEST_F(StructMemberAttributeTest, Align_Attribute_Override) {
     Structure("mystruct", utils::Vector{Member(
                               "a", ty.f32(), utils::Vector{MemberAlign(Source{{12, 34}}, "val")})});
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: 'align' must be an i32 or u32 value)");
+    EXPECT_EQ(
+        r()->error(),
+        R"(error: @align requires a const-expression, but expression is an override-expression)");
 }
 
 }  // namespace StructAndStructMemberTests
@@ -1386,16 +1388,16 @@ INSTANTIATE_TEST_SUITE_P(
     ResolverAttributeValidationTest,
     InterpolateParameterTest,
     testing::Values(
-        Params{ast::InterpolationType::kPerspective, ast::InterpolationSampling::kInvalid, true},
+        Params{ast::InterpolationType::kPerspective, ast::InterpolationSampling::kUndefined, true},
         Params{ast::InterpolationType::kPerspective, ast::InterpolationSampling::kCenter, true},
         Params{ast::InterpolationType::kPerspective, ast::InterpolationSampling::kCentroid, true},
         Params{ast::InterpolationType::kPerspective, ast::InterpolationSampling::kSample, true},
-        Params{ast::InterpolationType::kLinear, ast::InterpolationSampling::kInvalid, true},
+        Params{ast::InterpolationType::kLinear, ast::InterpolationSampling::kUndefined, true},
         Params{ast::InterpolationType::kLinear, ast::InterpolationSampling::kCenter, true},
         Params{ast::InterpolationType::kLinear, ast::InterpolationSampling::kCentroid, true},
         Params{ast::InterpolationType::kLinear, ast::InterpolationSampling::kSample, true},
         // flat interpolation must not have a sampling type
-        Params{ast::InterpolationType::kFlat, ast::InterpolationSampling::kInvalid, true},
+        Params{ast::InterpolationType::kFlat, ast::InterpolationSampling::kUndefined, true},
         Params{ast::InterpolationType::kFlat, ast::InterpolationSampling::kCenter, false},
         Params{ast::InterpolationType::kFlat, ast::InterpolationSampling::kCentroid, false},
         Params{ast::InterpolationType::kFlat, ast::InterpolationSampling::kSample, false}));
@@ -1433,7 +1435,7 @@ TEST_F(InterpolateTest, VertexOutput_Integer_MissingFlatInterpolation) {
     EXPECT_EQ(
         r()->error(),
         R"(12:34 error: integral user-defined vertex outputs must have a flat interpolation attribute
-note: while analysing entry point 'main')");
+note: while analyzing entry point 'main')");
 }
 
 TEST_F(InterpolateTest, MissingLocationAttribute_Parameter) {
@@ -1443,7 +1445,7 @@ TEST_F(InterpolateTest, MissingLocationAttribute_Parameter) {
                    utils::Vector{
                        Builtin(ast::BuiltinValue::kPosition),
                        Interpolate(Source{{12, 34}}, ast::InterpolationType::kFlat,
-                                   ast::InterpolationSampling::kInvalid),
+                                   ast::InterpolationSampling::kUndefined),
                    }),
          },
          ty.void_(), utils::Empty,
@@ -1467,7 +1469,7 @@ TEST_F(InterpolateTest, MissingLocationAttribute_ReturnType) {
          utils::Vector{
              Builtin(ast::BuiltinValue::kPosition),
              Interpolate(Source{{12, 34}}, ast::InterpolationType::kFlat,
-                         ast::InterpolationSampling::kInvalid),
+                         ast::InterpolationSampling::kUndefined),
          });
 
     EXPECT_FALSE(r()->Resolve());
@@ -1480,7 +1482,7 @@ TEST_F(InterpolateTest, MissingLocationAttribute_Struct) {
               utils::Vector{
                   Member("a", ty.f32(),
                          utils::Vector{Interpolate(Source{{12, 34}}, ast::InterpolationType::kFlat,
-                                                   ast::InterpolationSampling::kInvalid)}),
+                                                   ast::InterpolationSampling::kUndefined)}),
               });
 
     EXPECT_FALSE(r()->Resolve());

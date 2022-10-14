@@ -301,7 +301,7 @@ bool GeneratorImpl::Generate() {
             [&](const ast::Override*) {
                 // Override is removed with SubstituteOverride
                 diagnostics_.add_error(diag::System::Writer,
-                                       "override expressions should have been removed with the "
+                                       "override-expressions should have been removed with the "
                                        "SubstituteOverride transform.");
                 return false;
             },
@@ -590,8 +590,18 @@ bool GeneratorImpl::EmitBinary(std::ostream& out, const ast::BinaryExpression* e
         ScopedParen sp(out);
         {
             ScopedBitCast lhs_uint_cast(this, out, lhs_type, unsigned_type_of(lhs_type));
-            if (!EmitExpression(out, expr->lhs)) {
-                return false;
+
+            // In case the type is packed, cast to our own type in order to remove the packing.
+            // Otherwise, this just casts to itself.
+            if (lhs_type->is_signed_integer_vector()) {
+                ScopedCast lhs_self_cast(this, out, lhs_type, lhs_type);
+                if (!EmitExpression(out, expr->lhs)) {
+                    return false;
+                }
+            } else {
+                if (!EmitExpression(out, expr->lhs)) {
+                    return false;
+                }
             }
         }
         if (!emit_op()) {
@@ -1947,7 +1957,7 @@ std::string GeneratorImpl::interpolation_to_attribute(ast::InterpolationType typ
         case ast::InterpolationSampling::kSample:
             attr = "sample_";
             break;
-        case ast::InterpolationSampling::kInvalid:
+        case ast::InterpolationSampling::kUndefined:
             break;
     }
     switch (type) {
@@ -1960,7 +1970,7 @@ std::string GeneratorImpl::interpolation_to_attribute(ast::InterpolationType typ
         case ast::InterpolationType::kFlat:
             attr += "flat";
             break;
-        case ast::InterpolationType::kInvalid:
+        case ast::InterpolationType::kUndefined:
             break;
     }
     return attr;

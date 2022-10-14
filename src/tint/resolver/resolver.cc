@@ -251,7 +251,7 @@ sem::Type* Resolver::Type(const ast::Type* ty) {
         [&](const ast::Pointer* t) -> sem::Pointer* {
             if (auto* el = Type(t->type)) {
                 auto access = t->access;
-                if (access == ast::Access::kInvalid) {
+                if (access == ast::Access::kUndefined) {
                     access = DefaultAccessForAddressSpace(t->address_space);
                 }
                 return builder_->create<sem::Pointer>(el, t->address_space, access);
@@ -386,12 +386,13 @@ sem::Variable* Resolver::Let(const ast::Let* v, bool is_global) {
     sem::Variable* sem = nullptr;
     if (is_global) {
         sem = builder_->create<sem::GlobalVariable>(
-            v, ty, sem::EvaluationStage::kRuntime, ast::AddressSpace::kNone, ast::Access::kInvalid,
+            v, ty, sem::EvaluationStage::kRuntime, ast::AddressSpace::kNone,
+            ast::Access::kUndefined,
             /* constant_value */ nullptr, sem::BindingPoint{}, std::nullopt);
     } else {
         sem = builder_->create<sem::LocalVariable>(v, ty, sem::EvaluationStage::kRuntime,
-                                                   ast::AddressSpace::kNone, ast::Access::kInvalid,
-                                                   current_statement_,
+                                                   ast::AddressSpace::kNone,
+                                                   ast::Access::kUndefined, current_statement_,
                                                    /* constant_value */ nullptr);
     }
 
@@ -415,6 +416,8 @@ sem::Variable* Resolver::Override(const ast::Override* v) {
 
     // Does the variable have a constructor?
     if (v->constructor) {
+        ExprEvalStageConstraint constraint{sem::EvaluationStage::kOverride, "override initializer"};
+        TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
         rhs = Materialize(Expression(v->constructor), ty);
         if (!rhs) {
             return nullptr;
@@ -441,7 +444,7 @@ sem::Variable* Resolver::Override(const ast::Override* v) {
     }
 
     auto* sem = builder_->create<sem::GlobalVariable>(
-        v, ty, sem::EvaluationStage::kOverride, ast::AddressSpace::kNone, ast::Access::kInvalid,
+        v, ty, sem::EvaluationStage::kOverride, ast::AddressSpace::kNone, ast::Access::kUndefined,
         /* constant_value */ nullptr, sem::BindingPoint{}, std::nullopt);
     sem->SetConstructor(rhs);
 
@@ -452,8 +455,8 @@ sem::Variable* Resolver::Override(const ast::Override* v) {
         }
         auto* c = materialize->ConstantValue();
         if (!c) {
-            // TODO(crbug.com/tint/1633): Handle invalid materialization when expressions
-            // are supported.
+            // TODO(crbug.com/tint/1633): Handle invalid materialization when expressions are
+            // supported.
             return nullptr;
         }
 
@@ -492,9 +495,14 @@ sem::Variable* Resolver::Const(const ast::Const* c, bool is_global) {
         return nullptr;
     }
 
-    const auto* rhs = Expression(c->constructor);
-    if (!rhs) {
-        return nullptr;
+    const sem::Expression* rhs = nullptr;
+    {
+        ExprEvalStageConstraint constraint{sem::EvaluationStage::kConstant, "const initializer"};
+        TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
+        rhs = Expression(c->constructor);
+        if (!rhs) {
+            return nullptr;
+        }
     }
 
     if (ty) {
@@ -508,12 +516,6 @@ sem::Variable* Resolver::Const(const ast::Const* c, bool is_global) {
         ty = rhs->Type();
     }
 
-    const auto value = rhs->ConstantValue();
-    if (!value) {
-        AddError("'const' initializer must be constant expression", c->constructor->source);
-        return nullptr;
-    }
-
     if (!validator_.VariableInitializer(c, ast::AddressSpace::kNone, ty, rhs)) {
         return nullptr;
     }
@@ -524,12 +526,13 @@ sem::Variable* Resolver::Const(const ast::Const* c, bool is_global) {
         return nullptr;
     }
 
+    const auto value = rhs->ConstantValue();
     auto* sem = is_global ? static_cast<sem::Variable*>(builder_->create<sem::GlobalVariable>(
                                 c, ty, sem::EvaluationStage::kConstant, ast::AddressSpace::kNone,
-                                ast::Access::kInvalid, value, sem::BindingPoint{}, std::nullopt))
+                                ast::Access::kUndefined, value, sem::BindingPoint{}, std::nullopt))
                           : static_cast<sem::Variable*>(builder_->create<sem::LocalVariable>(
                                 c, ty, sem::EvaluationStage::kConstant, ast::AddressSpace::kNone,
-                                ast::Access::kInvalid, current_statement_, value));
+                                ast::Access::kUndefined, current_statement_, value));
 
     sem->SetConstructor(rhs);
     builder_->Sem().Add(c, sem);
@@ -551,6 +554,12 @@ sem::Variable* Resolver::Var(const ast::Var* var, bool is_global) {
 
     // Does the variable have a constructor?
     if (var->constructor) {
+        ExprEvalStageConstraint constraint{
+            is_global ? sem::EvaluationStage::kOverride : sem::EvaluationStage::kRuntime,
+            "var initializer",
+        };
+        TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
+
         rhs = Materialize(Expression(var->constructor), storage_ty);
         if (!rhs) {
             return nullptr;
@@ -588,7 +597,7 @@ sem::Variable* Resolver::Var(const ast::Var* var, bool is_global) {
     }
 
     auto access = var->declared_access;
-    if (access == ast::Access::kInvalid) {
+    if (access == ast::Access::kUndefined) {
         access = DefaultAccessForAddressSpace(address_space);
     }
 
@@ -752,9 +761,9 @@ sem::Parameter* Resolver::Parameter(const ast::Parameter* param, uint32_t index)
         location = c->As<uint32_t>();
     }
 
-    auto* sem = builder_->create<sem::Parameter>(param, index, ty, ast::AddressSpace::kNone,
-                                                 ast::Access::kInvalid, sem::ParameterUsage::kNone,
-                                                 binding_point, location);
+    auto* sem = builder_->create<sem::Parameter>(
+        param, index, ty, ast::AddressSpace::kNone, ast::Access::kUndefined,
+        sem::ParameterUsage::kNone, binding_point, location);
     builder_->Sem().Add(param, sem);
     return sem;
 }
@@ -857,16 +866,13 @@ sem::GlobalVariable* Resolver::GlobalVariable(const ast::Variable* v) {
 }
 
 sem::Statement* Resolver::StaticAssert(const ast::StaticAssert* assertion) {
+    ExprEvalStageConstraint constraint{sem::EvaluationStage::kConstant, "static assertion"};
+    TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
     auto* expr = Expression(assertion->condition);
     if (!expr) {
         return nullptr;
     }
     auto* cond = expr->ConstantValue();
-    if (!cond) {
-        AddError("static assertion condition must be a constant expression",
-                 assertion->condition->source);
-        return nullptr;
-    }
     if (auto* ty = cond->Type(); !ty->Is<sem::Bool>()) {
         AddError(
             "static assertion condition must be a bool, got '" + builder_->FriendlyName(ty) + "'",
@@ -1067,12 +1073,12 @@ bool Resolver::WorkgroupSize(const ast::Function* func) {
     utils::Vector<const sem::Type*, 3> arg_tys;
 
     constexpr const char* kErrBadExpr =
-        "workgroup_size argument must be a constant or override expression of type "
+        "workgroup_size argument must be a constant or override-expression of type "
         "abstract-integer, i32 or u32";
 
     for (size_t i = 0; i < 3; i++) {
         // Each argument to this attribute can either be a literal, an identifier for a module-scope
-        // constants, a constant expression, or nullptr if not specified.
+        // constants, a const-expression, or nullptr if not specified.
         auto* value = values[i];
         if (!value) {
             break;
@@ -1122,6 +1128,15 @@ bool Resolver::WorkgroupSize(const ast::Function* func) {
             ws[i] = value->As<uint32_t>();
         } else {
             ws[i] = std::nullopt;
+        }
+    }
+
+    uint64_t total_size = static_cast<uint64_t>(ws[0].value_or(1));
+    for (size_t i = 1; i < 3; i++) {
+        total_size *= static_cast<uint64_t>(ws[i].value_or(1));
+        if (total_size > 0xffffffff) {
+            AddError("total workgroup grid size cannot exceed 0xffffffff", values[i]->source);
+            return false;
         }
     }
 
@@ -1446,6 +1461,13 @@ sem::Expression* Resolver::Expression(const ast::Expression* root) {
             });
         if (!sem_expr) {
             return nullptr;
+        }
+
+        if (auto* constraint = expr_eval_stage_constraint_.constraint) {
+            if (!validator_.EvaluationStage(sem_expr, expr_eval_stage_constraint_.stage,
+                                            constraint)) {
+                return nullptr;
+            }
         }
 
         builder_->Sem().Add(expr, sem_expr);
@@ -1788,7 +1810,7 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
                                 static_cast<uint32_t>(i),  // index
                                 arr->ElemType(),           // type
                                 ast::AddressSpace::kNone,  // address_space
-                                ast::Access::kInvalid);
+                                ast::Access::kUndefined);
                         });
                         return builder_->create<sem::TypeConstructor>(arr, std::move(params),
                                                                       args_stage);
@@ -1817,7 +1839,7 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
                                 static_cast<uint32_t>(i),   // index
                                 str->Members()[i]->Type(),  // type
                                 ast::AddressSpace::kNone,   // address_space
-                                ast::Access::kInvalid);     // access
+                                ast::Access::kUndefined);   // access
                         }
                         return builder_->create<sem::TypeConstructor>(str, std::move(params),
                                                                       args_stage);
@@ -2081,14 +2103,16 @@ void Resolver::CollectTextureSamplerPairs(const sem::Builtin* builtin,
     if (texture_index == -1) {
         TINT_ICE(Resolver, diagnostics_) << "texture builtin without texture parameter";
     }
-    auto* texture = args[static_cast<size_t>(texture_index)]->As<sem::VariableUser>()->Variable();
-    if (!texture->Type()->UnwrapRef()->Is<sem::StorageTexture>()) {
-        int sampler_index = signature.IndexOf(sem::ParameterUsage::kSampler);
-        const sem::Variable* sampler =
-            sampler_index != -1
-                ? args[static_cast<size_t>(sampler_index)]->As<sem::VariableUser>()->Variable()
-                : nullptr;
-        current_function_->AddTextureSamplerPair(texture, sampler);
+    if (auto* user = args[static_cast<size_t>(texture_index)]->As<sem::VariableUser>()) {
+        auto* texture = user->Variable();
+        if (!texture->Type()->UnwrapRef()->Is<sem::StorageTexture>()) {
+            int sampler_index = signature.IndexOf(sem::ParameterUsage::kSampler);
+            const sem::Variable* sampler =
+                sampler_index != -1
+                    ? args[static_cast<size_t>(sampler_index)]->As<sem::VariableUser>()->Variable()
+                    : nullptr;
+            current_function_->AddTextureSamplerPair(texture, sampler);
+        }
     }
 }
 
@@ -2758,7 +2782,7 @@ sem::Struct* Resolver::Structure(const ast::Struct* str) {
     // For alignment, use the alignment attribute if provided, otherwise use the
     // default alignment for the member type.
     // Diagnostic errors are raised if a basic rule is violated.
-    // Validation of storage-class rules requires analysing the actual variable
+    // Validation of storage-class rules requires analyzing the actual variable
     // usage of the structure, and so is performed as part of the variable
     // validation.
     uint64_t struct_size = 0;
@@ -2806,6 +2830,10 @@ sem::Struct* Resolver::Structure(const ast::Struct* str) {
                 // Offset attributes are not part of the WGSL spec, but are emitted
                 // by the SPIR-V reader.
 
+                ExprEvalStageConstraint constraint{sem::EvaluationStage::kConstant,
+                                                   "@offset value"};
+                TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
+
                 auto* materialized = Materialize(Expression(o->expr));
                 if (!materialized) {
                     return nullptr;
@@ -2824,6 +2852,9 @@ sem::Struct* Resolver::Structure(const ast::Struct* str) {
                 align = 1;
                 has_offset_attr = true;
             } else if (auto* a = attr->As<ast::StructMemberAlignAttribute>()) {
+                ExprEvalStageConstraint constraint{sem::EvaluationStage::kConstant, "@align"};
+                TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
+
                 auto* materialized = Materialize(Expression(a->expr));
                 if (!materialized) {
                     return nullptr;
@@ -2844,9 +2875,12 @@ sem::Struct* Resolver::Structure(const ast::Struct* str) {
                     AddError("'align' value must be a positive, power-of-two integer", a->source);
                     return nullptr;
                 }
-                align = const_value->As<u32>();
+                align = u32(value);
                 has_align_attr = true;
             } else if (auto* s = attr->As<ast::StructMemberSizeAttribute>()) {
+                ExprEvalStageConstraint constraint{sem::EvaluationStage::kConstant, "@size"};
+                TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
+
                 auto* materialized = Materialize(Expression(s->expr));
                 if (!materialized) {
                     return nullptr;
@@ -2864,9 +2898,12 @@ sem::Struct* Resolver::Structure(const ast::Struct* str) {
                              s->source);
                     return nullptr;
                 }
-                size = const_value->As<u32>();
+                size = u32(value);
                 has_size_attr = true;
             } else if (auto* l = attr->As<ast::LocationAttribute>()) {
+                ExprEvalStageConstraint constraint{sem::EvaluationStage::kConstant, "@location"};
+                TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
+
                 auto* materialize = Materialize(Expression(l->expr));
                 if (!materialize) {
                     return nullptr;
@@ -3228,7 +3265,7 @@ bool Resolver::ApplyAddressSpaceUsageToType(ast::AddressSpace address_space,
             if (!ApplyAddressSpaceUsageToType(address_space, const_cast<sem::Type*>(member->Type()),
                                               usage)) {
                 std::stringstream err;
-                err << "while analysing structure member " << sem_.TypeNameOf(str) << "."
+                err << "while analyzing structure member " << sem_.TypeNameOf(str) << "."
                     << builder_->Symbols().NameFor(member->Declaration()->symbol);
                 AddNote(err.str(), member->Declaration()->source);
                 return false;
