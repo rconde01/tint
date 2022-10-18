@@ -449,18 +449,24 @@ sem::Variable* Resolver::Override(const ast::Override* v) {
     sem->SetConstructor(rhs);
 
     if (auto* id_attr = ast::GetAttribute<ast::IdAttribute>(v->attributes)) {
-        auto* materialize = Materialize(Expression(id_attr->expr));
-        if (!materialize) {
+        ExprEvalStageConstraint constraint{sem::EvaluationStage::kConstant, "@id"};
+        TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
+
+        auto* materialized = Materialize(Expression(id_attr->expr));
+        if (!materialized) {
             return nullptr;
         }
-        auto* c = materialize->ConstantValue();
-        if (!c) {
-            // TODO(crbug.com/tint/1633): Handle invalid materialization when expressions are
-            // supported.
+        if (!materialized->Type()->IsAnyOf<sem::I32, sem::U32>()) {
+            AddError("'id' must be an i32 or u32 value", id_attr->source);
             return nullptr;
         }
 
-        auto value = c->As<uint32_t>();
+        auto const_value = materialized->ConstantValue();
+        auto value = const_value->As<AInt>();
+        if (value < 0) {
+            AddError("'id' value must be non-negative", id_attr->source);
+            return nullptr;
+        }
         if (value > std::numeric_limits<decltype(OverrideId::value)>::max()) {
             AddError("override IDs must be between 0 and " +
                          std::to_string(std::numeric_limits<decltype(OverrideId::value)>::max()),
@@ -669,17 +675,22 @@ sem::Variable* Resolver::Var(const ast::Var* var, bool is_global) {
 
         std::optional<uint32_t> location;
         if (auto* attr = ast::GetAttribute<ast::LocationAttribute>(var->attributes)) {
-            auto* materialize = Materialize(Expression(attr->expr));
-            if (!materialize) {
+            auto* materialized = Materialize(Expression(attr->expr));
+            if (!materialized) {
                 return nullptr;
             }
-            auto* c = materialize->ConstantValue();
-            if (!c) {
-                // TODO(crbug.com/tint/1633): Add error message about invalid materialization
-                // when location can be an expression.
+            if (!materialized->Type()->IsAnyOf<sem::I32, sem::U32>()) {
+                AddError("'location' must be an i32 or u32 value", attr->source);
                 return nullptr;
             }
-            location = c->As<uint32_t>();
+
+            auto const_value = materialized->ConstantValue();
+            auto value = const_value->As<AInt>();
+            if (value < 0) {
+                AddError("'location' value must be non-negative", attr->source);
+                return nullptr;
+            }
+            location = u32(value);
         }
 
         sem = builder_->create<sem::GlobalVariable>(
@@ -2268,21 +2279,16 @@ sem::Expression* Resolver::Identifier(const ast::IdentifierExpression* expr) {
                     current_statement_->FindFirstParent<sem::LoopContinuingBlockStatement>()) {
                 auto* loop_block = continuing_block->FindFirstParent<sem::LoopBlockStatement>();
                 if (loop_block->FirstContinue()) {
-                    auto& decls = loop_block->Decls();
                     // If our identifier is in loop_block->decls, make sure its index is
                     // less than first_continue
-                    auto iter = std::find_if(decls.begin(), decls.end(),
-                                             [&symbol](auto* v) { return v->symbol == symbol; });
-                    if (iter != decls.end()) {
-                        auto var_decl_index =
-                            static_cast<size_t>(std::distance(decls.begin(), iter));
-                        if (var_decl_index >= loop_block->NumDeclsAtFirstContinue()) {
+                    if (auto* decl = loop_block->Decls().Find(symbol)) {
+                        if (decl->order >= loop_block->NumDeclsAtFirstContinue()) {
                             AddError("continue statement bypasses declaration of '" +
                                          builder_->Symbols().NameFor(symbol) + "'",
                                      loop_block->FirstContinue()->source);
                             AddNote("identifier '" + builder_->Symbols().NameFor(symbol) +
                                         "' declared here",
-                                    (*iter)->source);
+                                    decl->variable->Declaration()->source);
                             AddNote("identifier '" + builder_->Symbols().NameFor(symbol) +
                                         "' referenced in continuing block here",
                                     expr->source);
@@ -2842,112 +2848,128 @@ sem::Struct* Resolver::Structure(const ast::Struct* str) {
         std::optional<uint32_t> location;
         for (auto* attr : member->attributes) {
             Mark(attr);
-            if (auto* o = attr->As<ast::StructMemberOffsetAttribute>()) {
-                // Offset attributes are not part of the WGSL spec, but are emitted
-                // by the SPIR-V reader.
+            bool ok = Switch(
+                attr,  //
+                [&](const ast::StructMemberOffsetAttribute* o) {
+                    // Offset attributes are not part of the WGSL spec, but are emitted
+                    // by the SPIR-V reader.
+                    ExprEvalStageConstraint constraint{sem::EvaluationStage::kConstant,
+                                                       "@offset value"};
+                    TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
 
-                ExprEvalStageConstraint constraint{sem::EvaluationStage::kConstant,
-                                                   "@offset value"};
-                TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
-
-                auto* materialized = Materialize(Expression(o->expr));
-                if (!materialized) {
-                    return nullptr;
-                }
-                auto const_value = materialized->ConstantValue();
-                if (!const_value) {
-                    AddError("'offset' must be constant expression", o->expr->source);
-                    return nullptr;
-                }
-                offset = const_value->As<uint64_t>();
-
-                if (offset < struct_size) {
-                    AddError("offsets must be in ascending order", o->source);
-                    return nullptr;
-                }
-                align = 1;
-                has_offset_attr = true;
-            } else if (auto* a = attr->As<ast::StructMemberAlignAttribute>()) {
-                ExprEvalStageConstraint constraint{sem::EvaluationStage::kConstant, "@align"};
-                TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
-
-                auto* materialized = Materialize(Expression(a->expr));
-                if (!materialized) {
-                    return nullptr;
-                }
-                if (!materialized->Type()->IsAnyOf<sem::I32, sem::U32>()) {
-                    AddError("'align' must be an i32 or u32 value", a->source);
-                    return nullptr;
-                }
-
-                auto const_value = materialized->ConstantValue();
-                if (!const_value) {
-                    AddError("'align' must be constant expression", a->source);
-                    return nullptr;
-                }
-                auto value = const_value->As<AInt>();
-
-                if (value <= 0 || !utils::IsPowerOfTwo(value)) {
-                    AddError("'align' value must be a positive, power-of-two integer", a->source);
-                    return nullptr;
-                }
-                align = u32(value);
-                has_align_attr = true;
-            } else if (auto* s = attr->As<ast::StructMemberSizeAttribute>()) {
-                ExprEvalStageConstraint constraint{sem::EvaluationStage::kConstant, "@size"};
-                TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
-
-                auto* materialized = Materialize(Expression(s->expr));
-                if (!materialized) {
-                    return nullptr;
-                }
-                if (!materialized->Type()->IsAnyOf<sem::U32, sem::I32>()) {
-                    AddError("'size' must be an i32 or u32 value", s->source);
-                    return nullptr;
-                }
-
-                auto const_value = materialized->ConstantValue();
-                if (!const_value) {
-                    AddError("'size' must be constant expression", s->expr->source);
-                    return nullptr;
-                }
-                {
-                    auto value = const_value->As<AInt>();
-                    if (value <= 0) {
-                        AddError("'size' attribute must be positive", s->source);
-                        return nullptr;
+                    auto* materialized = Materialize(Expression(o->expr));
+                    if (!materialized) {
+                        return false;
                     }
-                }
-                auto value = const_value->As<uint64_t>();
-                if (value < size) {
-                    AddError("'size' must be at least as big as the type's size (" +
-                                 std::to_string(size) + ")",
-                             s->source);
-                    return nullptr;
-                }
-                size = u32(value);
-                has_size_attr = true;
-            } else if (auto* l = attr->As<ast::LocationAttribute>()) {
-                ExprEvalStageConstraint constraint{sem::EvaluationStage::kConstant, "@location"};
-                TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
+                    auto const_value = materialized->ConstantValue();
+                    if (!const_value) {
+                        AddError("@offset must be constant expression", o->expr->source);
+                        return false;
+                    }
+                    offset = const_value->As<uint64_t>();
 
-                auto* materialize = Materialize(Expression(l->expr));
-                if (!materialize) {
-                    return nullptr;
-                }
-                auto* c = materialize->ConstantValue();
-                if (!c) {
-                    // TODO(crbug.com/tint/1633): Add error message about invalid materialization
-                    // when location can be an expression.
-                    return nullptr;
-                }
-                location = c->As<uint32_t>();
+                    if (offset < struct_size) {
+                        AddError("offsets must be in ascending order", o->source);
+                        return false;
+                    }
+                    align = 1;
+                    has_offset_attr = true;
+                    return true;
+                },
+                [&](const ast::StructMemberAlignAttribute* a) {
+                    ExprEvalStageConstraint constraint{sem::EvaluationStage::kConstant, "@align"};
+                    TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
+
+                    auto* materialized = Materialize(Expression(a->expr));
+                    if (!materialized) {
+                        return false;
+                    }
+                    if (!materialized->Type()->IsAnyOf<sem::I32, sem::U32>()) {
+                        AddError("@align must be an i32 or u32 value", a->source);
+                        return false;
+                    }
+
+                    auto const_value = materialized->ConstantValue();
+                    if (!const_value) {
+                        AddError("@align must be constant expression", a->source);
+                        return false;
+                    }
+                    auto value = const_value->As<AInt>();
+
+                    if (value <= 0 || !utils::IsPowerOfTwo(value)) {
+                        AddError("@align value must be a positive, power-of-two integer",
+                                 a->source);
+                        return false;
+                    }
+                    align = u32(value);
+                    has_align_attr = true;
+                    return true;
+                },
+                [&](const ast::StructMemberSizeAttribute* s) {
+                    ExprEvalStageConstraint constraint{sem::EvaluationStage::kConstant, "@size"};
+                    TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
+
+                    auto* materialized = Materialize(Expression(s->expr));
+                    if (!materialized) {
+                        return false;
+                    }
+                    if (!materialized->Type()->IsAnyOf<sem::U32, sem::I32>()) {
+                        AddError("@size must be an i32 or u32 value", s->source);
+                        return false;
+                    }
+
+                    auto const_value = materialized->ConstantValue();
+                    if (!const_value) {
+                        AddError("@size must be constant expression", s->expr->source);
+                        return false;
+                    }
+                    {
+                        auto value = const_value->As<AInt>();
+                        if (value <= 0) {
+                            AddError("@size must be a positive integer", s->source);
+                            return false;
+                        }
+                    }
+                    auto value = const_value->As<uint64_t>();
+                    if (value < size) {
+                        AddError("@size must be at least as big as the type's size (" +
+                                     std::to_string(size) + ")",
+                                 s->source);
+                        return false;
+                    }
+                    size = u32(value);
+                    has_size_attr = true;
+                    return true;
+                },
+                [&](const ast::LocationAttribute* l) {
+                    ExprEvalStageConstraint constraint{sem::EvaluationStage::kConstant,
+                                                       "@location"};
+                    TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
+
+                    auto* materialize = Materialize(Expression(l->expr));
+                    if (!materialize) {
+                        return false;
+                    }
+                    auto* c = materialize->ConstantValue();
+                    if (!c) {
+                        // TODO(crbug.com/tint/1633): Add error message about invalid
+                        // materialization when location can be an expression.
+                        return false;
+                    }
+                    location = c->As<uint32_t>();
+                    return true;
+                },
+                [&](Default) {
+                    // The validator will check attributes can be applied to the struct member.
+                    return true;
+                });
+            if (!ok) {
+                return nullptr;
             }
         }
 
         if (has_offset_attr && (has_align_attr || has_size_attr)) {
-            AddError("offset attributes cannot be used with align or size attributes",
-                     member->source);
+            AddError("@offset cannot be used with @align or @size", member->source);
             return nullptr;
         }
 
@@ -3128,9 +3150,7 @@ sem::Statement* Resolver::VariableDeclStatement(const ast::VariableDeclStatement
             }
         }
 
-        if (current_block_) {  // Not all statements are inside a block
-            current_block_->AddDecl(stmt->variable);
-        }
+        current_compound_statement_->AddDecl(variable->As<sem::LocalVariable>());
 
         if (auto* ctor = variable->Constructor()) {
             sem->Behaviors() = ctor->Behaviors();
@@ -3232,7 +3252,7 @@ sem::Statement* Resolver::ContinueStatement(const ast::ContinueStatement* stmt) 
         if (auto* block = sem->FindFirstParent<sem::LoopBlockStatement>()) {
             if (!block->FirstContinue()) {
                 const_cast<sem::LoopBlockStatement*>(block)->SetFirstContinue(
-                    stmt, block->Decls().size());
+                    stmt, block->Decls().Count());
             }
         }
 
@@ -3337,12 +3357,10 @@ SEM* Resolver::StatementScope(const ast::Statement* ast, SEM* sem, F&& callback)
     builder_->Sem().Add(ast, sem);
 
     auto* as_compound = As<sem::CompoundStatement, CastFlags::kDontErrorOnImpossibleCast>(sem);
-    auto* as_block = As<sem::BlockStatement, CastFlags::kDontErrorOnImpossibleCast>(sem);
 
     TINT_SCOPED_ASSIGNMENT(current_statement_, sem);
     TINT_SCOPED_ASSIGNMENT(current_compound_statement_,
                            as_compound ? as_compound : current_compound_statement_);
-    TINT_SCOPED_ASSIGNMENT(current_block_, as_block ? as_block : current_block_);
 
     if (!callback()) {
         return nullptr;
