@@ -513,7 +513,7 @@ struct Std140::State {
                         // Found a pointer. As the source variable is a uniform buffer variable,
                         // this must be a pointer-let. Continue traversing from the let
                         // initializer.
-                        expr = user->Variable()->Constructor();
+                        expr = user->Variable()->Initializer();
                         return Action::kContinue;
                     }
                     TINT_ICE(Transform, b.Diagnostics())
@@ -944,7 +944,7 @@ struct Std140::State {
                 ret_ty = ty;
             }
 
-            auto* case_sel = b.Expr(u32(column_idx));
+            auto* case_sel = b.CaseSelector(b.Expr(u32(column_idx)));
             auto* case_body = b.Block(utils::Vector{b.Return(expr)});
             cases.Push(b.Case(case_sel, case_body));
         }

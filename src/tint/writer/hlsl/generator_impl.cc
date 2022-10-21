@@ -44,8 +44,9 @@
 #include "src/tint/sem/statement.h"
 #include "src/tint/sem/storage_texture.h"
 #include "src/tint/sem/struct.h"
-#include "src/tint/sem/type_constructor.h"
+#include "src/tint/sem/switch_statement.h"
 #include "src/tint/sem/type_conversion.h"
+#include "src/tint/sem/type_initializer.h"
 #include "src/tint/sem/variable.h"
 #include "src/tint/transform/add_empty_entry_point.h"
 #include "src/tint/transform/array_length_from_uniform.h"
@@ -65,7 +66,7 @@
 #include "src/tint/transform/simplify_pointers.h"
 #include "src/tint/transform/unshadow.h"
 #include "src/tint/transform/unwind_discard_functions.h"
-#include "src/tint/transform/vectorize_scalar_matrix_constructors.h"
+#include "src/tint/transform/vectorize_scalar_matrix_initializers.h"
 #include "src/tint/transform/zero_init_workgroup_memory.h"
 #include "src/tint/utils/defer.h"
 #include "src/tint/utils/map.h"
@@ -211,7 +212,7 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
     manager.Add<transform::ExpandCompoundAssignment>();
     manager.Add<transform::PromoteSideEffectsToDecl>();
     manager.Add<transform::UnwindDiscardFunctions>();
-    manager.Add<transform::VectorizeScalarMatrixConstructors>();
+    manager.Add<transform::VectorizeScalarMatrixInitializers>();
     manager.Add<transform::SimplifyPointers>();
     manager.Add<transform::RemovePhonies>();
     // ArrayLengthFromUniform must come after InlinePointerLets and Simplify, as
@@ -941,6 +942,16 @@ bool GeneratorImpl::EmitBreak(const ast::BreakStatement*) {
     return true;
 }
 
+bool GeneratorImpl::EmitBreakIf(const ast::BreakIfStatement* b) {
+    auto out = line();
+    out << "if (";
+    if (!EmitExpression(out, b->condition)) {
+        return false;
+    }
+    out << ") { break; }";
+    return true;
+}
+
 bool GeneratorImpl::EmitCall(std::ostream& out, const ast::CallExpression* expr) {
     auto* call = builder_.Sem().Get<sem::Call>(expr);
     auto* target = call->Target();
@@ -948,7 +959,7 @@ bool GeneratorImpl::EmitCall(std::ostream& out, const ast::CallExpression* expr)
         target, [&](const sem::Function* func) { return EmitFunctionCall(out, call, func); },
         [&](const sem::Builtin* builtin) { return EmitBuiltinCall(out, call, builtin); },
         [&](const sem::TypeConversion* conv) { return EmitTypeConversion(out, call, conv); },
-        [&](const sem::TypeConstructor* ctor) { return EmitTypeConstructor(out, call, ctor); },
+        [&](const sem::TypeInitializer* ctor) { return EmitTypeInitializer(out, call, ctor); },
         [&](Default) {
             TINT_ICE(Writer, diagnostics_) << "unhandled call target: " << target->TypeInfo().name;
             return false;
@@ -1106,23 +1117,23 @@ bool GeneratorImpl::EmitTypeConversion(std::ostream& out,
     return true;
 }
 
-bool GeneratorImpl::EmitTypeConstructor(std::ostream& out,
+bool GeneratorImpl::EmitTypeInitializer(std::ostream& out,
                                         const sem::Call* call,
-                                        const sem::TypeConstructor* ctor) {
+                                        const sem::TypeInitializer* ctor) {
     auto* type = call->Type();
 
-    // If the type constructor is empty then we need to construct with the zero
+    // If the type initializer is empty then we need to construct with the zero
     // value for all components.
     if (call->Arguments().IsEmpty()) {
         return EmitZeroValue(out, type);
     }
 
-    // Single parameter matrix initializers must be identity constructor.
+    // Single parameter matrix initializers must be identity initializer.
     // It could also be conversions between f16 and f32 matrix when f16 is properly supported.
     if (type->Is<sem::Matrix>() && call->Arguments().Length() == 1) {
         if (!ctor->Parameters()[0]->Type()->UnwrapRef()->is_float_matrix()) {
             TINT_UNREACHABLE(Writer, diagnostics_)
-                << "found a single-parameter matrix constructor that is not identity constructor";
+                << "found a single-parameter matrix initializer that is not identity initializer";
             return false;
         }
     }
@@ -2561,19 +2572,20 @@ std::string GeneratorImpl::generate_builtin_name(const sem::Builtin* builtin) {
 
 bool GeneratorImpl::EmitCase(const ast::SwitchStatement* s, size_t case_idx) {
     auto* stmt = s->body[case_idx];
-    if (stmt->IsDefault()) {
-        line() << "default: {";
-    } else {
-        for (auto* selector : stmt->selectors) {
-            auto out = line();
+    auto* sem = builder_.Sem().Get<sem::CaseStatement>(stmt);
+    for (auto* selector : sem->Selectors()) {
+        auto out = line();
+        if (selector->IsDefault()) {
+            out << "default";
+        } else {
             out << "case ";
-            if (!EmitLiteral(out, selector)) {
+            if (!EmitConstant(out, selector->Value())) {
                 return false;
             }
-            out << ":";
-            if (selector == stmt->selectors.Back()) {
-                out << " {";
-            }
+        }
+        out << ":";
+        if (selector == sem->Selectors().back()) {
+            out << " {";
         }
     }
 
@@ -2942,8 +2954,8 @@ bool GeneratorImpl::EmitPrivateVariable(const sem::Variable* var) {
     }
 
     out << " = ";
-    if (auto* constructor = decl->constructor) {
-        if (!EmitExpression(out, constructor)) {
+    if (auto* initializer = decl->initializer) {
+        if (!EmitExpression(out, initializer)) {
             return false;
         }
     } else {
@@ -2968,9 +2980,9 @@ bool GeneratorImpl::EmitWorkgroupVariable(const sem::Variable* var) {
         return false;
     }
 
-    if (auto* constructor = decl->constructor) {
+    if (auto* initializer = decl->initializer) {
         out << " = ";
-        if (!EmitExpression(out, constructor)) {
+        if (!EmitExpression(out, initializer)) {
             return false;
         }
     }
@@ -3589,6 +3601,9 @@ bool GeneratorImpl::EmitStatement(const ast::Statement* stmt) {
         [&](const ast::BreakStatement* b) {  //
             return EmitBreak(b);
         },
+        [&](const ast::BreakIfStatement* b) {  //
+            return EmitBreakIf(b);
+        },
         [&](const ast::CallStatement* c) {  //
             auto out = line();
             if (!EmitCall(out, c->expr)) {
@@ -3650,7 +3665,7 @@ bool GeneratorImpl::EmitStatement(const ast::Statement* stmt) {
 }
 
 bool GeneratorImpl::EmitDefaultOnlySwitch(const ast::SwitchStatement* stmt) {
-    TINT_ASSERT(Writer, stmt->body.Length() == 1 && stmt->body[0]->IsDefault());
+    TINT_ASSERT(Writer, stmt->body.Length() == 1 && stmt->body[0]->ContainsDefault());
 
     // FXC fails to compile a switch with just a default case, ignoring the
     // default case body. We work around this here by emitting the default case
@@ -3683,7 +3698,8 @@ bool GeneratorImpl::EmitDefaultOnlySwitch(const ast::SwitchStatement* stmt) {
 
 bool GeneratorImpl::EmitSwitch(const ast::SwitchStatement* stmt) {
     // BUG(crbug.com/tint/1188): work around default-only switches
-    if (stmt->body.Length() == 1 && stmt->body[0]->IsDefault()) {
+    if (stmt->body.Length() == 1 && stmt->body[0]->selectors.Length() == 1 &&
+        stmt->body[0]->ContainsDefault()) {
         return EmitDefaultOnlySwitch(stmt);
     }
 
@@ -3806,7 +3822,7 @@ bool GeneratorImpl::EmitType(std::ostream& out,
             // Note: HLSL's matrices are declared as <type>NxM, where N is the
             // number of rows and M is the number of columns. Despite HLSL's
             // matrices being column-major by default, the index operator and
-            // constructors actually operate on row-vectors, where as WGSL operates
+            // initializers actually operate on row-vectors, where as WGSL operates
             // on column vectors. To simplify everything we use the transpose of the
             // matrices. See:
             // https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-per-component-math#matrix-ordering
@@ -4075,8 +4091,8 @@ bool GeneratorImpl::EmitVar(const ast::Var* var) {
 
     out << " = ";
 
-    if (var->constructor) {
-        if (!EmitExpression(out, var->constructor)) {
+    if (var->initializer) {
+        if (!EmitExpression(out, var->initializer)) {
             return false;
         }
     } else {
@@ -4100,7 +4116,7 @@ bool GeneratorImpl::EmitLet(const ast::Let* let) {
         return false;
     }
     out << " = ";
-    if (!EmitExpression(out, let->constructor)) {
+    if (!EmitExpression(out, let->initializer)) {
         return false;
     }
     out << ";";

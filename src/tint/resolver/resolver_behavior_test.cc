@@ -569,6 +569,16 @@ TEST_F(ResolverBehaviorTest, StmtLoopEmpty_ContIfTrueBreak) {
     EXPECT_EQ(sem->Behaviors(), sem::Behavior::kNext);
 }
 
+TEST_F(ResolverBehaviorTest, StmtLoopEmpty_BreakIf) {
+    auto* stmt = Loop(Block(), Block(BreakIf(true)));
+    WrapInFunction(stmt);
+
+    ASSERT_TRUE(r()->Resolve()) << r()->error();
+
+    auto* sem = Sem().Get(stmt);
+    EXPECT_EQ(sem->Behaviors(), sem::Behavior::kNext);
+}
+
 TEST_F(ResolverBehaviorTest, StmtReturn) {
     auto* stmt = Return();
     WrapInFunction(stmt);
@@ -633,7 +643,7 @@ TEST_F(ResolverBehaviorTest, StmtSwitch_CondLiteral_DefaultReturn) {
 }
 
 TEST_F(ResolverBehaviorTest, StmtSwitch_CondLiteral_Case0Empty_DefaultEmpty) {
-    auto* stmt = Switch(1_i, Case(Expr(0_i), Block()), DefaultCase(Block()));
+    auto* stmt = Switch(1_i, Case(CaseSelector(0_i), Block()), DefaultCase(Block()));
     WrapInFunction(stmt);
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -643,7 +653,7 @@ TEST_F(ResolverBehaviorTest, StmtSwitch_CondLiteral_Case0Empty_DefaultEmpty) {
 }
 
 TEST_F(ResolverBehaviorTest, StmtSwitch_CondLiteral_Case0Empty_DefaultDiscard) {
-    auto* stmt = Switch(1_i, Case(Expr(0_i), Block()), DefaultCase(Block(Discard())));
+    auto* stmt = Switch(1_i, Case(CaseSelector(0_i), Block()), DefaultCase(Block(Discard())));
 
     Func("F", utils::Empty, ty.void_(), utils::Vector{stmt},
          utils::Vector{Stage(ast::PipelineStage::kFragment)});
@@ -655,7 +665,7 @@ TEST_F(ResolverBehaviorTest, StmtSwitch_CondLiteral_Case0Empty_DefaultDiscard) {
 }
 
 TEST_F(ResolverBehaviorTest, StmtSwitch_CondLiteral_Case0Empty_DefaultReturn) {
-    auto* stmt = Switch(1_i, Case(Expr(0_i), Block()), DefaultCase(Block(Return())));
+    auto* stmt = Switch(1_i, Case(CaseSelector(0_i), Block()), DefaultCase(Block(Return())));
     WrapInFunction(stmt);
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -665,7 +675,7 @@ TEST_F(ResolverBehaviorTest, StmtSwitch_CondLiteral_Case0Empty_DefaultReturn) {
 }
 
 TEST_F(ResolverBehaviorTest, StmtSwitch_CondLiteral_Case0Discard_DefaultEmpty) {
-    auto* stmt = Switch(1_i, Case(Expr(0_i), Block(Discard())), DefaultCase(Block()));
+    auto* stmt = Switch(1_i, Case(CaseSelector(0_i), Block(Discard())), DefaultCase(Block()));
 
     Func("F", utils::Empty, ty.void_(), utils::Vector{stmt},
          utils::Vector{Stage(ast::PipelineStage::kFragment)});
@@ -677,7 +687,8 @@ TEST_F(ResolverBehaviorTest, StmtSwitch_CondLiteral_Case0Discard_DefaultEmpty) {
 }
 
 TEST_F(ResolverBehaviorTest, StmtSwitch_CondLiteral_Case0Discard_DefaultDiscard) {
-    auto* stmt = Switch(1_i, Case(Expr(0_i), Block(Discard())), DefaultCase(Block(Discard())));
+    auto* stmt =
+        Switch(1_i, Case(CaseSelector(0_i), Block(Discard())), DefaultCase(Block(Discard())));
 
     Func("F", utils::Empty, ty.void_(), utils::Vector{stmt},
          utils::Vector{Stage(ast::PipelineStage::kFragment)});
@@ -689,7 +700,8 @@ TEST_F(ResolverBehaviorTest, StmtSwitch_CondLiteral_Case0Discard_DefaultDiscard)
 }
 
 TEST_F(ResolverBehaviorTest, StmtSwitch_CondLiteral_Case0Discard_DefaultReturn) {
-    auto* stmt = Switch(1_i, Case(Expr(0_i), Block(Discard())), DefaultCase(Block(Return())));
+    auto* stmt =
+        Switch(1_i, Case(CaseSelector(0_i), Block(Discard())), DefaultCase(Block(Return())));
 
     Func("F", utils::Empty, ty.void_(), utils::Vector{stmt},
          utils::Vector{Stage(ast::PipelineStage::kFragment)});
@@ -701,9 +713,9 @@ TEST_F(ResolverBehaviorTest, StmtSwitch_CondLiteral_Case0Discard_DefaultReturn) 
 }
 
 TEST_F(ResolverBehaviorTest, StmtSwitch_CondLiteral_Case0Discard_Case1Return_DefaultEmpty) {
-    auto* stmt = Switch(1_i,                                //
-                        Case(Expr(0_i), Block(Discard())),  //
-                        Case(Expr(1_i), Block(Return())),   //
+    auto* stmt = Switch(1_i,                                        //
+                        Case(CaseSelector(0_i), Block(Discard())),  //
+                        Case(CaseSelector(1_i), Block(Return())),   //
                         DefaultCase(Block()));
 
     Func("F", utils::Empty, ty.void_(), utils::Vector{stmt},

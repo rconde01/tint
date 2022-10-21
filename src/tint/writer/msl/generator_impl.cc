@@ -52,8 +52,9 @@
 #include "src/tint/sem/sampled_texture.h"
 #include "src/tint/sem/storage_texture.h"
 #include "src/tint/sem/struct.h"
-#include "src/tint/sem/type_constructor.h"
+#include "src/tint/sem/switch_statement.h"
 #include "src/tint/sem/type_conversion.h"
+#include "src/tint/sem/type_initializer.h"
 #include "src/tint/sem/u32.h"
 #include "src/tint/sem/variable.h"
 #include "src/tint/sem/vector.h"
@@ -71,7 +72,7 @@
 #include "src/tint/transform/simplify_pointers.h"
 #include "src/tint/transform/unshadow.h"
 #include "src/tint/transform/unwind_discard_functions.h"
-#include "src/tint/transform/vectorize_scalar_matrix_constructors.h"
+#include "src/tint/transform/vectorize_scalar_matrix_initializers.h"
 #include "src/tint/transform/zero_init_workgroup_memory.h"
 #include "src/tint/utils/defer.h"
 #include "src/tint/utils/map.h"
@@ -251,7 +252,7 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
     manager.Add<transform::UnwindDiscardFunctions>();
     manager.Add<transform::PromoteInitializersToLet>();
 
-    manager.Add<transform::VectorizeScalarMatrixConstructors>();
+    manager.Add<transform::VectorizeScalarMatrixInitializers>();
     manager.Add<transform::RemovePhonies>();
     manager.Add<transform::SimplifyPointers>();
     // ArrayLengthFromUniform must come after SimplifyPointers, as
@@ -659,6 +660,16 @@ bool GeneratorImpl::EmitBreak(const ast::BreakStatement*) {
     return true;
 }
 
+bool GeneratorImpl::EmitBreakIf(const ast::BreakIfStatement* b) {
+    auto out = line();
+    out << "if (";
+    if (!EmitExpression(out, b->condition)) {
+        return false;
+    }
+    out << ") { break; }";
+    return true;
+}
+
 bool GeneratorImpl::EmitCall(std::ostream& out, const ast::CallExpression* expr) {
     auto* call = program_->Sem().Get<sem::Call>(expr);
     auto* target = call->Target();
@@ -666,7 +677,7 @@ bool GeneratorImpl::EmitCall(std::ostream& out, const ast::CallExpression* expr)
         target, [&](const sem::Function* func) { return EmitFunctionCall(out, call, func); },
         [&](const sem::Builtin* builtin) { return EmitBuiltinCall(out, call, builtin); },
         [&](const sem::TypeConversion* conv) { return EmitTypeConversion(out, call, conv); },
-        [&](const sem::TypeConstructor* ctor) { return EmitTypeConstructor(out, call, ctor); },
+        [&](const sem::TypeInitializer* ctor) { return EmitTypeInitializer(out, call, ctor); },
         [&](Default) {
             TINT_ICE(Writer, diagnostics_) << "unhandled call target: " << target->TypeInfo().name;
             return false;
@@ -813,9 +824,9 @@ bool GeneratorImpl::EmitTypeConversion(std::ostream& out,
     return true;
 }
 
-bool GeneratorImpl::EmitTypeConstructor(std::ostream& out,
+bool GeneratorImpl::EmitTypeInitializer(std::ostream& out,
                                         const sem::Call* call,
-                                        const sem::TypeConstructor* ctor) {
+                                        const sem::TypeInitializer* ctor) {
     auto* type = ctor->ReturnType();
 
     const char* terminator = ")";
@@ -1588,19 +1599,21 @@ std::string GeneratorImpl::generate_builtin_name(const sem::Builtin* builtin) {
 }
 
 bool GeneratorImpl::EmitCase(const ast::CaseStatement* stmt) {
-    if (stmt->IsDefault()) {
-        line() << "default: {";
-    } else {
-        for (auto* selector : stmt->selectors) {
-            auto out = line();
+    auto* sem = builder_.Sem().Get<sem::CaseStatement>(stmt);
+    for (auto* selector : sem->Selectors()) {
+        auto out = line();
+
+        if (selector->IsDefault()) {
+            out << "default";
+        } else {
             out << "case ";
-            if (!EmitLiteral(out, selector)) {
+            if (!EmitConstant(out, selector->Value())) {
                 return false;
             }
-            out << ":";
-            if (selector == stmt->selectors.Back()) {
-                out << " {";
-            }
+        }
+        out << ":";
+        if (selector == sem->Selectors().back()) {
+            out << " {";
         }
     }
 
@@ -2430,6 +2443,9 @@ bool GeneratorImpl::EmitStatement(const ast::Statement* stmt) {
         [&](const ast::BreakStatement* b) {  //
             return EmitBreak(b);
         },
+        [&](const ast::BreakIfStatement* b) {  //
+            return EmitBreakIf(b);
+        },
         [&](const ast::CallStatement* c) {  //
             auto out = line();
             if (!EmitCall(out, c->expr)) {  //
@@ -3071,9 +3087,9 @@ bool GeneratorImpl::EmitVar(const ast::Var* var) {
         out << " " << name;
     }
 
-    if (var->constructor != nullptr) {
+    if (var->initializer != nullptr) {
         out << " = ";
-        if (!EmitExpression(out, var->constructor)) {
+        if (!EmitExpression(out, var->initializer)) {
             return false;
         }
     } else if (sem->AddressSpace() == ast::AddressSpace::kPrivate ||
@@ -3122,7 +3138,7 @@ bool GeneratorImpl::EmitLet(const ast::Let* let) {
     }
 
     out << " = ";
-    if (!EmitExpression(out, let->constructor)) {
+    if (!EmitExpression(out, let->initializer)) {
         return false;
     }
     out << ";";

@@ -2492,18 +2492,18 @@ bool FunctionEmitter::EmitFunctionVariables() {
         if (failed()) {
             return false;
         }
-        const ast::Expression* constructor = nullptr;
+        const ast::Expression* initializer = nullptr;
         if (inst.NumInOperands() > 1) {
             // SPIR-V initializers are always constants.
             // (OpenCL also allows the ID of an OpVariable, but we don't handle that
             // here.)
-            constructor = parser_impl_.MakeConstantExpression(inst.GetSingleWordInOperand(1)).expr;
-            if (!constructor) {
+            initializer = parser_impl_.MakeConstantExpression(inst.GetSingleWordInOperand(1)).expr;
+            if (!initializer) {
                 return false;
             }
         }
         auto* var = parser_impl_.MakeVar(inst.result_id(), ast::AddressSpace::kNone, var_store_type,
-                                         constructor, AttributeList{});
+                                         initializer, AttributeList{});
         auto* var_decl_stmt = create<ast::VariableDeclStatement>(Source{}, var);
         AddStatement(var_decl_stmt);
         auto* var_type = ty_.Reference(var_store_type, ast::AddressSpace::kNone);
@@ -3024,7 +3024,7 @@ bool FunctionEmitter::EmitSwitchStart(const BlockInfo& block_info) {
     for (size_t i = last_clause_index;; --i) {
         // Create a list of integer literals for the selector values leading to
         // this case clause.
-        utils::Vector<const ast::IntLiteralExpression*, 4> selectors;
+        utils::Vector<const ast::CaseSelector*, 4> selectors;
         const bool has_selectors = clause_heads[i]->case_values.has_value();
         if (has_selectors) {
             auto values = clause_heads[i]->case_values.value();
@@ -3034,15 +3034,26 @@ bool FunctionEmitter::EmitSwitchStart(const BlockInfo& block_info) {
                 // The Tint AST handles 32-bit values.
                 const uint32_t value32 = uint32_t(value & 0xFFFFFFFF);
                 if (selector.type->IsUnsignedScalarOrVector()) {
-                    selectors.Push(create<ast::IntLiteralExpression>(
-                        Source{}, value32, ast::IntLiteralExpression::Suffix::kU));
+                    selectors.Push(create<ast::CaseSelector>(
+                        Source{}, create<ast::IntLiteralExpression>(
+                                      Source{}, value32, ast::IntLiteralExpression::Suffix::kU)));
                 } else {
-                    selectors.Push(
+                    selectors.Push(create<ast::CaseSelector>(
+                        Source{},
                         create<ast::IntLiteralExpression>(Source{}, static_cast<int32_t>(value32),
-                                                          ast::IntLiteralExpression::Suffix::kI));
+                                                          ast::IntLiteralExpression::Suffix::kI)));
                 }
             }
+
+            if ((default_info == clause_heads[i]) && construct->ContainsPos(default_info->pos)) {
+                // Generate a default selector
+                selectors.Push(create<ast::CaseSelector>(Source{}));
+            }
+        } else {
+            // Generate a default selector
+            selectors.Push(create<ast::CaseSelector>(Source{}));
         }
+        TINT_ASSERT(Reader, !selectors.IsEmpty());
 
         // Where does this clause end?
         const auto end_id =
@@ -3056,17 +3067,6 @@ bool FunctionEmitter::EmitSwitchStart(const BlockInfo& block_info) {
             auto* body = create<ast::BlockStatement>(Source{}, stmts);
             swch->cases[case_idx] = create<ast::CaseStatement>(Source{}, selectors, body);
         });
-
-        if ((default_info == clause_heads[i]) && has_selectors &&
-            construct->ContainsPos(default_info->pos)) {
-            // Generate a default clause with a just fallthrough.
-            auto* stmts = create<ast::BlockStatement>(
-                Source{}, StatementList{
-                              create<ast::FallthroughStatement>(Source{}),
-                          });
-            auto* case_stmt = create<ast::CaseStatement>(Source{}, utils::Empty, stmts);
-            swch->cases.Push(case_stmt);
-        }
 
         if (i == 0) {
             break;
@@ -3967,7 +3967,7 @@ TypedExpression FunctionEmitter::EmitGlslStd450ExtInst(const spvtools::opt::Inst
 
     if (ext_opcode == GLSLstd450Ldexp) {
         // WGSL requires the second argument to be signed.
-        // Use a type constructor to convert it, which is the same as a bitcast.
+        // Use a type initializer to convert it, which is the same as a bitcast.
         // If the value would go from very large positive to negative, then the
         // original result would have been infinity.  And since WGSL
         // implementations may assume that infinities are not present, then we
@@ -4705,7 +4705,7 @@ TypedExpression FunctionEmitter::MakeVectorShuffle(const spvtools::opt::Instruct
 
     // Idiomatic vector accessors.
 
-    // Generate an ast::TypeConstructor expression.
+    // Generate an ast::TypeInitializer expression.
     // Assume the literal indices are valid, and there is a valid number of them.
     auto source = GetSourceForInst(inst);
     const Vector* result_type = As<Vector>(parser_impl_.ConvertType(inst.type_id()));
