@@ -248,6 +248,26 @@ set(TINT_LIB_SRCS
   inspector/resource_binding.h
   inspector/scalar.cc
   inspector/scalar.h
+  ir/block.cc
+  ir/block.h
+  ir/builder.cc
+  ir/builder.h
+  ir/builder_impl.cc
+  ir/builder_impl.h
+  ir/flow_node.cc
+  ir/flow_node.h
+  ir/function.cc
+  ir/function.h
+  ir/if.cc
+  ir/if.h
+  ir/loop.cc
+  ir/loop.h
+  ir/module.cc
+  ir/module.h
+  ir/switch.cc
+  ir/switch.h
+  ir/terminator.cc
+  ir/terminator.h
   number.cc
   number.h
   program_builder.cc
@@ -424,12 +444,16 @@ set(TINT_LIB_SRCS
   transform/localize_struct_array_assignment.h
   transform/manager.cc
   transform/manager.h
+  transform/merge_return.cc
+  transform/merge_return.h
   transform/module_scope_var_to_entry_point_param.cc
   transform/module_scope_var_to_entry_point_param.h
   transform/multiplanar_external_texture.cc
   transform/multiplanar_external_texture.h
   transform/num_workgroups_from_uniform.cc
   transform/num_workgroups_from_uniform.h
+  transform/packed_vec3.cc
+  transform/packed_vec3.h
   transform/pad_structs.cc
   transform/pad_structs.h
   transform/promote_initializers_to_let.cc
@@ -787,6 +811,8 @@ if(TINT_BUILD_TESTS)
     diagnostic/diagnostic_test.cc
     diagnostic/formatter_test.cc
     diagnostic/printer_test.cc
+    ir/builder_impl_test.cc
+    ir/test_helper.h
     number_test.cc
     program_builder_test.cc
     program_test.cc
@@ -1138,9 +1164,11 @@ if(TINT_BUILD_TESTS)
       transform/for_loop_to_loop_test.cc
       transform/expand_compound_assignment.cc
       transform/localize_struct_array_assignment_test.cc
+      transform/merge_return.cc
       transform/module_scope_var_to_entry_point_param_test.cc
       transform/multiplanar_external_texture_test.cc
       transform/num_workgroups_from_uniform_test.cc
+      transform/packed_vec3_test.cc
       transform/pad_structs_test.cc
       transform/promote_initializers_to_let_test.cc
       transform/promote_side_effects_to_decl_test.cc

@@ -58,7 +58,7 @@ constexpr static const size_t kNumFixedCandidates = 8;
 /// A special type that matches all TypeMatchers
 class Any final : public Castable<Any, sem::Type> {
   public:
-    Any() = default;
+    Any() : Base(sem::TypeFlags{}) {}
     ~Any() override = default;
 
     // Stub implementations for sem::Type conformance.
@@ -995,17 +995,22 @@ class Impl : public IntrinsicTable {
                    sem::EvaluationStage earliest_eval_stage,
                    const Source& source) override;
 
-    UnaryOperator Lookup(ast::UnaryOp op, const sem::Type* arg, const Source& source) override;
+    UnaryOperator Lookup(ast::UnaryOp op,
+                         const sem::Type* arg,
+                         sem::EvaluationStage earliest_eval_stage,
+                         const Source& source) override;
 
     BinaryOperator Lookup(ast::BinaryOp op,
                           const sem::Type* lhs,
                           const sem::Type* rhs,
+                          sem::EvaluationStage earliest_eval_stage,
                           const Source& source,
                           bool is_compound) override;
 
     InitOrConv Lookup(InitConvIntrinsic type,
                       const sem::Type* template_arg,
                       utils::VectorRef<const sem::Type*> args,
+                      sem::EvaluationStage earliest_eval_stage,
                       const Source& source) override;
 
   private:
@@ -1209,6 +1214,7 @@ Impl::Builtin Impl::Lookup(sem::BuiltinType builtin_type,
 
 IntrinsicTable::UnaryOperator Impl::Lookup(ast::UnaryOp op,
                                            const sem::Type* arg,
+                                           sem::EvaluationStage earliest_eval_stage,
                                            const Source& source) {
     auto [intrinsic_index, intrinsic_name] = [&]() -> std::pair<size_t, const char*> {
         switch (op) {
@@ -1240,7 +1246,7 @@ IntrinsicTable::UnaryOperator Impl::Lookup(ast::UnaryOp op,
 
     // Resolve the intrinsic overload
     auto match = MatchIntrinsic(kUnaryOperators[intrinsic_index], intrinsic_name, args,
-                                sem::EvaluationStage::kConstant, TemplateState{}, on_no_match);
+                                earliest_eval_stage, TemplateState{}, on_no_match);
     if (!match.overload) {
         return {};
     }
@@ -1255,6 +1261,7 @@ IntrinsicTable::UnaryOperator Impl::Lookup(ast::UnaryOp op,
 IntrinsicTable::BinaryOperator Impl::Lookup(ast::BinaryOp op,
                                             const sem::Type* lhs,
                                             const sem::Type* rhs,
+                                            sem::EvaluationStage earliest_eval_stage,
                                             const Source& source,
                                             bool is_compound) {
     auto [intrinsic_index, intrinsic_name] = [&]() -> std::pair<size_t, const char*> {
@@ -1317,7 +1324,7 @@ IntrinsicTable::BinaryOperator Impl::Lookup(ast::BinaryOp op,
 
     // Resolve the intrinsic overload
     auto match = MatchIntrinsic(kBinaryOperators[intrinsic_index], intrinsic_name, args,
-                                sem::EvaluationStage::kConstant, TemplateState{}, on_no_match);
+                                earliest_eval_stage, TemplateState{}, on_no_match);
     if (!match.overload) {
         return {};
     }
@@ -1333,6 +1340,7 @@ IntrinsicTable::BinaryOperator Impl::Lookup(ast::BinaryOp op,
 IntrinsicTable::InitOrConv Impl::Lookup(InitConvIntrinsic type,
                                         const sem::Type* template_arg,
                                         utils::VectorRef<const sem::Type*> args,
+                                        sem::EvaluationStage earliest_eval_stage,
                                         const Source& source) {
     auto name = str(type);
 
@@ -1372,7 +1380,7 @@ IntrinsicTable::InitOrConv Impl::Lookup(InitConvIntrinsic type,
 
     // Resolve the intrinsic overload
     auto match = MatchIntrinsic(kInitializersAndConverters[static_cast<size_t>(type)], name, args,
-                                sem::EvaluationStage::kConstant, templates, on_no_match);
+                                earliest_eval_stage, templates, on_no_match);
     if (!match.overload) {
         return {};
     }
@@ -1641,10 +1649,25 @@ void Impl::PrintOverload(std::ostream& ss,
                          const char* intrinsic_name) const {
     TemplateState templates;
 
+    // TODO(crbug.com/tint/1730): Use input evaluation stage to output only relevant overloads.
     auto earliest_eval_stage = sem::EvaluationStage::kConstant;
 
     ss << intrinsic_name;
-    if (overload->flags.Contains(OverloadFlag::kIsConverter) && overload->template_types) {
+
+    bool print_template_type = false;
+    if (overload->num_template_types > 0) {
+        if (overload->flags.Contains(OverloadFlag::kIsConverter)) {
+            // Print for conversions
+            // e.g. vec3<T>(vec3<U>) -> vec3<f32>
+            print_template_type = true;
+        } else if ((overload->num_parameters == 0) &&
+                   overload->flags.Contains(OverloadFlag::kIsInitializer)) {
+            // Print for initializers with no params
+            // e.g. vec2<T>() -> vec2<T>
+            print_template_type = true;
+        }
+    }
+    if (print_template_type) {
         ss << "<";
         ss << overload->template_types[0].name;
         ss << ">";

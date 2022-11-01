@@ -377,6 +377,51 @@ class ConstEval {
     // Builtins
     ////////////////////////////////////////////////////////////////////////////
 
+    /// any builtin
+    /// @param ty the expression type
+    /// @param args the input arguments
+    /// @param source the source location of the conversion
+    /// @return the result value, or null if the value cannot be calculated
+    Result any(const sem::Type* ty,
+               utils::VectorRef<const sem::Constant*> args,
+               const Source& source);
+
+    /// asin builtin
+    /// @param ty the expression type
+    /// @param args the input arguments
+    /// @param source the source location of the conversion
+    /// @return the result value, or null if the value cannot be calculated
+    Result asin(const sem::Type* ty,
+                utils::VectorRef<const sem::Constant*> args,
+                const Source& source);
+
+    /// asinh builtin
+    /// @param ty the expression type
+    /// @param args the input arguments
+    /// @param source the source location of the conversion
+    /// @return the result value, or null if the value cannot be calculated
+    Result asinh(const sem::Type* ty,
+                 utils::VectorRef<const sem::Constant*> args,
+                 const Source& source);
+
+    /// atan builtin
+    /// @param ty the expression type
+    /// @param args the input arguments
+    /// @param source the source location of the conversion
+    /// @return the result value, or null if the value cannot be calculated
+    Result atan(const sem::Type* ty,
+                utils::VectorRef<const sem::Constant*> args,
+                const Source& source);
+
+    /// atanh builtin
+    /// @param ty the expression type
+    /// @param args the input arguments
+    /// @param source the source location of the conversion
+    /// @return the result value, or null if the value cannot be calculated
+    Result atanh(const sem::Type* ty,
+                 utils::VectorRef<const sem::Constant*> args,
+                 const Source& source);
+
     /// atan2 builtin
     /// @param ty the expression type
     /// @param args the input arguments
@@ -395,6 +440,60 @@ class ConstEval {
                  utils::VectorRef<const sem::Constant*> args,
                  const Source& source);
 
+    /// countLeadingZeros builtin
+    /// @param ty the expression type
+    /// @param args the input arguments
+    /// @param source the source location of the conversion
+    /// @return the result value, or null if the value cannot be calculated
+    Result countLeadingZeros(const sem::Type* ty,
+                             utils::VectorRef<const sem::Constant*> args,
+                             const Source& source);
+
+    /// countOneBits builtin
+    /// @param ty the expression type
+    /// @param args the input arguments
+    /// @param source the source location of the conversion
+    /// @return the result value, or null if the value cannot be calculated
+    Result countOneBits(const sem::Type* ty,
+                        utils::VectorRef<const sem::Constant*> args,
+                        const Source& source);
+
+    /// countTrailingZeros builtin
+    /// @param ty the expression type
+    /// @param args the input arguments
+    /// @param source the source location of the conversion
+    /// @return the result value, or null if the value cannot be calculated
+    Result countTrailingZeros(const sem::Type* ty,
+                              utils::VectorRef<const sem::Constant*> args,
+                              const Source& source);
+
+    /// firstLeadingBit builtin
+    /// @param ty the expression type
+    /// @param args the input arguments
+    /// @param source the source location of the conversion
+    /// @return the result value, or null if the value cannot be calculated
+    Result firstLeadingBit(const sem::Type* ty,
+                           utils::VectorRef<const sem::Constant*> args,
+                           const Source& source);
+
+    /// firstTrailingBit builtin
+    /// @param ty the expression type
+    /// @param args the input arguments
+    /// @param source the source location of the conversion
+    /// @return the result value, or null if the value cannot be calculated
+    Result firstTrailingBit(const sem::Type* ty,
+                            utils::VectorRef<const sem::Constant*> args,
+                            const Source& source);
+
+    /// saturate builtin
+    /// @param ty the expression type
+    /// @param args the input arguments
+    /// @param source the source location of the conversion
+    /// @return the result value, or null if the value cannot be calculated
+    Result saturate(const sem::Type* ty,
+                    utils::VectorRef<const sem::Constant*> args,
+                    const Source& source);
+
     /// select builtin with single bool third arg
     /// @param ty the expression type
     /// @param args the input arguments
@@ -412,6 +511,24 @@ class ConstEval {
     Result select_boolvec(const sem::Type* ty,
                           utils::VectorRef<const sem::Constant*> args,
                           const Source& source);
+
+    /// sign builtin
+    /// @param ty the expression type
+    /// @param args the input arguments
+    /// @param source the source location of the conversion
+    /// @return the result value, or null if the value cannot be calculated
+    Result sign(const sem::Type* ty,
+                utils::VectorRef<const sem::Constant*> args,
+                const Source& source);
+
+    /// step builtin
+    /// @param ty the expression type
+    /// @param args the input arguments
+    /// @param source the source location of the conversion
+    /// @return the result value, or null if the value cannot be calculated
+    Result step(const sem::Type* ty,
+                utils::VectorRef<const sem::Constant*> args,
+                const Source& source);
 
   private:
     /// Adds the given error message to the diagnostics

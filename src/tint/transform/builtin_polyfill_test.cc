@@ -55,20 +55,37 @@ DataMap polyfillAcosh(Level level) {
 TEST_F(BuiltinPolyfillTest, ShouldRunAcosh) {
     auto* src = R"(
 fn f() {
-  acosh(1.0);
+  let v = 1.0;
+  acosh(v);
 }
 )";
 
     EXPECT_FALSE(ShouldRun<BuiltinPolyfill>(src));
     EXPECT_FALSE(ShouldRun<BuiltinPolyfill>(src, polyfillAcosh(Level::kNone)));
-    EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillAcosh(Level::kClampParameters)));
+    EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillAcosh(Level::kRangeCheck)));
     EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillAcosh(Level::kFull)));
+}
+
+// TODO(crbug.com/tint/1581): Enable once `acosh` is implemented as @const
+TEST_F(BuiltinPolyfillTest, DISABLED_Acosh_ConstantExpression) {
+    auto* src = R"(
+fn f() {
+  let r : f32 = acosh(1.0);
+}
+)";
+
+    auto* expect = src;
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillAcosh(Level::kFull));
+
+    EXPECT_EQ(expect, str(got));
 }
 
 TEST_F(BuiltinPolyfillTest, Acosh_Full_f32) {
     auto* src = R"(
 fn f() {
-  let r : f32 = acosh(1234);
+  let v = 1.0;
+  let r : f32 = acosh(v);
 }
 )";
 
@@ -78,7 +95,8 @@ fn tint_acosh(x : f32) -> f32 {
 }
 
 fn f() {
-  let r : f32 = tint_acosh(1234);
+  let v = 1.0;
+  let r : f32 = tint_acosh(v);
 }
 )";
 
@@ -90,7 +108,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, Acosh_Full_vec3_f32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<f32> = acosh(vec3<f32>(1234));
+  let v = 1.0;
+  let r : vec3<f32> = acosh(vec3<f32>(v));
 }
 )";
 
@@ -100,7 +119,8 @@ fn tint_acosh(x : vec3<f32>) -> vec3<f32> {
 }
 
 fn f() {
-  let r : vec3<f32> = tint_acosh(vec3<f32>(1234));
+  let v = 1.0;
+  let r : vec3<f32> = tint_acosh(vec3<f32>(v));
 }
 )";
 
@@ -112,7 +132,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, Acosh_Range_f32) {
     auto* src = R"(
 fn f() {
-  let r : f32 = acosh(1234);
+  let v = 1.0;
+  let r : f32 = acosh(v);
 }
 )";
 
@@ -122,7 +143,8 @@ fn tint_acosh(x : f32) -> f32 {
 }
 
 fn f() {
-  let r : f32 = tint_acosh(1234);
+  let v = 1.0;
+  let r : f32 = tint_acosh(v);
 }
 )";
 
@@ -134,7 +156,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, Acosh_Range_vec3_f32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<f32> = acosh(vec3<f32>(1234));
+  let v = 1.0;
+  let r : vec3<f32> = acosh(vec3<f32>(v));
 }
 )";
 
@@ -144,7 +167,8 @@ fn tint_acosh(x : vec3<f32>) -> vec3<f32> {
 }
 
 fn f() {
-  let r : vec3<f32> = tint_acosh(vec3<f32>(1234));
+  let v = 1.0;
+  let r : vec3<f32> = tint_acosh(vec3<f32>(v));
 }
 )";
 
@@ -167,7 +191,8 @@ DataMap polyfillSinh() {
 TEST_F(BuiltinPolyfillTest, ShouldRunAsinh) {
     auto* src = R"(
 fn f() {
-  asinh(1.0);
+  let v = 1.0;
+  asinh(v);
 }
 )";
 
@@ -175,10 +200,25 @@ fn f() {
     EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillSinh()));
 }
 
+TEST_F(BuiltinPolyfillTest, Asinh_ConstantExpression) {
+    auto* src = R"(
+fn f() {
+  let r : f32 = asinh(1.0);
+}
+)";
+
+    auto* expect = src;
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillSinh());
+
+    EXPECT_EQ(expect, str(got));
+}
+
 TEST_F(BuiltinPolyfillTest, Asinh_f32) {
     auto* src = R"(
 fn f() {
-  let r : f32 = asinh(1234);
+  let v = 1.0;
+  let r : f32 = asinh(v);
 }
 )";
 
@@ -188,7 +228,8 @@ fn tint_sinh(x : f32) -> f32 {
 }
 
 fn f() {
-  let r : f32 = tint_sinh(1234);
+  let v = 1.0;
+  let r : f32 = tint_sinh(v);
 }
 )";
 
@@ -200,7 +241,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, Asinh_vec3_f32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<f32> = asinh(vec3<f32>(1234));
+  let v = 1.0;
+  let r : vec3<f32> = asinh(vec3<f32>(v));
 }
 )";
 
@@ -210,7 +252,8 @@ fn tint_sinh(x : vec3<f32>) -> vec3<f32> {
 }
 
 fn f() {
-  let r : vec3<f32> = tint_sinh(vec3<f32>(1234));
+  let v = 1.0;
+  let r : vec3<f32> = tint_sinh(vec3<f32>(v));
 }
 )";
 
@@ -233,20 +276,37 @@ DataMap polyfillAtanh(Level level) {
 TEST_F(BuiltinPolyfillTest, ShouldRunAtanh) {
     auto* src = R"(
 fn f() {
-  atanh(1.0);
+  let v = 1.0;
+  atanh(v);
 }
 )";
 
     EXPECT_FALSE(ShouldRun<BuiltinPolyfill>(src));
     EXPECT_FALSE(ShouldRun<BuiltinPolyfill>(src, polyfillAtanh(Level::kNone)));
-    EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillAtanh(Level::kClampParameters)));
+    EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillAtanh(Level::kRangeCheck)));
     EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillAtanh(Level::kFull)));
+}
+
+// TODO(crbug.com/tint/1581): Enable once `atanh` is implemented as @const
+TEST_F(BuiltinPolyfillTest, DISABLED_Atanh_ConstantExpression) {
+    auto* src = R"(
+fn f() {
+  let r : f32 = atanh(1.23);
+}
+)";
+
+    auto* expect = src;
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillAtanh(Level::kFull));
+
+    EXPECT_EQ(expect, str(got));
 }
 
 TEST_F(BuiltinPolyfillTest, Atanh_Full_f32) {
     auto* src = R"(
 fn f() {
-  let r : f32 = atanh(1234);
+  let v = 1.0;
+  let r : f32 = atanh(v);
 }
 )";
 
@@ -256,7 +316,8 @@ fn tint_atanh(x : f32) -> f32 {
 }
 
 fn f() {
-  let r : f32 = tint_atanh(1234);
+  let v = 1.0;
+  let r : f32 = tint_atanh(v);
 }
 )";
 
@@ -268,7 +329,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, Atanh_Full_vec3_f32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<f32> = atanh(vec3<f32>(1234));
+  let v = 1.0;
+  let r : vec3<f32> = atanh(vec3<f32>(v));
 }
 )";
 
@@ -278,7 +340,8 @@ fn tint_atanh(x : vec3<f32>) -> vec3<f32> {
 }
 
 fn f() {
-  let r : vec3<f32> = tint_atanh(vec3<f32>(1234));
+  let v = 1.0;
+  let r : vec3<f32> = tint_atanh(vec3<f32>(v));
 }
 )";
 
@@ -290,7 +353,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, Atanh_Range_f32) {
     auto* src = R"(
 fn f() {
-  let r : f32 = atanh(1234);
+  let v = 1.0;
+  let r : f32 = atanh(v);
 }
 )";
 
@@ -300,7 +364,8 @@ fn tint_atanh(x : f32) -> f32 {
 }
 
 fn f() {
-  let r : f32 = tint_atanh(1234);
+  let v = 1.0;
+  let r : f32 = tint_atanh(v);
 }
 )";
 
@@ -312,17 +377,190 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, Atanh_Range_vec3_f32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<f32> = atanh(vec3<f32>(1234));
+  let v = 1.0;
+  let r : vec3<f32> = atanh(vec3<f32>(v));
+}
+)";
+
+    auto* expect = R"(
+fn tint_atanh(x : vec3<f32>) -> vec3<f32> {
+  return select(atanh(x), vec3<f32>(0.0), (x >= vec3<f32>(1.0)));
+}
+
+fn f() {
+  let v = 1.0;
+  let r : vec3<f32> = tint_atanh(vec3<f32>(v));
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillAtanh(Level::kRangeCheck));
+
+    EXPECT_EQ(expect, str(got));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// clampInteger
+////////////////////////////////////////////////////////////////////////////////
+DataMap polyfillClampInteger() {
+    BuiltinPolyfill::Builtins builtins;
+    builtins.clamp_int = true;
+    DataMap data;
+    data.Add<BuiltinPolyfill::Config>(builtins);
+    return data;
+}
+
+TEST_F(BuiltinPolyfillTest, ShouldRunClampInteger_i32) {
+    auto* src = R"(
+fn f() {
+  let v = 1i;
+  clamp(v, 2i, 3i);
+}
+)";
+
+    EXPECT_FALSE(ShouldRun<BuiltinPolyfill>(src));
+    EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillClampInteger()));
+}
+
+TEST_F(BuiltinPolyfillTest, ShouldRunClampInteger_u32) {
+    auto* src = R"(
+fn f() {
+  let v = 1u;
+  clamp(v, 2u, 3u);
+}
+)";
+
+    EXPECT_FALSE(ShouldRun<BuiltinPolyfill>(src));
+    EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillClampInteger()));
+}
+
+TEST_F(BuiltinPolyfillTest, ShouldRunClampInteger_f32) {
+    auto* src = R"(
+fn f() {
+  let v = 1f;
+  clamp(v, 2f, 3f);
+}
+)";
+
+    EXPECT_FALSE(ShouldRun<BuiltinPolyfill>(src));
+    EXPECT_FALSE(ShouldRun<BuiltinPolyfill>(src, polyfillClampInteger()));
+}
+
+TEST_F(BuiltinPolyfillTest, ShouldRunClampInteger_f16) {
+    auto* src = R"(
+enable f16;
+
+fn f() {
+  let v = 1h;
+  clamp(v, 2h, 3h);
+}
+)";
+
+    EXPECT_FALSE(ShouldRun<BuiltinPolyfill>(src));
+    EXPECT_FALSE(ShouldRun<BuiltinPolyfill>(src, polyfillClampInteger()));
+}
+
+TEST_F(BuiltinPolyfillTest, ClampInteger_ConstantExpression) {
+    auto* src = R"(
+fn f() {
+  let r : i32 = clamp(1i, 2i, 3i);
+}
+)";
+
+    auto* expect = src;
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillClampInteger());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, ClampInteger_i32) {
+    auto* src = R"(
+fn f() {
+  let v = 1i;
+  let r : i32 = clamp(v, 2i, 3i);
+}
+)";
+
+    auto* expect = R"(
+fn tint_clamp(e : i32, low : i32, high : i32) -> i32 {
+  return min(max(e, low), high);
+}
+
+fn f() {
+  let v = 1i;
+  let r : i32 = tint_clamp(v, 2i, 3i);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillClampInteger());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, ClampInteger_vec3_i32) {
+    auto* src = R"(
+fn f() {
+  let v = 1i;
+  let r : vec3<i32> = clamp(vec3(v), vec3(2i), vec3(3i));
+}
+)";
+
+    auto* expect =
+        R"(
+fn tint_clamp(e : vec3<i32>, low : vec3<i32>, high : vec3<i32>) -> vec3<i32> {
+  return min(max(e, low), high);
+}
+
+fn f() {
+  let v = 1i;
+  let r : vec3<i32> = tint_clamp(vec3(v), vec3(2i), vec3(3i));
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillClampInteger());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, ClampInteger_u32) {
+    auto* src = R"(
+fn f() {
+  let r : u32 = clamp(1u, 2u, 3u);
 }
 )";
 
     auto* expect = R"(
 fn f() {
-  let r : vec3<f32> = atanh(vec3<f32>(1234));
+  let r : u32 = clamp(1u, 2u, 3u);
 }
 )";
 
-    auto got = Run<BuiltinPolyfill>(src, polyfillAcosh(Level::kRangeCheck));
+    auto got = Run<BuiltinPolyfill>(src, polyfillClampInteger());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, ClampInteger_vec3_u32) {
+    auto* src = R"(
+fn f() {
+  let v = 1u;
+  let r : vec3<u32> = clamp(vec3(v), vec3(2u), vec3(3u));
+}
+)";
+
+    auto* expect =
+        R"(
+fn tint_clamp(e : vec3<u32>, low : vec3<u32>, high : vec3<u32>) -> vec3<u32> {
+  return min(max(e, low), high);
+}
+
+fn f() {
+  let v = 1u;
+  let r : vec3<u32> = tint_clamp(vec3(v), vec3(2u), vec3(3u));
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillClampInteger());
 
     EXPECT_EQ(expect, str(got));
 }
@@ -341,7 +579,8 @@ DataMap polyfillCountLeadingZeros() {
 TEST_F(BuiltinPolyfillTest, ShouldRunCountLeadingZeros) {
     auto* src = R"(
 fn f() {
-  countLeadingZeros(0xf);
+  let v = 15;
+  countLeadingZeros(v);
 }
 )";
 
@@ -349,10 +588,26 @@ fn f() {
     EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillCountLeadingZeros()));
 }
 
+// TODO(crbug.com/tint/1581): Enable once `countLeadingZeros` is implemented as @const
+TEST_F(BuiltinPolyfillTest, DISABLED_CountLeadingZeros_ConstantExpression) {
+    auto* src = R"(
+fn f() {
+  let r : i32 = countLeadingZeros(15i);
+}
+)";
+
+    auto* expect = src;
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillCountLeadingZeros());
+
+    EXPECT_EQ(expect, str(got));
+}
+
 TEST_F(BuiltinPolyfillTest, CountLeadingZeros_i32) {
     auto* src = R"(
 fn f() {
-  let r : i32 = countLeadingZeros(15);
+  let v = 15i;
+  let r : i32 = countLeadingZeros(v);
 }
 )";
 
@@ -373,7 +628,8 @@ fn tint_count_leading_zeros(v : i32) -> i32 {
 }
 
 fn f() {
-  let r : i32 = tint_count_leading_zeros(15);
+  let v = 15i;
+  let r : i32 = tint_count_leading_zeros(v);
 }
 )";
 
@@ -385,7 +641,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, CountLeadingZeros_u32) {
     auto* src = R"(
 fn f() {
-  let r : u32 = countLeadingZeros(15u);
+  let v = 15u;
+  let r : u32 = countLeadingZeros(v);
 }
 )";
 
@@ -406,7 +663,8 @@ fn tint_count_leading_zeros(v : u32) -> u32 {
 }
 
 fn f() {
-  let r : u32 = tint_count_leading_zeros(15u);
+  let v = 15u;
+  let r : u32 = tint_count_leading_zeros(v);
 }
 )";
 
@@ -418,7 +676,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, CountLeadingZeros_vec3_i32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<i32> = countLeadingZeros(vec3<i32>(15));
+  let v = 15i;
+  let r : vec3<i32> = countLeadingZeros(vec3<i32>(v));
 }
 )";
 
@@ -439,7 +698,8 @@ fn tint_count_leading_zeros(v : vec3<i32>) -> vec3<i32> {
 }
 
 fn f() {
-  let r : vec3<i32> = tint_count_leading_zeros(vec3<i32>(15));
+  let v = 15i;
+  let r : vec3<i32> = tint_count_leading_zeros(vec3<i32>(v));
 }
 )";
 
@@ -451,7 +711,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, CountLeadingZeros_vec3_u32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<u32> = countLeadingZeros(vec3<u32>(15u));
+  let v = 15u;
+  let r : vec3<u32> = countLeadingZeros(vec3<u32>(v));
 }
 )";
 
@@ -472,7 +733,8 @@ fn tint_count_leading_zeros(v : vec3<u32>) -> vec3<u32> {
 }
 
 fn f() {
-  let r : vec3<u32> = tint_count_leading_zeros(vec3<u32>(15u));
+  let v = 15u;
+  let r : vec3<u32> = tint_count_leading_zeros(vec3<u32>(v));
 }
 )";
 
@@ -495,7 +757,8 @@ DataMap polyfillCountTrailingZeros() {
 TEST_F(BuiltinPolyfillTest, ShouldRunCountTrailingZeros) {
     auto* src = R"(
 fn f() {
-  countTrailingZeros(0xf);
+  let v = 15;
+  countTrailingZeros(v);
 }
 )";
 
@@ -503,10 +766,26 @@ fn f() {
     EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillCountTrailingZeros()));
 }
 
+// TODO(crbug.com/tint/1581): Enable once `countTrailingZeros` is implemented as @const
+TEST_F(BuiltinPolyfillTest, DISABLED_CountTrailingZeros_ConstantExpression) {
+    auto* src = R"(
+fn f() {
+  let r : i32 = countTrailingZeros(15i);
+}
+)";
+
+    auto* expect = src;
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillCountTrailingZeros());
+
+    EXPECT_EQ(expect, str(got));
+}
+
 TEST_F(BuiltinPolyfillTest, CountTrailingZeros_i32) {
     auto* src = R"(
 fn f() {
-  let r : i32 = countTrailingZeros(15);
+  let v = 15i;
+  let r : i32 = countTrailingZeros(v);
 }
 )";
 
@@ -527,7 +806,8 @@ fn tint_count_trailing_zeros(v : i32) -> i32 {
 }
 
 fn f() {
-  let r : i32 = tint_count_trailing_zeros(15);
+  let v = 15i;
+  let r : i32 = tint_count_trailing_zeros(v);
 }
 )";
 
@@ -539,7 +819,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, CountTrailingZeros_u32) {
     auto* src = R"(
 fn f() {
-  let r : u32 = countTrailingZeros(15u);
+  let v = 15u;
+  let r : u32 = countTrailingZeros(v);
 }
 )";
 
@@ -560,7 +841,8 @@ fn tint_count_trailing_zeros(v : u32) -> u32 {
 }
 
 fn f() {
-  let r : u32 = tint_count_trailing_zeros(15u);
+  let v = 15u;
+  let r : u32 = tint_count_trailing_zeros(v);
 }
 )";
 
@@ -572,7 +854,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, CountTrailingZeros_vec3_i32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<i32> = countTrailingZeros(vec3<i32>(15));
+  let v = 15i;
+  let r : vec3<i32> = countTrailingZeros(vec3<i32>(v));
 }
 )";
 
@@ -593,7 +876,8 @@ fn tint_count_trailing_zeros(v : vec3<i32>) -> vec3<i32> {
 }
 
 fn f() {
-  let r : vec3<i32> = tint_count_trailing_zeros(vec3<i32>(15));
+  let v = 15i;
+  let r : vec3<i32> = tint_count_trailing_zeros(vec3<i32>(v));
 }
 )";
 
@@ -605,7 +889,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, CountTrailingZeros_vec3_u32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<u32> = countTrailingZeros(vec3<u32>(15u));
+  let v = 15u;
+  let r : vec3<u32> = countTrailingZeros(vec3<u32>(v));
 }
 )";
 
@@ -626,7 +911,8 @@ fn tint_count_trailing_zeros(v : vec3<u32>) -> vec3<u32> {
 }
 
 fn f() {
-  let r : vec3<u32> = tint_count_trailing_zeros(vec3<u32>(15u));
+  let v = 15u;
+  let r : vec3<u32> = tint_count_trailing_zeros(vec3<u32>(v));
 }
 )";
 
@@ -649,7 +935,8 @@ DataMap polyfillExtractBits(Level level) {
 TEST_F(BuiltinPolyfillTest, ShouldRunExtractBits) {
     auto* src = R"(
 fn f() {
-  extractBits(1234, 5u, 6u);
+  let v = 1234i;
+  extractBits(v, 5u, 6u);
 }
 )";
 
@@ -659,10 +946,25 @@ fn f() {
     EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillExtractBits(Level::kFull)));
 }
 
+TEST_F(BuiltinPolyfillTest, ExtractBits_ConstantExpression) {
+    auto* src = R"(
+fn f() {
+  let r : i32 = countTrailingZeros(15i);
+}
+)";
+
+    auto* expect = src;
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillExtractBits(Level::kFull));
+
+    EXPECT_EQ(expect, str(got));
+}
+
 TEST_F(BuiltinPolyfillTest, ExtractBits_Full_i32) {
     auto* src = R"(
 fn f() {
-  let r : i32 = extractBits(1234, 5u, 6u);
+  let v = 1234i;
+  let r : i32 = extractBits(v, 5u, 6u);
 }
 )";
 
@@ -676,7 +978,8 @@ fn tint_extract_bits(v : i32, offset : u32, count : u32) -> i32 {
 }
 
 fn f() {
-  let r : i32 = tint_extract_bits(1234, 5u, 6u);
+  let v = 1234i;
+  let r : i32 = tint_extract_bits(v, 5u, 6u);
 }
 )";
 
@@ -688,7 +991,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, ExtractBits_Full_u32) {
     auto* src = R"(
 fn f() {
-  let r : u32 = extractBits(1234u, 5u, 6u);
+  let v = 1234u;
+  let r : u32 = extractBits(v, 5u, 6u);
 }
 )";
 
@@ -702,7 +1006,8 @@ fn tint_extract_bits(v : u32, offset : u32, count : u32) -> u32 {
 }
 
 fn f() {
-  let r : u32 = tint_extract_bits(1234u, 5u, 6u);
+  let v = 1234u;
+  let r : u32 = tint_extract_bits(v, 5u, 6u);
 }
 )";
 
@@ -714,7 +1019,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, ExtractBits_Full_vec3_i32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<i32> = extractBits(vec3<i32>(1234), 5u, 6u);
+  let v = 1234i;
+  let r : vec3<i32> = extractBits(vec3<i32>(v), 5u, 6u);
 }
 )";
 
@@ -728,7 +1034,8 @@ fn tint_extract_bits(v : vec3<i32>, offset : u32, count : u32) -> vec3<i32> {
 }
 
 fn f() {
-  let r : vec3<i32> = tint_extract_bits(vec3<i32>(1234), 5u, 6u);
+  let v = 1234i;
+  let r : vec3<i32> = tint_extract_bits(vec3<i32>(v), 5u, 6u);
 }
 )";
 
@@ -740,7 +1047,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, ExtractBits_Full_vec3_u32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<u32> = extractBits(vec3<u32>(1234u), 5u, 6u);
+  let v = 1234u;
+  let r : vec3<u32> = extractBits(vec3<u32>(v), 5u, 6u);
 }
 )";
 
@@ -754,7 +1062,8 @@ fn tint_extract_bits(v : vec3<u32>, offset : u32, count : u32) -> vec3<u32> {
 }
 
 fn f() {
-  let r : vec3<u32> = tint_extract_bits(vec3<u32>(1234u), 5u, 6u);
+  let v = 1234u;
+  let r : vec3<u32> = tint_extract_bits(vec3<u32>(v), 5u, 6u);
 }
 )";
 
@@ -766,7 +1075,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, ExtractBits_Clamp_i32) {
     auto* src = R"(
 fn f() {
-  let r : i32 = extractBits(1234, 5u, 6u);
+  let v = 1234i;
+  let r : i32 = extractBits(v, 5u, 6u);
 }
 )";
 
@@ -778,7 +1088,8 @@ fn tint_extract_bits(v : i32, offset : u32, count : u32) -> i32 {
 }
 
 fn f() {
-  let r : i32 = tint_extract_bits(1234, 5u, 6u);
+  let v = 1234i;
+  let r : i32 = tint_extract_bits(v, 5u, 6u);
 }
 )";
 
@@ -790,7 +1101,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, ExtractBits_Clamp_u32) {
     auto* src = R"(
 fn f() {
-  let r : u32 = extractBits(1234u, 5u, 6u);
+  let v = 1234u;
+  let r : u32 = extractBits(v, 5u, 6u);
 }
 )";
 
@@ -802,7 +1114,8 @@ fn tint_extract_bits(v : u32, offset : u32, count : u32) -> u32 {
 }
 
 fn f() {
-  let r : u32 = tint_extract_bits(1234u, 5u, 6u);
+  let v = 1234u;
+  let r : u32 = tint_extract_bits(v, 5u, 6u);
 }
 )";
 
@@ -814,7 +1127,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, ExtractBits_Clamp_vec3_i32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<i32> = extractBits(vec3<i32>(1234), 5u, 6u);
+  let v = 1234i;
+  let r : vec3<i32> = extractBits(vec3<i32>(v), 5u, 6u);
 }
 )";
 
@@ -826,7 +1140,8 @@ fn tint_extract_bits(v : vec3<i32>, offset : u32, count : u32) -> vec3<i32> {
 }
 
 fn f() {
-  let r : vec3<i32> = tint_extract_bits(vec3<i32>(1234), 5u, 6u);
+  let v = 1234i;
+  let r : vec3<i32> = tint_extract_bits(vec3<i32>(v), 5u, 6u);
 }
 )";
 
@@ -838,7 +1153,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, ExtractBits_Clamp_vec3_u32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<u32> = extractBits(vec3<u32>(1234u), 5u, 6u);
+  let v = 1234u;
+  let r : vec3<u32> = extractBits(vec3<u32>(v), 5u, 6u);
 }
 )";
 
@@ -850,7 +1166,8 @@ fn tint_extract_bits(v : vec3<u32>, offset : u32, count : u32) -> vec3<u32> {
 }
 
 fn f() {
-  let r : vec3<u32> = tint_extract_bits(vec3<u32>(1234u), 5u, 6u);
+  let v = 1234u;
+  let r : vec3<u32> = tint_extract_bits(vec3<u32>(v), 5u, 6u);
 }
 )";
 
@@ -873,7 +1190,8 @@ DataMap polyfillFirstLeadingBit() {
 TEST_F(BuiltinPolyfillTest, ShouldRunFirstLeadingBit) {
     auto* src = R"(
 fn f() {
-  firstLeadingBit(0xf);
+  let v = 15i;
+  firstLeadingBit(v);
 }
 )";
 
@@ -881,10 +1199,26 @@ fn f() {
     EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillFirstLeadingBit()));
 }
 
+// TODO(crbug.com/tint/1581): Enable once `firstLeadingBit` is implemented as @const
+TEST_F(BuiltinPolyfillTest, DISABLED_FirstLeadingBit_ConstantExpression) {
+    auto* src = R"(
+fn f() {
+  let r : i32 = firstLeadingBit(15i);
+}
+)";
+
+    auto* expect = src;
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillFirstLeadingBit());
+
+    EXPECT_EQ(expect, str(got));
+}
+
 TEST_F(BuiltinPolyfillTest, FirstLeadingBit_i32) {
     auto* src = R"(
 fn f() {
-  let r : i32 = firstLeadingBit(15);
+  let v = 15i;
+  let r : i32 = firstLeadingBit(v);
 }
 )";
 
@@ -905,7 +1239,8 @@ fn tint_first_leading_bit(v : i32) -> i32 {
 }
 
 fn f() {
-  let r : i32 = tint_first_leading_bit(15);
+  let v = 15i;
+  let r : i32 = tint_first_leading_bit(v);
 }
 )";
 
@@ -917,7 +1252,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, FirstLeadingBit_u32) {
     auto* src = R"(
 fn f() {
-  let r : u32 = firstLeadingBit(15u);
+  let v = 15u;
+  let r : u32 = firstLeadingBit(v);
 }
 )";
 
@@ -938,7 +1274,8 @@ fn tint_first_leading_bit(v : u32) -> u32 {
 }
 
 fn f() {
-  let r : u32 = tint_first_leading_bit(15u);
+  let v = 15u;
+  let r : u32 = tint_first_leading_bit(v);
 }
 )";
 
@@ -950,7 +1287,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, FirstLeadingBit_vec3_i32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<i32> = firstLeadingBit(vec3<i32>(15));
+  let v = 15i;
+  let r : vec3<i32> = firstLeadingBit(vec3<i32>(v));
 }
 )";
 
@@ -971,7 +1309,8 @@ fn tint_first_leading_bit(v : vec3<i32>) -> vec3<i32> {
 }
 
 fn f() {
-  let r : vec3<i32> = tint_first_leading_bit(vec3<i32>(15));
+  let v = 15i;
+  let r : vec3<i32> = tint_first_leading_bit(vec3<i32>(v));
 }
 )";
 
@@ -983,7 +1322,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, FirstLeadingBit_vec3_u32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<u32> = firstLeadingBit(vec3<u32>(15u));
+  let v = 15u;
+  let r : vec3<u32> = firstLeadingBit(vec3<u32>(v));
 }
 )";
 
@@ -1004,7 +1344,8 @@ fn tint_first_leading_bit(v : vec3<u32>) -> vec3<u32> {
 }
 
 fn f() {
-  let r : vec3<u32> = tint_first_leading_bit(vec3<u32>(15u));
+  let v = 15u;
+  let r : vec3<u32> = tint_first_leading_bit(vec3<u32>(v));
 }
 )";
 
@@ -1027,7 +1368,8 @@ DataMap polyfillFirstTrailingBit() {
 TEST_F(BuiltinPolyfillTest, ShouldRunFirstTrailingBit) {
     auto* src = R"(
 fn f() {
-  firstTrailingBit(0xf);
+  let v = 15i;
+  firstTrailingBit(v);
 }
 )";
 
@@ -1035,10 +1377,26 @@ fn f() {
     EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillFirstTrailingBit()));
 }
 
+// TODO(crbug.com/tint/1581): Enable once `firstTrailingBit` is implemented as @const
+TEST_F(BuiltinPolyfillTest, DISABLED_FirstTrailingBit_ConstantExpression) {
+    auto* src = R"(
+fn f() {
+  let r : i32 = firstTrailingBit(15i);
+}
+)";
+
+    auto* expect = src;
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillFirstTrailingBit());
+
+    EXPECT_EQ(expect, str(got));
+}
+
 TEST_F(BuiltinPolyfillTest, FirstTrailingBit_i32) {
     auto* src = R"(
 fn f() {
-  let r : i32 = firstTrailingBit(15);
+  let v = 15i;
+  let r : i32 = firstTrailingBit(v);
 }
 )";
 
@@ -1059,7 +1417,8 @@ fn tint_first_trailing_bit(v : i32) -> i32 {
 }
 
 fn f() {
-  let r : i32 = tint_first_trailing_bit(15);
+  let v = 15i;
+  let r : i32 = tint_first_trailing_bit(v);
 }
 )";
 
@@ -1071,7 +1430,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, FirstTrailingBit_u32) {
     auto* src = R"(
 fn f() {
-  let r : u32 = firstTrailingBit(15u);
+  let v = 15u;
+  let r : u32 = firstTrailingBit(v);
 }
 )";
 
@@ -1092,7 +1452,8 @@ fn tint_first_trailing_bit(v : u32) -> u32 {
 }
 
 fn f() {
-  let r : u32 = tint_first_trailing_bit(15u);
+  let v = 15u;
+  let r : u32 = tint_first_trailing_bit(v);
 }
 )";
 
@@ -1104,7 +1465,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, FirstTrailingBit_vec3_i32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<i32> = firstTrailingBit(vec3<i32>(15));
+  let v = 15i;
+  let r : vec3<i32> = firstTrailingBit(vec3<i32>(v));
 }
 )";
 
@@ -1125,7 +1487,8 @@ fn tint_first_trailing_bit(v : vec3<i32>) -> vec3<i32> {
 }
 
 fn f() {
-  let r : vec3<i32> = tint_first_trailing_bit(vec3<i32>(15));
+  let v = 15i;
+  let r : vec3<i32> = tint_first_trailing_bit(vec3<i32>(v));
 }
 )";
 
@@ -1137,7 +1500,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, FirstTrailingBit_vec3_u32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<u32> = firstTrailingBit(vec3<u32>(15u));
+  let v = 15u;
+  let r : vec3<u32> = firstTrailingBit(vec3<u32>(v));
 }
 )";
 
@@ -1158,7 +1522,8 @@ fn tint_first_trailing_bit(v : vec3<u32>) -> vec3<u32> {
 }
 
 fn f() {
-  let r : vec3<u32> = tint_first_trailing_bit(vec3<u32>(15u));
+  let v = 15u;
+  let r : vec3<u32> = tint_first_trailing_bit(vec3<u32>(v));
 }
 )";
 
@@ -1181,7 +1546,8 @@ DataMap polyfillInsertBits(Level level) {
 TEST_F(BuiltinPolyfillTest, ShouldRunInsertBits) {
     auto* src = R"(
 fn f() {
-  insertBits(1234, 5678, 5u, 6u);
+  let v = 1234i;
+  insertBits(v, 5678, 5u, 6u);
 }
 )";
 
@@ -1191,10 +1557,26 @@ fn f() {
     EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillInsertBits(Level::kFull)));
 }
 
-TEST_F(BuiltinPolyfillTest, InsertBits_Full_i32) {
+// TODO(crbug.com/tint/1581): Enable once `insertBits` is implemented as @const
+TEST_F(BuiltinPolyfillTest, DISABLED_InsertBits_ConstantExpression) {
     auto* src = R"(
 fn f() {
   let r : i32 = insertBits(1234, 5678, 5u, 6u);
+}
+)";
+
+    auto* expect = src;
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillInsertBits(Level::kFull));
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, InsertBits_Full_i32) {
+    auto* src = R"(
+fn f() {
+  let v = 1234i;
+  let r : i32 = insertBits(v, 5678, 5u, 6u);
 }
 )";
 
@@ -1207,7 +1589,8 @@ fn tint_insert_bits(v : i32, n : i32, offset : u32, count : u32) -> i32 {
 }
 
 fn f() {
-  let r : i32 = tint_insert_bits(1234, 5678, 5u, 6u);
+  let v = 1234i;
+  let r : i32 = tint_insert_bits(v, 5678, 5u, 6u);
 }
 )";
 
@@ -1219,7 +1602,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, InsertBits_Full_u32) {
     auto* src = R"(
 fn f() {
-  let r : u32 = insertBits(1234u, 5678u, 5u, 6u);
+  let v = 1234u;
+  let r : u32 = insertBits(v, 5678u, 5u, 6u);
 }
 )";
 
@@ -1232,7 +1616,8 @@ fn tint_insert_bits(v : u32, n : u32, offset : u32, count : u32) -> u32 {
 }
 
 fn f() {
-  let r : u32 = tint_insert_bits(1234u, 5678u, 5u, 6u);
+  let v = 1234u;
+  let r : u32 = tint_insert_bits(v, 5678u, 5u, 6u);
 }
 )";
 
@@ -1244,7 +1629,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, InsertBits_Full_vec3_i32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<i32> = insertBits(vec3<i32>(1234), vec3<i32>(5678), 5u, 6u);
+  let v = 1234i;
+  let r : vec3<i32> = insertBits(vec3<i32>(v), vec3<i32>(5678), 5u, 6u);
 }
 )";
 
@@ -1257,7 +1643,8 @@ fn tint_insert_bits(v : vec3<i32>, n : vec3<i32>, offset : u32, count : u32) -> 
 }
 
 fn f() {
-  let r : vec3<i32> = tint_insert_bits(vec3<i32>(1234), vec3<i32>(5678), 5u, 6u);
+  let v = 1234i;
+  let r : vec3<i32> = tint_insert_bits(vec3<i32>(v), vec3<i32>(5678), 5u, 6u);
 }
 )";
 
@@ -1269,7 +1656,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, InsertBits_Full_vec3_u32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<u32> = insertBits(vec3<u32>(1234u), vec3<u32>(5678u), 5u, 6u);
+  let v = 1234u;
+  let r : vec3<u32> = insertBits(vec3<u32>(v), vec3<u32>(5678u), 5u, 6u);
 }
 )";
 
@@ -1282,7 +1670,8 @@ fn tint_insert_bits(v : vec3<u32>, n : vec3<u32>, offset : u32, count : u32) -> 
 }
 
 fn f() {
-  let r : vec3<u32> = tint_insert_bits(vec3<u32>(1234u), vec3<u32>(5678u), 5u, 6u);
+  let v = 1234u;
+  let r : vec3<u32> = tint_insert_bits(vec3<u32>(v), vec3<u32>(5678u), 5u, 6u);
 }
 )";
 
@@ -1294,7 +1683,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, InsertBits_Clamp_i32) {
     auto* src = R"(
 fn f() {
-  let r : i32 = insertBits(1234, 5678, 5u, 6u);
+  let v = 1234i;
+  let r : i32 = insertBits(v, 5678, 5u, 6u);
 }
 )";
 
@@ -1306,7 +1696,8 @@ fn tint_insert_bits(v : i32, n : i32, offset : u32, count : u32) -> i32 {
 }
 
 fn f() {
-  let r : i32 = tint_insert_bits(1234, 5678, 5u, 6u);
+  let v = 1234i;
+  let r : i32 = tint_insert_bits(v, 5678, 5u, 6u);
 }
 )";
 
@@ -1318,7 +1709,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, InsertBits_Clamp_u32) {
     auto* src = R"(
 fn f() {
-  let r : u32 = insertBits(1234u, 5678u, 5u, 6u);
+  let v = 1234u;
+  let r : u32 = insertBits(v, 5678u, 5u, 6u);
 }
 )";
 
@@ -1330,7 +1722,8 @@ fn tint_insert_bits(v : u32, n : u32, offset : u32, count : u32) -> u32 {
 }
 
 fn f() {
-  let r : u32 = tint_insert_bits(1234u, 5678u, 5u, 6u);
+  let v = 1234u;
+  let r : u32 = tint_insert_bits(v, 5678u, 5u, 6u);
 }
 )";
 
@@ -1342,7 +1735,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, InsertBits_Clamp_vec3_i32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<i32> = insertBits(vec3<i32>(1234), vec3<i32>(5678), 5u, 6u);
+  let v = 1234i;
+  let r : vec3<i32> = insertBits(vec3<i32>(v), vec3<i32>(5678), 5u, 6u);
 }
 )";
 
@@ -1354,7 +1748,8 @@ fn tint_insert_bits(v : vec3<i32>, n : vec3<i32>, offset : u32, count : u32) -> 
 }
 
 fn f() {
-  let r : vec3<i32> = tint_insert_bits(vec3<i32>(1234), vec3<i32>(5678), 5u, 6u);
+  let v = 1234i;
+  let r : vec3<i32> = tint_insert_bits(vec3<i32>(v), vec3<i32>(5678), 5u, 6u);
 }
 )";
 
@@ -1366,7 +1761,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, InsertBits_Clamp_vec3_u32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<u32> = insertBits(vec3<u32>(1234u), vec3<u32>(5678u), 5u, 6u);
+  let v = 1234u;
+  let r : vec3<u32> = insertBits(vec3<u32>(v), vec3<u32>(5678u), 5u, 6u);
 }
 )";
 
@@ -1378,7 +1774,8 @@ fn tint_insert_bits(v : vec3<u32>, n : vec3<u32>, offset : u32, count : u32) -> 
 }
 
 fn f() {
-  let r : vec3<u32> = tint_insert_bits(vec3<u32>(1234u), vec3<u32>(5678u), 5u, 6u);
+  let v = 1234u;
+  let r : vec3<u32> = tint_insert_bits(vec3<u32>(v), vec3<u32>(5678u), 5u, 6u);
 }
 )";
 
@@ -1401,7 +1798,8 @@ DataMap polyfillSaturate() {
 TEST_F(BuiltinPolyfillTest, ShouldRunSaturate) {
     auto* src = R"(
 fn f() {
-  saturate(0.5);
+  let v = 0.5f;
+  saturate(v);
 }
 )";
 
@@ -1409,42 +1807,36 @@ fn f() {
     EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillSaturate()));
 }
 
-TEST_F(BuiltinPolyfillTest, Saturate_f32) {
-    auto* src = R"(
-fn f() {
-  let r : f32 = saturate(0.5f);
-}
-)";
-
-    auto* expect = R"(
-fn tint_saturate(v : f32) -> f32 {
-  return clamp(v, f32(0), f32(1));
-}
-
-fn f() {
-  let r : f32 = tint_saturate(0.5f);
-}
-)";
-
-    auto got = Run<BuiltinPolyfill>(src, polyfillSaturate());
-
-    EXPECT_EQ(expect, str(got));
-}
-
-TEST_F(BuiltinPolyfillTest, Saturate_f32_from_abstract_float) {
+TEST_F(BuiltinPolyfillTest, Saturate_ConstantExpression) {
     auto* src = R"(
 fn f() {
   let r : f32 = saturate(0.5);
 }
 )";
 
+    auto* expect = src;
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillSaturate());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, Saturate_f32) {
+    auto* src = R"(
+fn f() {
+  let v = 0.5f;
+  let r : f32 = saturate(v);
+}
+)";
+
     auto* expect = R"(
 fn tint_saturate(v : f32) -> f32 {
   return clamp(v, f32(0), f32(1));
 }
 
 fn f() {
-  let r : f32 = tint_saturate(0.5);
+  let v = 0.5f;
+  let r : f32 = tint_saturate(v);
 }
 )";
 
@@ -1458,7 +1850,8 @@ TEST_F(BuiltinPolyfillTest, Saturate_f16) {
 enable f16;
 
 fn f() {
-  let r : f16 = saturate(0.5h);
+  let v = 0.5h;
+  let r : f16 = saturate(v);
 }
 )";
 
@@ -1470,7 +1863,8 @@ fn tint_saturate(v : f16) -> f16 {
 }
 
 fn f() {
-  let r : f16 = tint_saturate(0.5h);
+  let v = 0.5h;
+  let r : f16 = tint_saturate(v);
 }
 )";
 
@@ -1482,7 +1876,8 @@ fn f() {
 TEST_F(BuiltinPolyfillTest, Saturate_vec3_f32) {
     auto* src = R"(
 fn f() {
-  let r : vec3<f32> = saturate(vec3<f32>(0.5f));
+  let v = 0.5f;
+  let r : vec3<f32> = saturate(vec3<f32>(v));
 }
 )";
 
@@ -1492,29 +1887,8 @@ fn tint_saturate(v : vec3<f32>) -> vec3<f32> {
 }
 
 fn f() {
-  let r : vec3<f32> = tint_saturate(vec3<f32>(0.5f));
-}
-)";
-
-    auto got = Run<BuiltinPolyfill>(src, polyfillSaturate());
-
-    EXPECT_EQ(expect, str(got));
-}
-
-TEST_F(BuiltinPolyfillTest, Saturate_vec3_f32_from_abstract_float) {
-    auto* src = R"(
-fn f() {
-  let r : vec3<f32> = saturate(vec3(0.5));
-}
-)";
-
-    auto* expect = R"(
-fn tint_saturate(v : vec3<f32>) -> vec3<f32> {
-  return clamp(v, vec3<f32>(0), vec3<f32>(1));
-}
-
-fn f() {
-  let r : vec3<f32> = tint_saturate(vec3(0.5));
+  let v = 0.5f;
+  let r : vec3<f32> = tint_saturate(vec3<f32>(v));
 }
 )";
 
@@ -1528,7 +1902,8 @@ TEST_F(BuiltinPolyfillTest, Saturate_vec3_f16) {
 enable f16;
 
 fn f() {
-  let r : vec3<f16> = saturate(vec3<f16>(0.5h));
+  let v = 0.5h;
+  let r : vec3<f16> = saturate(vec3<f16>(v));
 }
 )";
 
@@ -1540,7 +1915,8 @@ fn tint_saturate(v : vec3<f16>) -> vec3<f16> {
 }
 
 fn f() {
-  let r : vec3<f16> = tint_saturate(vec3<f16>(0.5h));
+  let v = 0.5h;
+  let r : vec3<f16> = tint_saturate(vec3<f16>(v));
 }
 )";
 

@@ -54,7 +54,17 @@ T First(T&& first, ...) {
 }
 
 /// Helper that calls `f` passing in the value of all `cs`.
-/// Assumes all `cs` are of the same type.
+/// Calls `f` with all constants cast to the type of the first `cs` argument.
+template <typename F, typename... CONSTANTS>
+auto Dispatch_iu32(F&& f, CONSTANTS&&... cs) {
+    return Switch(
+        First(cs...)->Type(),  //
+        [&](const sem::I32*) { return f(cs->template As<i32>()...); },
+        [&](const sem::U32*) { return f(cs->template As<u32>()...); });
+}
+
+/// Helper that calls `f` passing in the value of all `cs`.
+/// Calls `f` with all constants cast to the type of the first `cs` argument.
 template <typename F, typename... CONSTANTS>
 auto Dispatch_ia_iu32(F&& f, CONSTANTS&&... cs) {
     return Switch(
@@ -65,7 +75,7 @@ auto Dispatch_ia_iu32(F&& f, CONSTANTS&&... cs) {
 }
 
 /// Helper that calls `f` passing in the value of all `cs`.
-/// Assumes all `cs` are of the same type.
+/// Calls `f` with all constants cast to the type of the first `cs` argument.
 template <typename F, typename... CONSTANTS>
 auto Dispatch_ia_iu32_bool(F&& f, CONSTANTS&&... cs) {
     return Switch(
@@ -77,7 +87,7 @@ auto Dispatch_ia_iu32_bool(F&& f, CONSTANTS&&... cs) {
 }
 
 /// Helper that calls `f` passing in the value of all `cs`.
-/// Assumes all `cs` are of the same type.
+/// Calls `f` with all constants cast to the type of the first `cs` argument.
 template <typename F, typename... CONSTANTS>
 auto Dispatch_fia_fi32_f16(F&& f, CONSTANTS&&... cs) {
     return Switch(
@@ -90,7 +100,7 @@ auto Dispatch_fia_fi32_f16(F&& f, CONSTANTS&&... cs) {
 }
 
 /// Helper that calls `f` passing in the value of all `cs`.
-/// Assumes all `cs` are of the same type.
+/// Calls `f` with all constants cast to the type of the first `cs` argument.
 template <typename F, typename... CONSTANTS>
 auto Dispatch_fia_fiu32_f16(F&& f, CONSTANTS&&... cs) {
     return Switch(
@@ -104,7 +114,7 @@ auto Dispatch_fia_fiu32_f16(F&& f, CONSTANTS&&... cs) {
 }
 
 /// Helper that calls `f` passing in the value of all `cs`.
-/// Assumes all `cs` are of the same type.
+/// Calls `f` with all constants cast to the type of the first `cs` argument.
 template <typename F, typename... CONSTANTS>
 auto Dispatch_fia_fiu32_f16_bool(F&& f, CONSTANTS&&... cs) {
     return Switch(
@@ -119,7 +129,7 @@ auto Dispatch_fia_fiu32_f16_bool(F&& f, CONSTANTS&&... cs) {
 }
 
 /// Helper that calls `f` passing in the value of all `cs`.
-/// Assumes all `cs` are of the same type.
+/// Calls `f` with all constants cast to the type of the first `cs` argument.
 template <typename F, typename... CONSTANTS>
 auto Dispatch_fa_f32_f16(F&& f, CONSTANTS&&... cs) {
     return Switch(
@@ -130,7 +140,7 @@ auto Dispatch_fa_f32_f16(F&& f, CONSTANTS&&... cs) {
 }
 
 /// Helper that calls `f` passing in the value of all `cs`.
-/// Assumes all `cs` are of the same type.
+/// Calls `f` with all constants cast to the type of the first `cs` argument.
 template <typename F, typename... CONSTANTS>
 auto Dispatch_bool(F&& f, CONSTANTS&&... cs) {
     return f(cs->template As<bool>()...);
@@ -180,6 +190,40 @@ std::string OverflowErrorMessage(NumberT lhs, const char* op, NumberT rhs) {
     ss << "'" << lhs.value << " " << op << " " << rhs.value << "' cannot be represented as '"
        << FriendlyName<NumberT>() << "'";
     return ss.str();
+}
+
+/// @returns the number of consecutive leading bits in `@p e` set to `@p bit_value_to_count`.
+template <typename T>
+auto CountLeadingBits(T e, T bit_value_to_count) -> std::make_unsigned_t<T> {
+    using UT = std::make_unsigned_t<T>;
+    constexpr UT kNumBits = sizeof(UT) * 8;
+    constexpr UT kLeftMost = UT{1} << (kNumBits - 1);
+    const UT b = bit_value_to_count == 0 ? UT{0} : kLeftMost;
+
+    auto v = static_cast<UT>(e);
+    auto count = UT{0};
+    while ((count < kNumBits) && ((v & kLeftMost) == b)) {
+        ++count;
+        v <<= 1;
+    }
+    return count;
+}
+
+/// @returns the number of consecutive trailing bits set to `@p bit_value_to_count` in `@p e`
+template <typename T>
+auto CountTrailingBits(T e, T bit_value_to_count) -> std::make_unsigned_t<T> {
+    using UT = std::make_unsigned_t<T>;
+    constexpr UT kNumBits = sizeof(UT) * 8;
+    constexpr UT kRightMost = UT{1};
+    const UT b = static_cast<UT>(bit_value_to_count);
+
+    auto v = static_cast<UT>(e);
+    auto count = UT{0};
+    while ((count < kNumBits) && ((v & kRightMost) == b)) {
+        ++count;
+        v >>= 1;
+    }
+    return count;
 }
 
 /// ImplConstant inherits from sem::Constant to add an private implementation method for conversion.
@@ -1450,13 +1494,6 @@ ConstEval::Result ConstEval::OpShiftLeft(const sem::Type* ty,
             UT e2u = static_cast<UT>(e2);
 
             if constexpr (IsAbstract<NumberT>) {
-                // NOTE: Concrete shift left requires an unsigned rhs, so this check only applies
-                // for abstracts.
-                if (e2 < 0) {
-                    AddError("cannot shift left by a negative value", source);
-                    return nullptr;
-                }
-
                 // The e2 + 1 most significant bits of e1 must have the same bit value, otherwise
                 // sign change (overflow) would occur.
                 // Check sign change only if e2 is less than bit width of e1. If e1 is larger
@@ -1520,11 +1557,87 @@ ConstEval::Result ConstEval::OpShiftLeft(const sem::Type* ty,
         return Dispatch_ia_iu32(create, c0, c1);
     };
 
+    if (!sem::Type::DeepestElementOf(args[1]->Type())->Is<sem::U32>()) {
+        TINT_ICE(Resolver, builder.Diagnostics())
+            << "Element type of rhs of ShiftLeft must be a u32";
+        return nullptr;
+    }
+
     auto r = TransformElements(builder, ty, transform, args[0], args[1]);
     if (builder.Diagnostics().contains_errors()) {
         return utils::Failure;
     }
     return r;
+}
+
+ConstEval::Result ConstEval::any(const sem::Type* ty,
+                                 utils::VectorRef<const sem::Constant*> args,
+                                 const Source&) {
+    return CreateElement(builder, ty, !args[0]->AllZero());
+}
+
+ConstEval::Result ConstEval::asin(const sem::Type* ty,
+                                  utils::VectorRef<const sem::Constant*> args,
+                                  const Source& source) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto i) -> ImplResult {
+            using NumberT = decltype(i);
+            if (i.value < NumberT(-1.0) || i.value > NumberT(1.0)) {
+                AddError("asin must be called with a value in the range [-1, 1]", source);
+                return utils::Failure;
+            }
+            return CreateElement(builder, c0->Type(), decltype(i)(std::asin(i.value)));
+        };
+        return Dispatch_fa_f32_f16(create, c0);
+    };
+    return TransformElements(builder, ty, transform, args[0]);
+}
+
+ConstEval::Result ConstEval::asinh(const sem::Type* ty,
+                                   utils::VectorRef<const sem::Constant*> args,
+                                   const Source&) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto i) {
+            return CreateElement(builder, c0->Type(), decltype(i)(std::asinh(i.value)));
+        };
+        return Dispatch_fa_f32_f16(create, c0);
+    };
+
+    auto r = TransformElements(builder, ty, transform, args[0]);
+    if (builder.Diagnostics().contains_errors()) {
+        return utils::Failure;
+    }
+    return r;
+}
+
+ConstEval::Result ConstEval::atan(const sem::Type* ty,
+                                  utils::VectorRef<const sem::Constant*> args,
+                                  const Source&) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto i) {
+            return CreateElement(builder, c0->Type(), decltype(i)(std::atan(i.value)));
+        };
+        return Dispatch_fa_f32_f16(create, c0);
+    };
+    return TransformElements(builder, ty, transform, args[0]);
+}
+
+ConstEval::Result ConstEval::atanh(const sem::Type* ty,
+                                   utils::VectorRef<const sem::Constant*> args,
+                                   const Source& source) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto i) -> ImplResult {
+            using NumberT = decltype(i);
+            if (i.value <= NumberT(-1.0) || i.value >= NumberT(1.0)) {
+                AddError("atanh must be called with a value in the range (-1, 1)", source);
+                return utils::Failure;
+            }
+            return CreateElement(builder, c0->Type(), decltype(i)(std::atanh(i.value)));
+        };
+        return Dispatch_fa_f32_f16(create, c0);
+    };
+
+    return TransformElements(builder, ty, transform, args[0]);
 }
 
 ConstEval::Result ConstEval::atan2(const sem::Type* ty,
@@ -1553,6 +1666,144 @@ ConstEval::Result ConstEval::clamp(const sem::Type* ty,
     return TransformElements(builder, ty, transform, args[0], args[1], args[2]);
 }
 
+ConstEval::Result ConstEval::countLeadingZeros(const sem::Type* ty,
+                                               utils::VectorRef<const sem::Constant*> args,
+                                               const Source&) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto e) {
+            using NumberT = decltype(e);
+            using T = UnwrapNumber<NumberT>;
+            auto count = CountLeadingBits(T{e}, T{0});
+            return CreateElement(builder, c0->Type(), NumberT(count));
+        };
+        return Dispatch_iu32(create, c0);
+    };
+    return TransformElements(builder, ty, transform, args[0]);
+}
+
+ConstEval::Result ConstEval::countOneBits(const sem::Type* ty,
+                                          utils::VectorRef<const sem::Constant*> args,
+                                          const Source&) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto e) {
+            using NumberT = decltype(e);
+            using T = UnwrapNumber<NumberT>;
+            using UT = std::make_unsigned_t<T>;
+            constexpr UT kRightMost = UT{1};
+
+            auto count = UT{0};
+            for (auto v = static_cast<UT>(e); v != UT{0}; v >>= 1) {
+                if ((v & kRightMost) == 1) {
+                    ++count;
+                }
+            }
+
+            return CreateElement(builder, c0->Type(), NumberT(count));
+        };
+        return Dispatch_iu32(create, c0);
+    };
+    return TransformElements(builder, ty, transform, args[0]);
+}
+
+ConstEval::Result ConstEval::countTrailingZeros(const sem::Type* ty,
+                                                utils::VectorRef<const sem::Constant*> args,
+                                                const Source&) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto e) {
+            using NumberT = decltype(e);
+            using T = UnwrapNumber<NumberT>;
+            auto count = CountTrailingBits(T{e}, T{0});
+            return CreateElement(builder, c0->Type(), NumberT(count));
+        };
+        return Dispatch_iu32(create, c0);
+    };
+    return TransformElements(builder, ty, transform, args[0]);
+}
+
+ConstEval::Result ConstEval::firstLeadingBit(const sem::Type* ty,
+                                             utils::VectorRef<const sem::Constant*> args,
+                                             const Source&) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto e) {
+            using NumberT = decltype(e);
+            using T = UnwrapNumber<NumberT>;
+            using UT = std::make_unsigned_t<T>;
+            constexpr UT kNumBits = sizeof(UT) * 8;
+
+            NumberT result;
+            if constexpr (IsUnsignedIntegral<T>) {
+                if (e == T{0}) {
+                    // T(-1) if e is zero.
+                    result = NumberT(static_cast<T>(-1));
+                } else {
+                    // Otherwise the position of the most significant 1 bit in e.
+                    static_assert(std::is_same_v<T, UT>);
+                    UT count = CountLeadingBits(UT{e}, UT{0});
+                    UT pos = kNumBits - count - 1;
+                    result = NumberT(pos);
+                }
+            } else {
+                if (e == T{0} || e == T{-1}) {
+                    // -1 if e is 0 or -1.
+                    result = NumberT(-1);
+                } else {
+                    // Otherwise the position of the most significant bit in e that is different
+                    // from e's sign bit.
+                    UT eu = static_cast<UT>(e);
+                    UT sign_bit = eu >> (kNumBits - 1);
+                    UT count = CountLeadingBits(eu, sign_bit);
+                    UT pos = kNumBits - count - 1;
+                    result = NumberT(pos);
+                }
+            }
+
+            return CreateElement(builder, c0->Type(), result);
+        };
+        return Dispatch_iu32(create, c0);
+    };
+    return TransformElements(builder, ty, transform, args[0]);
+}
+
+ConstEval::Result ConstEval::firstTrailingBit(const sem::Type* ty,
+                                              utils::VectorRef<const sem::Constant*> args,
+                                              const Source&) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto e) {
+            using NumberT = decltype(e);
+            using T = UnwrapNumber<NumberT>;
+            using UT = std::make_unsigned_t<T>;
+
+            NumberT result;
+            if (e == T{0}) {
+                // T(-1) if e is zero.
+                result = NumberT(static_cast<T>(-1));
+            } else {
+                // Otherwise the position of the least significant 1 bit in e.
+                UT pos = CountTrailingBits(T{e}, T{0});
+                result = NumberT(pos);
+            }
+
+            return CreateElement(builder, c0->Type(), result);
+        };
+        return Dispatch_iu32(create, c0);
+    };
+    return TransformElements(builder, ty, transform, args[0]);
+}
+
+ConstEval::Result ConstEval::saturate(const sem::Type* ty,
+                                      utils::VectorRef<const sem::Constant*> args,
+                                      const Source&) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto e) {
+            using NumberT = decltype(e);
+            return CreateElement(builder, c0->Type(),
+                                 NumberT(std::min(std::max(e, NumberT(0.0)), NumberT(1.0))));
+        };
+        return Dispatch_fa_f32_f16(create, c0);
+    };
+    return TransformElements(builder, ty, transform, args[0]);
+}
+
 ConstEval::Result ConstEval::select_bool(const sem::Type* ty,
                                          utils::VectorRef<const sem::Constant*> args,
                                          const Source&) {
@@ -1579,6 +1830,42 @@ ConstEval::Result ConstEval::select_boolvec(const sem::Type* ty,
         return Dispatch_fia_fiu32_f16_bool(create, c0, c1);
     };
 
+    return TransformElements(builder, ty, transform, args[0], args[1]);
+}
+
+ConstEval::Result ConstEval::sign(const sem::Type* ty,
+                                  utils::VectorRef<const sem::Constant*> args,
+                                  const Source&) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto e) -> ImplResult {
+            using NumberT = decltype(e);
+            NumberT result;
+            NumberT zero{0.0};
+            if (e.value < zero) {
+                result = NumberT{-1.0};
+            } else if (e.value > zero) {
+                result = NumberT{1.0};
+            } else {
+                result = zero;
+            }
+            return CreateElement(builder, c0->Type(), result);
+        };
+        return Dispatch_fa_f32_f16(create, c0);
+    };
+    return TransformElements(builder, ty, transform, args[0]);
+}
+
+ConstEval::Result ConstEval::step(const sem::Type* ty,
+                                  utils::VectorRef<const sem::Constant*> args,
+                                  const Source&) {
+    auto transform = [&](const sem::Constant* c0, const sem::Constant* c1) {
+        auto create = [&](auto edge, auto x) -> ImplResult {
+            using NumberT = decltype(edge);
+            NumberT result = x.value < edge.value ? NumberT(0.0) : NumberT(1.0);
+            return CreateElement(builder, c0->Type(), result);
+        };
+        return Dispatch_fa_f32_f16(create, c0, c1);
+    };
     return TransformElements(builder, ty, transform, args[0], args[1]);
 }
 

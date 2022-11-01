@@ -137,6 +137,27 @@ struct BuiltinPolyfill::State {
         return name;
     }
 
+    /// Builds the polyfill function for the `clamp` builtin when called with integer arguments
+    /// (scalar or vector)
+    /// @param ty the parameter and return type for the function
+    /// @return the polyfill function name
+    Symbol clampInteger(const sem::Type* ty) {
+        auto name = b.Symbols().New("tint_clamp");
+
+        b.Func(name,
+               utils::Vector{
+                   b.Param("e", T(ty)),
+                   b.Param("low", T(ty)),
+                   b.Param("high", T(ty)),
+               },
+               T(ty),
+               utils::Vector{
+                   // return min(max(e, low), high);
+                   b.Return(b.Call("min", b.Call("max", "e", "low"), "high")),
+               });
+        return name;
+    }
+
     /// Builds the polyfill function for the `countLeadingZeros` builtin
     /// @param ty the parameter and return type for the function
     /// @return the polyfill function name
@@ -569,6 +590,9 @@ bool BuiltinPolyfill::ShouldRun(const Program* program, const DataMap& data) con
         for (auto* node : program->ASTNodes().Objects()) {
             if (auto* call = sem.Get<sem::Call>(node)) {
                 if (auto* builtin = call->Target()->As<sem::Builtin>()) {
+                    if (call->Stage() == sem::EvaluationStage::kConstant) {
+                        continue;  // Don't polyfill @const expressions
+                    }
                     switch (builtin->Type()) {
                         case sem::BuiltinType::kAcosh:
                             if (builtins.acosh != Level::kNone) {
@@ -583,6 +607,12 @@ bool BuiltinPolyfill::ShouldRun(const Program* program, const DataMap& data) con
                         case sem::BuiltinType::kAtanh:
                             if (builtins.atanh != Level::kNone) {
                                 return true;
+                            }
+                            break;
+                        case sem::BuiltinType::kClamp:
+                            if (builtins.clamp_int) {
+                                auto& sig = builtin->Signature();
+                                return sig.parameters[0]->Type()->is_integer_scalar_or_vector();
                             }
                             break;
                         case sem::BuiltinType::kCountLeadingZeros:
@@ -653,6 +683,9 @@ void BuiltinPolyfill::Run(CloneContext& ctx, const DataMap& data, DataMap&) cons
         State s{ctx, builtins};
         if (auto* call = s.sem.Get<sem::Call>(expr)) {
             if (auto* builtin = call->Target()->As<sem::Builtin>()) {
+                if (call->Stage() == sem::EvaluationStage::kConstant) {
+                    return nullptr;  // Don't polyfill @const expressions
+                }
                 Symbol polyfill;
                 switch (builtin->Type()) {
                     case sem::BuiltinType::kAcosh:
@@ -671,6 +704,16 @@ void BuiltinPolyfill::Run(CloneContext& ctx, const DataMap& data, DataMap&) cons
                         if (builtins.atanh != Level::kNone) {
                             polyfill = utils::GetOrCreate(
                                 polyfills, builtin, [&] { return s.atanh(builtin->ReturnType()); });
+                        }
+                        break;
+                    case sem::BuiltinType::kClamp:
+                        if (builtins.clamp_int) {
+                            auto& sig = builtin->Signature();
+                            if (sig.parameters[0]->Type()->is_integer_scalar_or_vector()) {
+                                polyfill = utils::GetOrCreate(polyfills, builtin, [&] {
+                                    return s.clampInteger(builtin->ReturnType());
+                                });
+                            }
                         }
                         break;
                     case sem::BuiltinType::kCountLeadingZeros:
