@@ -12,14 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/tint/ir/switch.h"
+#include "tint/tint.h"
 
-TINT_INSTANTIATE_TYPEINFO(tint::ir::Switch);
+namespace tint {
 
-namespace tint::ir {
+void Initialize() {
+#if TINT_BUILD_WGSL_WRITER
+    // Register the Program printer. This is used for debugging purposes.
+    tint::Program::printer = [](const tint::Program* program) {
+        auto result = writer::wgsl::Generate(program, {});
+        if (!result.error.empty()) {
+            return "error: " + result.error;
+        }
+        return result.wgsl;
+    };
+#endif
+}
 
-Switch::Switch(const ast::SwitchStatement* stmt) : Base(), source(stmt) {}
+void Shutdown() {
+    // Currently no-op, but may release tint resources in the future.
+}
 
-Switch::~Switch() = default;
-
-}  // namespace tint::ir
+}  // namespace tint

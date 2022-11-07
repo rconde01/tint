@@ -12,14 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/tint/ir/switch.h"
+#ifndef SRC_TINT_IR_DEBUG_H_
+#define SRC_TINT_IR_DEBUG_H_
 
-TINT_INSTANTIATE_TYPEINFO(tint::ir::Switch);
+#include <string>
+
+#include "src/tint/ir/module.h"
 
 namespace tint::ir {
 
-Switch::Switch(const ast::SwitchStatement* stmt) : Base(), source(stmt) {}
-
-Switch::~Switch() = default;
+/// Helper class to debug IR.
+class Debug {
+  public:
+    /// Returns the module as a dot graph
+    /// @param mod the module to emit
+    /// @returns the dot graph for the given module
+    static std::string AsDotGraph(const Module* mod);
+};
 
 }  // namespace tint::ir
+
+#endif  // SRC_TINT_IR_DEBUG_H_
