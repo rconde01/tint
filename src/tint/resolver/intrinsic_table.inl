@@ -13766,7 +13766,7 @@ constexpr OverloadInfo kOverloads[] = {
     /* parameters */ &kParameters[841],
     /* return matcher indices */ &kMatcherIndices[102],
     /* flags */ OverloadFlags(OverloadFlag::kIsBuiltin, OverloadFlag::kSupportsVertexPipeline, OverloadFlag::kSupportsFragmentPipeline, OverloadFlag::kSupportsComputePipeline),
-    /* const eval */ nullptr,
+    /* const eval */ &ConstEval::unpack4x8unorm,
   },
   {
     /* [453] */
@@ -13778,7 +13778,7 @@ constexpr OverloadInfo kOverloads[] = {
     /* parameters */ &kParameters[842],
     /* return matcher indices */ &kMatcherIndices[102],
     /* flags */ OverloadFlags(OverloadFlag::kIsBuiltin, OverloadFlag::kSupportsVertexPipeline, OverloadFlag::kSupportsFragmentPipeline, OverloadFlag::kSupportsComputePipeline),
-    /* const eval */ nullptr,
+    /* const eval */ &ConstEval::unpack4x8snorm,
   },
   {
     /* [454] */
@@ -13790,7 +13790,7 @@ constexpr OverloadInfo kOverloads[] = {
     /* parameters */ &kParameters[843],
     /* return matcher indices */ &kMatcherIndices[132],
     /* flags */ OverloadFlags(OverloadFlag::kIsBuiltin, OverloadFlag::kSupportsVertexPipeline, OverloadFlag::kSupportsFragmentPipeline, OverloadFlag::kSupportsComputePipeline),
-    /* const eval */ nullptr,
+    /* const eval */ &ConstEval::unpack2x16unorm,
   },
   {
     /* [455] */
@@ -13802,7 +13802,7 @@ constexpr OverloadInfo kOverloads[] = {
     /* parameters */ &kParameters[844],
     /* return matcher indices */ &kMatcherIndices[132],
     /* flags */ OverloadFlags(OverloadFlag::kIsBuiltin, OverloadFlag::kSupportsVertexPipeline, OverloadFlag::kSupportsFragmentPipeline, OverloadFlag::kSupportsComputePipeline),
-    /* const eval */ nullptr,
+    /* const eval */ &ConstEval::unpack2x16snorm,
   },
   {
     /* [456] */
@@ -13862,7 +13862,7 @@ constexpr OverloadInfo kOverloads[] = {
     /* parameters */ &kParameters[881],
     /* return matcher indices */ &kMatcherIndices[95],
     /* flags */ OverloadFlags(OverloadFlag::kIsBuiltin, OverloadFlag::kSupportsVertexPipeline, OverloadFlag::kSupportsFragmentPipeline, OverloadFlag::kSupportsComputePipeline),
-    /* const eval */ nullptr,
+    /* const eval */ &ConstEval::pack4x8unorm,
   },
   {
     /* [461] */
@@ -13874,7 +13874,7 @@ constexpr OverloadInfo kOverloads[] = {
     /* parameters */ &kParameters[882],
     /* return matcher indices */ &kMatcherIndices[95],
     /* flags */ OverloadFlags(OverloadFlag::kIsBuiltin, OverloadFlag::kSupportsVertexPipeline, OverloadFlag::kSupportsFragmentPipeline, OverloadFlag::kSupportsComputePipeline),
-    /* const eval */ nullptr,
+    /* const eval */ &ConstEval::pack4x8snorm,
   },
   {
     /* [462] */
@@ -13886,7 +13886,7 @@ constexpr OverloadInfo kOverloads[] = {
     /* parameters */ &kParameters[884],
     /* return matcher indices */ &kMatcherIndices[95],
     /* flags */ OverloadFlags(OverloadFlag::kIsBuiltin, OverloadFlag::kSupportsVertexPipeline, OverloadFlag::kSupportsFragmentPipeline, OverloadFlag::kSupportsComputePipeline),
-    /* const eval */ nullptr,
+    /* const eval */ &ConstEval::pack2x16snorm,
   },
   {
     /* [463] */
@@ -13917,12 +13917,12 @@ constexpr OverloadInfo kOverloads[] = {
     /* num parameters */ 2,
     /* num template types */ 1,
     /* num template numbers */ 0,
-    /* template types */ &kTemplateTypes[22],
+    /* template types */ &kTemplateTypes[23],
     /* template numbers */ &kTemplateNumbers[10],
     /* parameters */ &kParameters[777],
     /* return matcher indices */ &kMatcherIndices[104],
     /* flags */ OverloadFlags(OverloadFlag::kIsBuiltin, OverloadFlag::kSupportsVertexPipeline, OverloadFlag::kSupportsFragmentPipeline, OverloadFlag::kSupportsComputePipeline),
-    /* const eval */ nullptr,
+    /* const eval */ &ConstEval::cross,
   },
   {
     /* [466] */
@@ -14006,7 +14006,7 @@ constexpr OverloadInfo kOverloads[] = {
     /* parameters */ &kParameters[883],
     /* return matcher indices */ &kMatcherIndices[95],
     /* flags */ OverloadFlags(OverloadFlag::kIsBuiltin, OverloadFlag::kSupportsVertexPipeline, OverloadFlag::kSupportsFragmentPipeline, OverloadFlag::kSupportsComputePipeline),
-    /* const eval */ nullptr,
+    /* const eval */ &ConstEval::pack2x16unorm,
   },
 };
 
@@ -14020,8 +14020,8 @@ constexpr IntrinsicInfo kBuiltins[] = {
   },
   {
     /* [1] */
-    /* fn acos<T : fa_f32_f16>(@test_value(0.87758256189) T) -> T */
-    /* fn acos<N : num, T : fa_f32_f16>(@test_value(0.87758256189) vec<N, T>) -> vec<N, T> */
+    /* fn acos<T : fa_f32_f16>(@test_value(0.96891242171) T) -> T */
+    /* fn acos<N : num, T : fa_f32_f16>(@test_value(0.96891242171) vec<N, T>) -> vec<N, T> */
     /* num overloads */ 2,
     /* overloads */ &kOverloads[428],
   },
@@ -14138,7 +14138,7 @@ constexpr IntrinsicInfo kBuiltins[] = {
   },
   {
     /* [18] */
-    /* fn cross<T : f32_f16>(vec3<T>, vec3<T>) -> vec3<T> */
+    /* fn cross<T : fa_f32_f16>(vec3<T>, vec3<T>) -> vec3<T> */
     /* num overloads */ 1,
     /* overloads */ &kOverloads[465],
   },

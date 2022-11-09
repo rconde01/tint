@@ -752,6 +752,7 @@ if(${TINT_BUILD_SPV_READER} OR ${TINT_BUILD_SPV_WRITER})
   endif()
 endif()
 
+
 ################################################################################
 # Tests
 ################################################################################
@@ -1054,7 +1055,6 @@ if(TINT_BUILD_TESTS)
       reader/wgsl/parser_impl_multiplicative_expression_test.cc
       reader/wgsl/parser_impl_param_list_test.cc
       reader/wgsl/parser_impl_paren_expression_test.cc
-      reader/wgsl/parser_impl_pipeline_stage_test.cc
       reader/wgsl/parser_impl_primary_expression_test.cc
       reader/wgsl/parser_impl_relational_expression_test.cc
       reader/wgsl/parser_impl_reserved_keyword_test.cc
@@ -1352,7 +1352,16 @@ if(TINT_BUILD_TESTS)
   add_executable(tint_unittests ${TINT_TEST_SRCS})
   set_target_properties(${target} PROPERTIES FOLDER "Tests")
 
-  if(NOT MSVC)
+  if(MSVC)
+    # TODO(crbug.com/tint/1749): MSVC debug builds can suffer from stack
+    # overflows when resolving deeply nested expression chains or statements.
+    # Production builds neither use MSVC nor debug, so just bump the stack size
+    # for this build combination.
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" build_type)
+    if ((NOT ${build_type} STREQUAL "RELEASE") AND (NOT ${build_type} STREQUAL "RELWITHDEBINFO"))
+      target_link_options(tint_unittests PRIVATE "/STACK 2097152") # 2MB, default is 1MB
+    endif()
+  else()
     target_compile_options(tint_unittests PRIVATE
       -Wno-global-constructors
       -Wno-weak-vtables
