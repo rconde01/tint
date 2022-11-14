@@ -74,6 +74,17 @@ deps = {
     'url': '{chromium_git}/external/github.com/llvm/llvm-project/libcxxabi.git@2715a6c0de8dac4c7674934a6b3d30ba0c685271',
   },
 
+  'third_party/ninja': {
+    'packages': [
+      # https://chrome-infra-packages.appspot.com/p/infra/3pp/tools/ninja
+      {
+        'package': 'infra/3pp/tools/ninja/${{platform}}',
+        'version': 'version:2@1.8.2.chromium.3',
+      }
+    ],
+    'dep_type': 'cipd',
+  },
+
   # Dependencies required for testing
   'testing': {
     'url': '{chromium_git}/chromium/src/testing@d485ae97b7900c1fb7edfbe2901ae5adcb120865',
