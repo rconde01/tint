@@ -25,7 +25,6 @@
 #include "src/tint/ast/bool_literal_expression.h"
 #include "src/tint/ast/call_statement.h"
 #include "src/tint/ast/disable_validation_attribute.h"
-#include "src/tint/ast/fallthrough_statement.h"
 #include "src/tint/ast/float_literal_expression.h"
 #include "src/tint/ast/id_attribute.h"
 #include "src/tint/ast/interpolate_attribute.h"
@@ -62,6 +61,7 @@
 #include "src/tint/transform/array_length_from_uniform.h"
 #include "src/tint/transform/builtin_polyfill.h"
 #include "src/tint/transform/canonicalize_entry_point_io.h"
+#include "src/tint/transform/demote_to_helper.h"
 #include "src/tint/transform/disable_uniformity_analysis.h"
 #include "src/tint/transform/expand_compound_assignment.h"
 #include "src/tint/transform/manager.h"
@@ -72,7 +72,6 @@
 #include "src/tint/transform/remove_phonies.h"
 #include "src/tint/transform/simplify_pointers.h"
 #include "src/tint/transform/unshadow.h"
-#include "src/tint/transform/unwind_discard_functions.h"
 #include "src/tint/transform/vectorize_scalar_matrix_initializers.h"
 #include "src/tint/transform/zero_init_workgroup_memory.h"
 #include "src/tint/utils/defer.h"
@@ -85,8 +84,8 @@
 namespace tint::writer::msl {
 namespace {
 
-bool last_is_break_or_fallthrough(const ast::BlockStatement* stmts) {
-    return IsAnyOf<ast::BreakStatement, ast::FallthroughStatement>(stmts->Last());
+bool last_is_break(const ast::BlockStatement* stmts) {
+    return IsAnyOf<ast::BreakStatement>(stmts->Last());
 }
 
 void PrintF32(std::ostream& out, float value) {
@@ -167,6 +166,9 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
 
     manager.Add<transform::DisableUniformityAnalysis>();
 
+    // ExpandCompoundAssignment must come before BuiltinPolyfill
+    manager.Add<transform::ExpandCompoundAssignment>();
+
     {  // Builtin polyfills
         transform::BuiltinPolyfill::Builtins polyfills;
         polyfills.acosh = transform::BuiltinPolyfill::Level::kRangeCheck;
@@ -177,6 +179,7 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
         polyfills.first_leading_bit = true;
         polyfills.first_trailing_bit = true;
         polyfills.insert_bits = transform::BuiltinPolyfill::Level::kClampParameters;
+        polyfills.int_div_mod = true;
         polyfills.texture_sample_base_clamp_to_edge_2d_f32 = true;
         data.Add<transform::BuiltinPolyfill::Config>(polyfills);
         manager.Add<transform::BuiltinPolyfill>();
@@ -224,10 +227,12 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
         manager.Add<transform::ZeroInitWorkgroupMemory>();
     }
     manager.Add<transform::CanonicalizeEntryPointIO>();
-    manager.Add<transform::ExpandCompoundAssignment>();
     manager.Add<transform::PromoteSideEffectsToDecl>();
-    manager.Add<transform::UnwindDiscardFunctions>();
     manager.Add<transform::PromoteInitializersToLet>();
+
+    // DemoteToHelper must come after PromoteSideEffectsToDecl and ExpandCompoundAssignment.
+    // TODO(crbug.com/tint/1752): This is only necessary for Metal versions older than 2.3.
+    manager.Add<transform::DemoteToHelper>();
 
     manager.Add<transform::VectorizeScalarMatrixInitializers>();
     manager.Add<transform::RemovePhonies>();
@@ -902,9 +907,7 @@ bool GeneratorImpl::EmitAtomicCall(std::ostream& out,
 
             auto func = utils::GetOrCreate(
                 atomicCompareExchangeWeak_, ACEWKeyType{{sc, str}}, [&]() -> std::string {
-                    // Emit the builtin return type unique to this overload. This does not
-                    // exist in the AST, so it will not be generated in Generate().
-                    if (!EmitStructTypeOnce(&helpers_, builtin->ReturnType()->As<sem::Struct>())) {
+                    if (!EmitStructType(&helpers_, builtin->ReturnType()->As<sem::Struct>())) {
                         return "";
                     }
 
@@ -1371,7 +1374,7 @@ bool GeneratorImpl::EmitFrexpCall(std::ostream& out,
             }
 
             line(b) << StructName(builtin->ReturnType()->As<sem::Struct>()) << " result;";
-            line(b) << "result.sig = frexp(" << in << ", result.exp);";
+            line(b) << "result.fract = frexp(" << in << ", result.exp);";
             line(b) << "return result;";
             return true;
         });
@@ -1581,7 +1584,7 @@ bool GeneratorImpl::EmitCase(const ast::CaseStatement* stmt) {
             }
         }
 
-        if (!last_is_break_or_fallthrough(stmt->body)) {
+        if (!last_is_break(stmt->body)) {
             line() << "break;";
         }
     }
@@ -1743,7 +1746,11 @@ bool GeneratorImpl::EmitConstant(std::ostream& out, const sem::Constant* constan
             return true;
         },
         [&](const sem::Struct* s) {
-            out << program_->Symbols().NameFor(s->Name()) << "{";
+            if (!EmitStructType(&helpers_, s)) {
+                return false;
+            }
+
+            out << StructName(s) << "{";
             TINT_DEFER(out << "}");
 
             if (constant->AllZero()) {
@@ -2325,40 +2332,45 @@ bool GeneratorImpl::EmitMemberAccessor(std::ostream& out,
         return true;
     };
 
-    auto& sem = program_->Sem();
+    auto* sem = builder_.Sem().Get(expr);
 
-    if (auto* swizzle = sem.Get(expr)->As<sem::Swizzle>()) {
-        // Metal 1.x does not support swizzling of packed vector types.
-        // For single element swizzles, we can use the index operator.
-        // For multi-element swizzles, we need to cast to a regular vector type
-        // first. Note that we do not currently allow assignments to swizzles, so
-        // the casting which will convert the l-value to r-value is fine.
-        if (swizzle->Indices().Length() == 1) {
+    return Switch(
+        sem,
+        [&](const sem::Swizzle* swizzle) {
+            // Metal 1.x does not support swizzling of packed vector types.
+            // For single element swizzles, we can use the index operator.
+            // For multi-element swizzles, we need to cast to a regular vector type
+            // first. Note that we do not currently allow assignments to swizzles, so
+            // the casting which will convert the l-value to r-value is fine.
+            if (swizzle->Indices().Length() == 1) {
+                if (!write_lhs()) {
+                    return false;
+                }
+                out << "[" << swizzle->Indices()[0] << "]";
+            } else {
+                if (!EmitType(out, swizzle->Object()->Type()->UnwrapRef(), "")) {
+                    return false;
+                }
+                out << "(";
+                if (!write_lhs()) {
+                    return false;
+                }
+                out << ")." << program_->Symbols().NameFor(expr->member->symbol);
+            }
+            return true;
+        },
+        [&](const sem::StructMemberAccess* member_access) {
             if (!write_lhs()) {
                 return false;
             }
-            out << "[" << swizzle->Indices()[0] << "]";
-        } else {
-            if (!EmitType(out, sem.Get(expr->structure)->Type()->UnwrapRef(), "")) {
-                return false;
-            }
-            out << "(";
-            if (!write_lhs()) {
-                return false;
-            }
-            out << ")." << program_->Symbols().NameFor(expr->member->symbol);
-        }
-    } else {
-        if (!write_lhs()) {
+            out << "." << program_->Symbols().NameFor(member_access->Member()->Name());
+            return true;
+        },
+        [&](Default) {
+            TINT_ICE(Writer, diagnostics_)
+                << "unknown member access type: " << sem->TypeInfo().name;
             return false;
-        }
-        out << ".";
-        if (!EmitExpression(out, expr->member)) {
-            return false;
-        }
-    }
-
-    return true;
+        });
 }
 
 bool GeneratorImpl::EmitReturn(const ast::ReturnStatement* stmt) {
@@ -2414,10 +2426,6 @@ bool GeneratorImpl::EmitStatement(const ast::Statement* stmt) {
         },
         [&](const ast::DiscardStatement* d) {  //
             return EmitDiscard(d);
-        },
-        [&](const ast::FallthroughStatement*) {  //
-            line() << "/* fallthrough */";
-            return true;
         },
         [&](const ast::IfStatement* i) {  //
             return EmitIf(i);
@@ -2741,6 +2749,11 @@ bool GeneratorImpl::EmitAddressSpace(std::ostream& out, ast::AddressSpace sc) {
 }
 
 bool GeneratorImpl::EmitStructType(TextBuffer* b, const sem::Struct* str) {
+    auto it = emitted_structs_.emplace(str);
+    if (!it.second) {
+        return true;
+    }
+
     line(b) << "struct " << StructName(str) << " {";
 
     bool is_host_shareable = str->IsHostShareable();
@@ -2895,14 +2908,6 @@ bool GeneratorImpl::EmitStructType(TextBuffer* b, const sem::Struct* str) {
 
     line(b) << "};";
     return true;
-}
-
-bool GeneratorImpl::EmitStructTypeOnce(TextBuffer* buffer, const sem::Struct* str) {
-    auto it = emitted_structs_.emplace(str);
-    if (!it.second) {
-        return true;
-    }
-    return EmitStructType(buffer, str);
 }
 
 bool GeneratorImpl::EmitUnaryOp(std::ostream& out, const ast::UnaryOpExpression* expr) {

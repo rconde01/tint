@@ -124,6 +124,9 @@ struct Number : NumberBase<Number<T>> {
     /// type is the underlying type of the Number
     using type = T;
 
+    /// Number of bits in the number.
+    static constexpr size_t kNumBits = sizeof(T) * 8;
+
     /// Highest finite representable value of this type.
     static constexpr type kHighestValue = std::numeric_limits<type>::max();
 
@@ -187,6 +190,9 @@ struct Number<detail::NumberKindF16> : NumberBase<Number<detail::NumberKindF16>>
     /// C++ does not have a native float16 type, so we use a 32-bit float instead.
     using type = float;
 
+    /// Number of bits in the number.
+    static constexpr size_t kNumBits = 16;
+
     /// Highest finite representable value of this type.
     static constexpr type kHighestValue = 65504.0f;  // 2¹⁵ × (1 + 1023/1024)
 
@@ -237,6 +243,11 @@ struct Number<detail::NumberKindF16> : NumberBase<Number<detail::NumberKindF16>>
     /// will be 0xfc00u.
     uint16_t BitsRepresentation() const;
 
+    /// Creates an f16 value from the uint16_t bit representation.
+    /// @param bits the bits to convert from
+    /// @returns the binary16 value based off the provided bit pattern.
+    static Number<detail::NumberKindF16> FromBits(uint16_t bits);
+
     /// @param value the input float32 value
     /// @returns the float32 value quantized to the smaller float16 value, through truncation of the
     /// mantissa bits (no rounding). If the float32 value is too large (positive or negative) to be
@@ -262,6 +273,9 @@ using f32 = Number<float>;
 /// `f16` is a type alias to `Number<detail::NumberKindF16>`, which should be IEEE 754 binary16.
 /// However since C++ don't have native binary16 type, the value is stored as float.
 using f16 = Number<detail::NumberKindF16>;
+
+template <typename T, traits::EnableIf<IsFloatingPoint<T>>* = nullptr>
+inline const auto kPi = T(UnwrapNumber<T>(3.14159265358979323846));
 
 /// True iff T is an abstract number type
 template <typename T>
@@ -420,13 +434,14 @@ inline std::optional<AInt> CheckedAdd(AInt a, AInt b) {
     return AInt(result);
 }
 
-/// @returns a + b, or an empty optional if the resulting value overflowed the AFloat
-inline std::optional<AFloat> CheckedAdd(AFloat a, AFloat b) {
-    auto result = a.value + b.value;
-    if (!std::isfinite(result)) {
+/// @returns a + b, or an empty optional if the resulting value overflowed the float value
+template <typename FloatingPointT, typename = traits::EnableIf<IsFloatingPoint<FloatingPointT>>>
+inline std::optional<FloatingPointT> CheckedAdd(FloatingPointT a, FloatingPointT b) {
+    auto result = FloatingPointT{a.value + b.value};
+    if (!std::isfinite(result.value)) {
         return {};
     }
-    return AFloat{result};
+    return result;
 }
 
 /// @returns a - b, or an empty optional if the resulting value overflowed the AInt
@@ -451,13 +466,14 @@ inline std::optional<AInt> CheckedSub(AInt a, AInt b) {
     return AInt(result);
 }
 
-/// @returns a + b, or an empty optional if the resulting value overflowed the AFloat
-inline std::optional<AFloat> CheckedSub(AFloat a, AFloat b) {
-    auto result = a.value - b.value;
-    if (!std::isfinite(result)) {
+/// @returns a + b, or an empty optional if the resulting value overflowed the float value
+template <typename FloatingPointT, typename = traits::EnableIf<IsFloatingPoint<FloatingPointT>>>
+inline std::optional<FloatingPointT> CheckedSub(FloatingPointT a, FloatingPointT b) {
+    auto result = FloatingPointT{a.value - b.value};
+    if (!std::isfinite(result.value)) {
         return {};
     }
-    return AFloat{result};
+    return result;
 }
 
 /// @returns a * b, or an empty optional if the resulting value overflowed the AInt
@@ -494,13 +510,14 @@ inline std::optional<AInt> CheckedMul(AInt a, AInt b) {
     return AInt(result);
 }
 
-/// @returns a * b, or an empty optional if the resulting value overflowed the AFloat
-inline std::optional<AFloat> CheckedMul(AFloat a, AFloat b) {
-    auto result = a.value * b.value;
-    if (!std::isfinite(result)) {
+/// @returns a * b, or an empty optional if the resulting value overflowed the float value
+template <typename FloatingPointT, typename = traits::EnableIf<IsFloatingPoint<FloatingPointT>>>
+inline std::optional<FloatingPointT> CheckedMul(FloatingPointT a, FloatingPointT b) {
+    auto result = FloatingPointT{a.value * b.value};
+    if (!std::isfinite(result.value)) {
         return {};
     }
-    return AFloat{result};
+    return result;
 }
 
 /// @returns a / b, or an empty optional if the resulting value overflowed the AInt
@@ -516,13 +533,14 @@ inline std::optional<AInt> CheckedDiv(AInt a, AInt b) {
     return AInt{a.value / b.value};
 }
 
-/// @returns a / b, or an empty optional if the resulting value overflowed the AFloat
-inline std::optional<AFloat> CheckedDiv(AFloat a, AFloat b) {
-    auto result = a.value / b.value;
-    if (!std::isfinite(result)) {
+/// @returns a / b, or an empty optional if the resulting value overflowed the float value
+template <typename FloatingPointT, typename = traits::EnableIf<IsFloatingPoint<FloatingPointT>>>
+inline std::optional<FloatingPointT> CheckedDiv(FloatingPointT a, FloatingPointT b) {
+    auto result = FloatingPointT{a.value / b.value};
+    if (!std::isfinite(result.value)) {
         return {};
     }
-    return AFloat{result};
+    return result;
 }
 
 /// @returns a * b + c, or an empty optional if the value overflowed the AInt

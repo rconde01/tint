@@ -736,7 +736,6 @@ enum ControlFlowInterrupt {
     kBreak,
     kContinue,
     kReturn,
-    kDiscard,
 };
 enum Condition {
     kNone,
@@ -754,8 +753,6 @@ static std::string ToStr(ControlFlowInterrupt interrupt) {
             return "continue";
         case kReturn:
             return "return";
-        case kDiscard:
-            return "discard";
     }
     return "";
 }
@@ -790,7 +787,7 @@ class LoopTest : public UniformityAnalysisTestBase,
 
 INSTANTIATE_TEST_SUITE_P(UniformityAnalysisTest,
                          LoopTest,
-                         ::testing::Combine(::testing::Range<int>(0, kDiscard + 1),
+                         ::testing::Combine(::testing::Range<int>(0, kReturn + 1),
                                             ::testing::Range<int>(0, kNonUniform + 1)),
                          [](const ::testing::TestParamInfo<LoopTestParams>& p) {
                              ControlFlowInterrupt interrupt =
@@ -1025,7 +1022,7 @@ class LoopDeadCodeTest : public UniformityAnalysisTestBase, public ::testing::Te
 
 INSTANTIATE_TEST_SUITE_P(UniformityAnalysisTest,
                          LoopDeadCodeTest,
-                         ::testing::Range<int>(0, kDiscard + 1),
+                         ::testing::Range<int>(0, kReturn + 1),
                          [](const ::testing::TestParamInfo<LoopDeadCodeTest::ParamType>& p) {
                              return ToStr(static_cast<ControlFlowInterrupt>(p.param));
                          });
@@ -2890,36 +2887,6 @@ test:5:7 note: reading from read_write storage buffer 'non_uniform' may result i
 )");
 }
 
-TEST_F(UniformityAnalysisTest, IfElse_NonUniformDiscard_NoReconverge) {
-    // If statements should not reconverge after non-uniform discards.
-    std::string src = R"(
-@group(0) @binding(0) var<storage, read_write> non_uniform : i32;
-
-fn foo() {
-  if (non_uniform == 42) {
-    discard;
-  } else {
-  }
-  workgroupBarrier();
-}
-)";
-
-    RunTest(src, false);
-    EXPECT_EQ(error_,
-              R"(test:9:3 warning: 'workgroupBarrier' must only be called from uniform control flow
-  workgroupBarrier();
-  ^^^^^^^^^^^^^^^^
-
-test:5:3 note: control flow depends on non-uniform value
-  if (non_uniform == 42) {
-  ^^
-
-test:5:7 note: reading from read_write storage buffer 'non_uniform' may result in a non-uniform value
-  if (non_uniform == 42) {
-      ^^^^^^^^^^^
-)");
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Switch statement tests.
 ////////////////////////////////////////////////////////////////////////////////
@@ -3046,49 +3013,6 @@ fn foo() {
     RunTest(src, true);
 }
 
-TEST_F(UniformityAnalysisTest, Switch_NonUniformBreakInDifferentCase_Fallthrough) {
-    std::string src = R"(
-@group(0) @binding(0) var<storage, read_write> non_uniform : i32;
-@group(0) @binding(0) var<uniform> condition : i32;
-
-fn foo() {
-  switch (condition) {
-    case 0: {
-      if (non_uniform == 42) {
-        break;
-      }
-      fallthrough;
-    }
-    case 42: {
-      workgroupBarrier();
-    }
-    default: {
-    }
-  }
-}
-)";
-
-    RunTest(src, false);
-    EXPECT_EQ(
-        error_,
-        R"(test:11:7 warning: use of deprecated language feature: fallthrough is set to be removed from WGSL. Case can accept multiple selectors if the existing case bodies are empty. (e.g. `case 1, 2, 3:`) `default` is a valid case selector value. (e.g. `case 1, default:`)
-      fallthrough;
-      ^^^^^^^^^^^
-
-test:14:7 warning: 'workgroupBarrier' must only be called from uniform control flow
-      workgroupBarrier();
-      ^^^^^^^^^^^^^^^^
-
-test:8:7 note: control flow depends on non-uniform value
-      if (non_uniform == 42) {
-      ^^
-
-test:8:11 note: reading from read_write storage buffer 'non_uniform' may result in a non-uniform value
-      if (non_uniform == 42) {
-          ^^^^^^^^^^^
-)");
-}
-
 TEST_F(UniformityAnalysisTest, Switch_VarBecomesNonUniformInDifferentCase_WithBreak) {
     std::string src = R"(
 @group(0) @binding(0) var<storage, read_write> non_uniform : i32;
@@ -3113,50 +3037,6 @@ fn foo() {
 )";
 
     RunTest(src, true);
-}
-
-TEST_F(UniformityAnalysisTest, Switch_VarBecomesNonUniformInDifferentCase_WithFallthrough) {
-    std::string src = R"(
-@group(0) @binding(0) var<storage, read_write> non_uniform : i32;
-@group(0) @binding(0) var<uniform> condition : i32;
-
-fn foo() {
-  var x = 0;
-  switch (condition) {
-    case 0: {
-      x = non_uniform;
-      fallthrough;
-    }
-    case 42: {
-      if (x == 0) {
-        workgroupBarrier();
-      }
-    }
-    default: {
-    }
-  }
-}
-)";
-
-    RunTest(src, false);
-    EXPECT_EQ(
-        error_,
-        R"(test:10:7 warning: use of deprecated language feature: fallthrough is set to be removed from WGSL. Case can accept multiple selectors if the existing case bodies are empty. (e.g. `case 1, 2, 3:`) `default` is a valid case selector value. (e.g. `case 1, default:`)
-      fallthrough;
-      ^^^^^^^^^^^
-
-test:14:9 warning: 'workgroupBarrier' must only be called from uniform control flow
-        workgroupBarrier();
-        ^^^^^^^^^^^^^^^^
-
-test:13:7 note: control flow depends on non-uniform value
-      if (x == 0) {
-      ^^
-
-test:9:11 note: reading from read_write storage buffer 'non_uniform' may result in a non-uniform value
-      x = non_uniform;
-          ^^^^^^^^^^^
-)");
 }
 
 TEST_F(UniformityAnalysisTest, Switch_VarBecomesUniformInDifferentCase_WithBreak) {
@@ -6749,6 +6629,22 @@ fn foo() {
 /// Miscellaneous statement and expression tests.
 ////////////////////////////////////////////////////////////////////////////////
 
+TEST_F(UniformityAnalysisTest, NonUniformDiscard) {
+    // Non-uniform discard statements should not cause uniformity issues.
+    std::string src = R"(
+@group(0) @binding(0) var<storage, read_write> non_uniform : i32;
+
+fn foo() {
+  if (non_uniform == 42) {
+    discard;
+  }
+  _ = dpdx(1.0);
+}
+)";
+
+    RunTest(src, true);
+}
+
 TEST_F(UniformityAnalysisTest, FunctionReconvergesOnExit) {
     // Call a function that has returns during non-uniform control flow, and test that the analysis
     // reconverges when returning to the caller.
@@ -6769,29 +6665,6 @@ fn foo() {
 fn main() {
   foo();
   workgroupBarrier();
-}
-)";
-
-    RunTest(src, true);
-}
-
-TEST_F(UniformityAnalysisTest, FunctionRequiresUniformFlowAndCausesNonUniformFlow) {
-    // Test that a function that requires uniform flow and then causes non-uniform flow can be
-    // called without error.
-    std::string src = R"(
-@group(0) @binding(0) var<storage, read_write> non_uniform_global : i32;
-
-fn foo() {
-  _ = dpdx(0.5);
-
-  if (non_uniform_global == 0) {
-    discard;
-  }
-}
-
-@fragment
-fn main() {
-  foo();
 }
 )";
 
@@ -7022,22 +6895,6 @@ TEST_F(UniformityAnalysisTest, DeadCode_AfterReturn) {
 
 fn foo() {
   return;
-  if (non_uniform == 42) {
-    workgroupBarrier();
-  }
-}
-)";
-
-    RunTest(src, true);
-}
-
-TEST_F(UniformityAnalysisTest, DeadCode_AfterDiscard) {
-    // Dead code after a discard statement shouldn't cause uniformity errors.
-    std::string src = R"(
-@group(0) @binding(0) var<storage, read_write> non_uniform : i32;
-
-fn foo() {
-  discard;
   if (non_uniform == 42) {
     workgroupBarrier();
   }

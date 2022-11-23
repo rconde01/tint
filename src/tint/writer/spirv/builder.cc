@@ -19,7 +19,6 @@
 
 #include "spirv/unified1/GLSL.std.450.h"
 #include "src/tint/ast/call_statement.h"
-#include "src/tint/ast/fallthrough_statement.h"
 #include "src/tint/ast/id_attribute.h"
 #include "src/tint/ast/internal_attribute.h"
 #include "src/tint/ast/traverse_expressions.h"
@@ -84,10 +83,6 @@ uint32_t pipeline_stage_to_execution_model(ast::PipelineStage stage) {
             break;
     }
     return model;
-}
-
-bool LastIsFallthrough(const ast::BlockStatement* stmts) {
-    return !stmts->Empty() && stmts->Last()->Is<ast::FallthroughStatement>();
 }
 
 /// Returns the matrix type that is `type` or that is wrapped by
@@ -3408,54 +3403,6 @@ bool Builder::GenerateConditionalBlock(const ast::Expression* cond,
 }
 
 bool Builder::GenerateIfStatement(const ast::IfStatement* stmt) {
-    if (!continuing_stack_.empty() &&
-        stmt == continuing_stack_.back().last_statement->As<ast::IfStatement>()) {
-        const ContinuingInfo& ci = continuing_stack_.back();
-        // Match one of two patterns: the break-if and break-unless patterns.
-        //
-        // The break-if pattern:
-        //  continuing { ...
-        //    if (cond) { break; }
-        //  }
-        //
-        // The break-unless pattern:
-        //  continuing { ...
-        //    if (cond) {} else {break;}
-        //  }
-        //
-        // TODO(crbug.com/tint/1451): Remove this when the if break construct is made an error.
-        auto is_just_a_break = [](const ast::BlockStatement* block) {
-            return block && (block->statements.Length() == 1) &&
-                   block->Last()->Is<ast::BreakStatement>();
-        };
-        if (is_just_a_break(stmt->body) && stmt->else_statement == nullptr) {
-            // It's a break-if.
-            TINT_ASSERT(Writer, !backedge_stack_.empty());
-            const auto cond_id = GenerateExpressionWithLoadIfNeeded(stmt->condition);
-            if (!cond_id) {
-                return false;
-            }
-            backedge_stack_.back() = Backedge(
-                spv::Op::OpBranchConditional,
-                {Operand(cond_id), Operand(ci.break_target_id), Operand(ci.loop_header_id)});
-            return true;
-        } else if (stmt->body->Empty()) {
-            auto* es_block = As<ast::BlockStatement>(stmt->else_statement);
-            if (es_block && is_just_a_break(es_block)) {
-                // It's a break-unless.
-                TINT_ASSERT(Writer, !backedge_stack_.empty());
-                const auto cond_id = GenerateExpressionWithLoadIfNeeded(stmt->condition);
-                if (!cond_id) {
-                    return false;
-                }
-                backedge_stack_.back() = Backedge(
-                    spv::Op::OpBranchConditional,
-                    {Operand(cond_id), Operand(ci.loop_header_id), Operand(ci.break_target_id)});
-                return true;
-            }
-        }
-    }
-
     if (!GenerateConditionalBlock(stmt->condition, stmt->body, stmt->else_statement)) {
         return false;
     }
@@ -3515,9 +3462,7 @@ bool Builder::GenerateSwitchStatement(const ast::SwitchStatement* stmt) {
     bool generated_default = false;
     auto& body = stmt->body;
     // We output the case statements in order they were entered in the original
-    // source. Each fallthrough goes to the next case entry, so is a forward
-    // branch, otherwise the branch is to the merge block which comes after
-    // the switch statement.
+    // source. The branch is to the merge block which comes after the switch statement.
     for (uint32_t i = 0; i < body.Length(); i++) {
         auto* item = body[i];
 
@@ -3531,17 +3476,7 @@ bool Builder::GenerateSwitchStatement(const ast::SwitchStatement* stmt) {
         if (!GenerateBlockStatement(item->body)) {
             return false;
         }
-
-        if (LastIsFallthrough(item->body)) {
-            if (i == (body.Length() - 1)) {
-                // This case is caught by Resolver validation
-                TINT_UNREACHABLE(Writer, builder_.Diagnostics());
-                return false;
-            }
-            if (!push_function_inst(spv::Op::OpBranch, {Operand(case_ids[i + 1])})) {
-                return false;
-            }
-        } else if (InsideBasicBlock()) {
+        if (InsideBasicBlock()) {
             if (!push_function_inst(spv::Op::OpBranch, {Operand(merge_block_id)})) {
                 return false;
             }
@@ -3671,10 +3606,6 @@ bool Builder::GenerateStatement(const ast::Statement* stmt) {
         [&](const ast::CallStatement* c) { return GenerateCallExpression(c->expr) != 0; },
         [&](const ast::ContinueStatement* c) { return GenerateContinueStatement(c); },
         [&](const ast::DiscardStatement* d) { return GenerateDiscardStatement(d); },
-        [&](const ast::FallthroughStatement*) {
-            // Do nothing here, the fallthrough gets handled by the switch code.
-            return true;
-        },
         [&](const ast::IfStatement* i) { return GenerateIfStatement(i); },
         [&](const ast::LoopStatement* l) { return GenerateLoopStatement(l); },
         [&](const ast::ReturnStatement* r) { return GenerateReturnStatement(r); },

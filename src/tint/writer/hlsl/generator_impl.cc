@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "src/tint/ast/call_statement.h"
-#include "src/tint/ast/fallthrough_statement.h"
 #include "src/tint/ast/id_attribute.h"
 #include "src/tint/ast/internal_attribute.h"
 #include "src/tint/ast/interpolate_attribute.h"
@@ -54,6 +53,7 @@
 #include "src/tint/transform/calculate_array_length.h"
 #include "src/tint/transform/canonicalize_entry_point_io.h"
 #include "src/tint/transform/decompose_memory_access.h"
+#include "src/tint/transform/demote_to_helper.h"
 #include "src/tint/transform/disable_uniformity_analysis.h"
 #include "src/tint/transform/expand_compound_assignment.h"
 #include "src/tint/transform/localize_struct_array_assignment.h"
@@ -64,8 +64,8 @@
 #include "src/tint/transform/remove_continue_in_switch.h"
 #include "src/tint/transform/remove_phonies.h"
 #include "src/tint/transform/simplify_pointers.h"
+#include "src/tint/transform/truncate_interstage_variables.h"
 #include "src/tint/transform/unshadow.h"
-#include "src/tint/transform/unwind_discard_functions.h"
 #include "src/tint/transform/vectorize_scalar_matrix_initializers.h"
 #include "src/tint/transform/zero_init_workgroup_memory.h"
 #include "src/tint/utils/defer.h"
@@ -157,6 +157,9 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
 
     manager.Add<transform::DisableUniformityAnalysis>();
 
+    // ExpandCompoundAssignment must come before BuiltinPolyfill
+    manager.Add<transform::ExpandCompoundAssignment>();
+
     {  // Builtin polyfills
         transform::BuiltinPolyfill::Builtins polyfills;
         polyfills.acosh = transform::BuiltinPolyfill::Level::kFull;
@@ -172,6 +175,7 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
         polyfills.first_leading_bit = true;
         polyfills.first_trailing_bit = true;
         polyfills.insert_bits = transform::BuiltinPolyfill::Level::kFull;
+        polyfills.int_div_mod = true;
         polyfills.texture_sample_base_clamp_to_edge_2d_f32 = true;
         data.Add<transform::BuiltinPolyfill::Config>(polyfills);
         manager.Add<transform::BuiltinPolyfill>();
@@ -207,16 +211,41 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
         manager.Add<transform::ZeroInitWorkgroupMemory>();
     }
     manager.Add<transform::CanonicalizeEntryPointIO>();
+
+    if (options.interstage_locations.any()) {
+        // When interstage_locations is empty, it means there's no user-defined interstage variables
+        // being used in the next stage. This is treated as a special case.
+        // TruncateInterstageVariables transform is trying to solve the HLSL compiler register
+        // mismatch issue. So it is not needed if no register is assigned to any interstage
+        // variables. As a result we only add this transform when there is at least one interstage
+        // locations being used.
+
+        // TruncateInterstageVariables itself will skip when interstage_locations matches exactly
+        // with the current stage output.
+
+        // Build the config for internal TruncateInterstageVariables transform.
+        transform::TruncateInterstageVariables::Config truncate_interstage_variables_cfg;
+        truncate_interstage_variables_cfg.interstage_locations =
+            std::move(options.interstage_locations);
+        manager.Add<transform::TruncateInterstageVariables>();
+        data.Add<transform::TruncateInterstageVariables::Config>(
+            std::move(truncate_interstage_variables_cfg));
+    }
+
     // NumWorkgroupsFromUniform must come after CanonicalizeEntryPointIO, as it
     // assumes that num_workgroups builtins only appear as struct members and are
     // only accessed directly via member accessors.
     manager.Add<transform::NumWorkgroupsFromUniform>();
-    manager.Add<transform::ExpandCompoundAssignment>();
     manager.Add<transform::PromoteSideEffectsToDecl>();
-    manager.Add<transform::UnwindDiscardFunctions>();
     manager.Add<transform::VectorizeScalarMatrixInitializers>();
     manager.Add<transform::SimplifyPointers>();
     manager.Add<transform::RemovePhonies>();
+
+    // DemoteToHelper must come after CanonicalizeEntryPointIO, PromoteSideEffectsToDecl, and
+    // ExpandCompoundAssignment.
+    // TODO(crbug.com/tint/1752): This is only necessary when FXC is being used.
+    manager.Add<transform::DemoteToHelper>();
+
     // ArrayLengthFromUniform must come after InlinePointerLets and Simplify, as
     // it assumes that the form of the array length argument is &var.array.
     manager.Add<transform::ArrayLengthFromUniform>();
@@ -656,117 +685,6 @@ bool GeneratorImpl::EmitAssign(const ast::AssignmentStatement* stmt) {
     return true;
 }
 
-bool GeneratorImpl::EmitExpressionOrOneIfZero(std::ostream& out, const ast::Expression* expr) {
-    // For constants, replace literal 0 with 1.
-    if (const auto* val = builder_.Sem().Get(expr)->ConstantValue()) {
-        if (!val->AnyZero()) {
-            return EmitExpression(out, expr);
-        }
-
-        auto* ty = val->Type();
-
-        if (ty->IsAnyOf<sem::I32, sem::U32>()) {
-            return EmitValue(out, ty, 1);
-        }
-
-        if (auto* vec = ty->As<sem::Vector>()) {
-            auto* elem_ty = vec->type();
-
-            if (!EmitType(out, ty, ast::AddressSpace::kNone, ast::Access::kUndefined, "")) {
-                return false;
-            }
-
-            out << "(";
-            for (size_t i = 0; i < vec->Width(); ++i) {
-                if (i != 0) {
-                    out << ", ";
-                }
-                auto s = val->Index(i)->As<AInt>();
-                if (!EmitValue(out, elem_ty, (s == 0) ? 1 : static_cast<int>(s))) {
-                    return false;
-                }
-            }
-            out << ")";
-            return true;
-        }
-
-        TINT_ICE(Writer, diagnostics_)
-            << "EmitExpressionOrOneIfZero expects integer scalar or vector";
-        return false;
-    }
-
-    auto* ty = TypeOf(expr)->UnwrapRef();
-
-    // For non-constants, we need to emit runtime code to check if the value is 0,
-    // and return 1 in that case.
-    std::string zero;
-    {
-        std::ostringstream ss;
-        EmitValue(ss, ty, 0);
-        zero = ss.str();
-    }
-    std::string one;
-    {
-        std::ostringstream ss;
-        EmitValue(ss, ty, 1);
-        one = ss.str();
-    }
-
-    // For identifiers, no need for a function call as it's fine to evaluate
-    // `expr` more than once.
-    if (expr->Is<ast::IdentifierExpression>()) {
-        out << "(";
-        if (!EmitExpression(out, expr)) {
-            return false;
-        }
-        out << " == " << zero << " ? " << one << " : ";
-        if (!EmitExpression(out, expr)) {
-            return false;
-        }
-        out << ")";
-        return true;
-    }
-
-    // For non-identifier expressions, call a function to make sure `expr` is only
-    // evaluated once.
-    auto name = utils::GetOrCreate(value_or_one_if_zero_, ty, [&]() -> std::string {
-        // Example:
-        // int4 tint_value_or_one_if_zero_int4(int4 value) {
-        //   return value == 0 ? 0 : value;
-        // }
-        std::string ty_name;
-        {
-            std::ostringstream ss;
-            if (!EmitType(ss, ty, tint::ast::AddressSpace::kUndefined, ast::Access::kUndefined,
-                          "")) {
-                return "";
-            }
-            ty_name = ss.str();
-        }
-
-        std::string fn = UniqueIdentifier("value_or_one_if_zero_" + ty_name);
-        line(&helpers_) << ty_name << " " << fn << "(" << ty_name << " value) {";
-        {
-            ScopedIndent si(&helpers_);
-            line(&helpers_) << "return value == " << zero << " ? " << one << " : value;";
-        }
-        line(&helpers_) << "}";
-        line(&helpers_);
-        return fn;
-    });
-
-    if (name.empty()) {
-        return false;
-    }
-
-    out << name << "(";
-    if (!EmitExpression(out, expr)) {
-        return false;
-    }
-    out << ")";
-    return true;
-}
-
 bool GeneratorImpl::EmitBinary(std::ostream& out, const ast::BinaryExpression* expr) {
     if (expr->op == ast::BinaryOp::kLogicalAnd || expr->op == ast::BinaryOp::kLogicalOr) {
         auto name = UniqueIdentifier(kTempNamePrefix);
@@ -887,21 +805,9 @@ bool GeneratorImpl::EmitBinary(std::ostream& out, const ast::BinaryExpression* e
             break;
         case ast::BinaryOp::kDivide:
             out << "/";
-            // BUG(crbug.com/tint/1083): Integer divide/modulo by zero is a FXC
-            // compile error, and undefined behavior in WGSL.
-            if (TypeOf(expr->rhs)->UnwrapRef()->is_integer_scalar_or_vector()) {
-                out << " ";
-                return EmitExpressionOrOneIfZero(out, expr->rhs);
-            }
             break;
         case ast::BinaryOp::kModulo:
             out << "%";
-            // BUG(crbug.com/tint/1083): Integer divide/modulo by zero is a FXC
-            // compile error, and undefined behavior in WGSL.
-            if (TypeOf(expr->rhs)->UnwrapRef()->is_integer_scalar_or_vector()) {
-                out << " ";
-                return EmitExpressionOrOneIfZero(out, expr->rhs);
-            }
             break;
         case ast::BinaryOp::kNone:
             diagnostics_.add_error(diag::System::Writer, "missing binary operation type");
@@ -1745,9 +1651,7 @@ bool GeneratorImpl::EmitWorkgroupAtomicCall(std::ostream& out,
             return true;
         }
         case sem::BuiltinType::kAtomicCompareExchangeWeak: {
-            // Emit the builtin return type unique to this overload. This does not
-            // exist in the AST, so it will not be generated in Generate().
-            if (!EmitStructTypeOnce(&helpers_, builtin->ReturnType()->As<sem::Struct>())) {
+            if (!EmitStructType(&helpers_, builtin->ReturnType()->As<sem::Struct>())) {
                 return false;
             }
 
@@ -1908,14 +1812,14 @@ bool GeneratorImpl::EmitFrexpCall(std::ostream& out,
             }
 
             line(b) << member_type << " exp;";
-            line(b) << member_type << " sig = frexp(" << in << ", exp);";
+            line(b) << member_type << " fract = frexp(" << in << ", exp);";
             {
                 auto l = line(b);
                 if (!EmitType(l, builtin->ReturnType(), ast::AddressSpace::kNone,
                               ast::Access::kUndefined, "")) {
                     return false;
                 }
-                l << " result = {sig, int" << width << "(exp)};";
+                l << " result = {fract, int" << width << "(exp)};";
             }
             line(b) << "return result;";
             return true;
@@ -2600,7 +2504,7 @@ bool GeneratorImpl::EmitCase(const ast::SwitchStatement* s, size_t case_idx) {
             out << "default";
         } else {
             out << "case ";
-            if (!EmitConstant(out, selector->Value())) {
+            if (!EmitConstant(out, selector->Value(), /* is_variable_initializer */ false)) {
                 return false;
             }
         }
@@ -2621,18 +2525,7 @@ bool GeneratorImpl::EmitCase(const ast::SwitchStatement* s, size_t case_idx) {
         return false;
     }
 
-    // Inline all fallthrough case statements. FXC cannot handle fallthroughs.
-    while (tint::Is<ast::FallthroughStatement>(stmt->body->Last())) {
-        case_idx++;
-        stmt = s->body[case_idx];
-        // Generate each fallthrough case statement in a new block. This is done to
-        // prevent symbol collision of variables declared in these cases statements.
-        if (!EmitBlock(stmt->body)) {
-            return false;
-        }
-    }
-
-    if (!tint::IsAnyOf<ast::BreakStatement, ast::FallthroughStatement>(stmt->body->Last())) {
+    if (!tint::IsAnyOf<ast::BreakStatement>(stmt->body->Last())) {
         line() << "break;";
     }
 
@@ -2657,7 +2550,13 @@ bool GeneratorImpl::EmitDiscard(const ast::DiscardStatement*) {
 bool GeneratorImpl::EmitExpression(std::ostream& out, const ast::Expression* expr) {
     if (auto* sem = builder_.Sem().Get(expr)) {
         if (auto* constant = sem->ConstantValue()) {
-            return EmitConstant(out, constant);
+            bool is_variable_initializer = false;
+            if (auto* stmt = sem->Stmt()) {
+                if (auto* decl = As<ast::VariableDeclStatement>(stmt->Declaration())) {
+                    is_variable_initializer = decl->variable->initializer == expr;
+                }
+            }
+            return EmitConstant(out, constant, is_variable_initializer);
         }
     }
     return Switch(
@@ -3147,7 +3046,9 @@ bool GeneratorImpl::EmitEntryPointFunction(const ast::Function* func) {
     return true;
 }
 
-bool GeneratorImpl::EmitConstant(std::ostream& out, const sem::Constant* constant) {
+bool GeneratorImpl::EmitConstant(std::ostream& out,
+                                 const sem::Constant* constant,
+                                 bool is_variable_initializer) {
     return Switch(
         constant->Type(),  //
         [&](const sem::Bool*) {
@@ -3177,7 +3078,7 @@ bool GeneratorImpl::EmitConstant(std::ostream& out, const sem::Constant* constan
             if (constant->AllEqual()) {
                 {
                     ScopedParen sp(out);
-                    if (!EmitConstant(out, constant->Index(0))) {
+                    if (!EmitConstant(out, constant->Index(0), is_variable_initializer)) {
                         return false;
                     }
                 }
@@ -3198,7 +3099,7 @@ bool GeneratorImpl::EmitConstant(std::ostream& out, const sem::Constant* constan
                 if (i > 0) {
                     out << ", ";
                 }
-                if (!EmitConstant(out, constant->Index(i))) {
+                if (!EmitConstant(out, constant->Index(i), is_variable_initializer)) {
                     return false;
                 }
             }
@@ -3215,7 +3116,7 @@ bool GeneratorImpl::EmitConstant(std::ostream& out, const sem::Constant* constan
                 if (i > 0) {
                     out << ", ";
                 }
-                if (!EmitConstant(out, constant->Index(i))) {
+                if (!EmitConstant(out, constant->Index(i), is_variable_initializer)) {
                     return false;
                 }
             }
@@ -3244,7 +3145,7 @@ bool GeneratorImpl::EmitConstant(std::ostream& out, const sem::Constant* constan
                 if (i > 0) {
                     out << ", ";
                 }
-                if (!EmitConstant(out, constant->Index(i))) {
+                if (!EmitConstant(out, constant->Index(i), is_variable_initializer)) {
                     return false;
                 }
             }
@@ -3252,25 +3153,45 @@ bool GeneratorImpl::EmitConstant(std::ostream& out, const sem::Constant* constan
             return true;
         },
         [&](const sem::Struct* s) {
+            if (!EmitStructType(&helpers_, s)) {
+                return false;
+            }
+
             if (constant->AllZero()) {
-                out << "(";
-                if (!EmitType(out, s, ast::AddressSpace::kNone, ast::Access::kUndefined, "")) {
-                    return false;
-                }
-                out << ")0";
+                out << "(" << StructName(s) << ")0";
                 return true;
             }
 
-            out << "{";
-            TINT_DEFER(out << "}");
-
-            for (size_t i = 0; i < s->Members().size(); i++) {
-                if (i > 0) {
-                    out << ", ";
+            auto emit_member_values = [&](std::ostream& o) {
+                o << "{";
+                for (size_t i = 0; i < s->Members().size(); i++) {
+                    if (i > 0) {
+                        o << ", ";
+                    }
+                    if (!EmitConstant(o, constant->Index(i), is_variable_initializer)) {
+                        return false;
+                    }
                 }
-                if (!EmitConstant(out, constant->Index(i))) {
+                o << "}";
+                return true;
+            };
+
+            if (is_variable_initializer) {
+                if (!emit_member_values(out)) {
                     return false;
                 }
+            } else {
+                // HLSL requires structure initializers to be assigned directly to a variable.
+                auto name = UniqueIdentifier("c");
+                {
+                    auto decl = line();
+                    decl << "const " << StructName(s) << " " << name << " = ";
+                    if (!emit_member_values(decl)) {
+                        return false;
+                    }
+                    decl << ";";
+                }
+                out << name;
             }
 
             return true;
@@ -3586,14 +3507,24 @@ bool GeneratorImpl::EmitMemberAccessor(std::ostream& out,
     }
     out << ".";
 
-    // Swizzles output the name directly
-    if (builder_.Sem().Get(expr)->Is<sem::Swizzle>()) {
-        out << builder_.Symbols().NameFor(expr->member->symbol);
-    } else if (!EmitExpression(out, expr->member)) {
-        return false;
-    }
+    auto* sem = builder_.Sem().Get(expr);
 
-    return true;
+    return Switch(
+        sem,
+        [&](const sem::Swizzle*) {
+            // Swizzles output the name directly
+            out << builder_.Symbols().NameFor(expr->member->symbol);
+            return true;
+        },
+        [&](const sem::StructMemberAccess* member_access) {
+            out << program_->Symbols().NameFor(member_access->Member()->Name());
+            return true;
+        },
+        [&](Default) {
+            TINT_ICE(Writer, diagnostics_)
+                << "unknown member access type: " << sem->TypeInfo().name;
+            return false;
+        });
 }
 
 bool GeneratorImpl::EmitReturn(const ast::ReturnStatement* stmt) {
@@ -3638,10 +3569,6 @@ bool GeneratorImpl::EmitStatement(const ast::Statement* stmt) {
         },
         [&](const ast::DiscardStatement* d) {  //
             return EmitDiscard(d);
-        },
-        [&](const ast::FallthroughStatement*) {  //
-            line() << "/* fallthrough */";
-            return true;
         },
         [&](const ast::IfStatement* i) {  //
             return EmitIf(i);
@@ -3990,6 +3917,11 @@ bool GeneratorImpl::EmitTypeAndName(std::ostream& out,
 }
 
 bool GeneratorImpl::EmitStructType(TextBuffer* b, const sem::Struct* str) {
+    auto it = emitted_structs_.emplace(str);
+    if (!it.second) {
+        return true;
+    }
+
     line(b) << "struct " << StructName(str) << " {";
     {
         ScopedIndent si(b);
@@ -4064,14 +3996,6 @@ bool GeneratorImpl::EmitStructType(TextBuffer* b, const sem::Struct* str) {
 
     line(b) << "};";
     return true;
-}
-
-bool GeneratorImpl::EmitStructTypeOnce(TextBuffer* buffer, const sem::Struct* str) {
-    auto it = emitted_structs_.emplace(str);
-    if (!it.second) {
-        return true;
-    }
-    return EmitStructType(buffer, str);
 }
 
 bool GeneratorImpl::EmitUnaryOp(std::ostream& out, const ast::UnaryOpExpression* expr) {

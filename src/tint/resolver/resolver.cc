@@ -31,7 +31,6 @@
 #include "src/tint/ast/depth_texture.h"
 #include "src/tint/ast/disable_validation_attribute.h"
 #include "src/tint/ast/discard_statement.h"
-#include "src/tint/ast/fallthrough_statement.h"
 #include "src/tint/ast/for_loop_statement.h"
 #include "src/tint/ast/id_attribute.h"
 #include "src/tint/ast/if_statement.h"
@@ -86,6 +85,7 @@
 #include "src/tint/utils/math.h"
 #include "src/tint/utils/reverse.h"
 #include "src/tint/utils/scoped_assignment.h"
+#include "src/tint/utils/string.h"
 #include "src/tint/utils/transform.h"
 #include "src/tint/utils/vector.h"
 
@@ -372,6 +372,8 @@ sem::Variable* Resolver::Let(const ast::Let* v, bool is_global) {
         return nullptr;
     }
 
+    RegisterLoadIfNeeded(rhs);
+
     // If the variable has no declared type, infer it from the RHS
     if (!ty) {
         ty = rhs->Type()->UnwrapRef();  // Implicit load of RHS
@@ -482,7 +484,7 @@ sem::Variable* Resolver::Override(const ast::Override* v) {
         sem->SetOverrideId(o);
 
         // Track the constant IDs that are specified in the shader.
-        override_ids_.emplace(o, sem);
+        override_ids_.Add(o, sem);
     }
 
     builder_->Sem().Add(v, sem);
@@ -578,6 +580,8 @@ sem::Variable* Resolver::Var(const ast::Var* var, bool is_global) {
         if (!storage_ty) {
             storage_ty = rhs->Type()->UnwrapRef();  // Implicit load of RHS
         }
+
+        RegisterLoadIfNeeded(rhs);
     }
 
     if (!storage_ty) {
@@ -842,7 +846,7 @@ bool Resolver::AllocateOverridableConstantIds() {
             id = builder_->Sem().Get<sem::GlobalVariable>(override)->OverrideId();
         } else {
             // No ID was specified, so allocate the next available ID.
-            while (!ids_exhausted && override_ids_.count(next_id)) {
+            while (!ids_exhausted && override_ids_.Contains(next_id)) {
                 increment_next_id();
             }
             if (ids_exhausted) {
@@ -864,13 +868,16 @@ bool Resolver::AllocateOverridableConstantIds() {
 void Resolver::SetShadows() {
     for (auto it : dependencies_.shadows) {
         Switch(
-            sem_.Get(it.first),  //
-            [&](sem::LocalVariable* local) { local->SetShadows(sem_.Get(it.second)); },
-            [&](sem::Parameter* param) { param->SetShadows(sem_.Get(it.second)); });
+            sem_.Get(it.key),  //
+            [&](sem::LocalVariable* local) { local->SetShadows(sem_.Get(it.value)); },
+            [&](sem::Parameter* param) { param->SetShadows(sem_.Get(it.value)); });
     }
 }
 
 sem::GlobalVariable* Resolver::GlobalVariable(const ast::Variable* v) {
+    utils::UniqueVector<const sem::GlobalVariable*, 4> transitively_referenced_overrides;
+    TINT_SCOPED_ASSIGNMENT(resolved_overrides_, &transitively_referenced_overrides);
+
     auto* sem = As<sem::GlobalVariable>(Variable(v, /* is_global */ true));
     if (!sem) {
         return nullptr;
@@ -892,6 +899,16 @@ sem::GlobalVariable* Resolver::GlobalVariable(const ast::Variable* v) {
     // referenced structs
     if (!validator_.AddressSpaceLayout(sem, enabled_extensions_, valid_type_storage_layouts_)) {
         return nullptr;
+    }
+
+    // Track the pipeline-overridable constants that are transitively referenced by this variable.
+    for (auto* var : transitively_referenced_overrides) {
+        sem->AddTransitivelyReferencedOverride(var);
+    }
+    if (auto* arr = sem->Type()->UnwrapRef()->As<sem::Array>()) {
+        for (auto* var : arr->TransitivelyReferencedOverrides()) {
+            sem->AddTransitivelyReferencedOverride(var);
+        }
     }
 
     return sem;
@@ -923,7 +940,7 @@ sem::Statement* Resolver::StaticAssert(const ast::StaticAssert* assertion) {
 
 sem::Function* Resolver::Function(const ast::Function* decl) {
     uint32_t parameter_index = 0;
-    std::unordered_map<Symbol, Source> parameter_names;
+    utils::Hashmap<Symbol, Source, 8> parameter_names;
     utils::Vector<sem::Parameter*, 8> parameters;
 
     // Resolve all the parameters
@@ -931,11 +948,10 @@ sem::Function* Resolver::Function(const ast::Function* decl) {
         Mark(param);
 
         {  // Check the parameter name is unique for the function
-            auto emplaced = parameter_names.emplace(param->symbol, param->source);
-            if (!emplaced.second) {
+            if (auto added = parameter_names.Add(param->symbol, param->source); !added) {
                 auto name = builder_->Symbols().NameFor(param->symbol);
                 AddError("redefinition of parameter '" + name + "'", param->source);
-                AddNote("previous definition is here", emplaced.first->second);
+                AddNote("previous definition is here", *added.value);
                 return nullptr;
             }
         }
@@ -1031,7 +1047,7 @@ sem::Function* Resolver::Function(const ast::Function* decl) {
     }
 
     if (decl->IsEntryPoint()) {
-        entry_points_.emplace_back(func);
+        entry_points_.Push(func);
     }
 
     if (decl->body) {
@@ -1217,7 +1233,6 @@ sem::Statement* Resolver::Statement(const ast::Statement* stmt) {
         [&](const ast::CompoundAssignmentStatement* c) { return CompoundAssignmentStatement(c); },
         [&](const ast::ContinueStatement* c) { return ContinueStatement(c); },
         [&](const ast::DiscardStatement* d) { return DiscardStatement(d); },
-        [&](const ast::FallthroughStatement* f) { return FallthroughStatement(f); },
         [&](const ast::IncrementDecrementStatement* i) { return IncrementDecrementStatement(i); },
         [&](const ast::ReturnStatement* r) { return ReturnStatement(r); },
         [&](const ast::VariableDeclStatement* v) { return VariableDeclStatement(v); },
@@ -1289,6 +1304,8 @@ sem::IfStatement* Resolver::IfStatement(const ast::IfStatement* stmt) {
         sem->SetCondition(cond);
         sem->Behaviors() = cond->Behaviors();
         sem->Behaviors().Remove(sem::Behavior::kNext);
+
+        RegisterLoadIfNeeded(cond);
 
         Mark(stmt->body);
         auto* body = builder_->create<sem::BlockStatement>(stmt->body, current_compound_statement_,
@@ -1383,6 +1400,8 @@ sem::ForLoopStatement* Resolver::ForLoopStatement(const ast::ForLoopStatement* s
             }
             sem->SetCondition(cond);
             behaviors.Add(cond->Behaviors());
+
+            RegisterLoadIfNeeded(cond);
         }
 
         if (auto* continuing = stmt->continuing) {
@@ -1426,6 +1445,8 @@ sem::WhileStatement* Resolver::WhileStatement(const ast::WhileStatement* stmt) {
         }
         sem->SetCondition(cond);
         behaviors.Add(cond->Behaviors());
+
+        RegisterLoadIfNeeded(cond);
 
         Mark(stmt->body);
 
@@ -1526,6 +1547,145 @@ sem::Expression* Resolver::Expression(const ast::Expression* root) {
 
     TINT_ICE(Resolver, diagnostics_) << "Expression() did not find root node";
     return nullptr;
+}
+
+void Resolver::RegisterLoadIfNeeded(const sem::Expression* expr) {
+    if (!expr) {
+        return;
+    }
+    if (!expr->Type()->Is<sem::Reference>()) {
+        return;
+    }
+    if (!current_function_) {
+        // There is currently no situation where the Load Rule can be invoked outside of a function.
+        return;
+    }
+    auto& info = alias_analysis_infos_[current_function_];
+    Switch(
+        expr->RootIdentifier(),
+        [&](const sem::GlobalVariable* global) {
+            info.module_scope_reads.insert({global, expr});
+        },
+        [&](const sem::Parameter* param) { info.parameter_reads.insert(param); });
+}
+
+void Resolver::RegisterStore(const sem::Expression* expr) {
+    auto& info = alias_analysis_infos_[current_function_];
+    Switch(
+        expr->RootIdentifier(),
+        [&](const sem::GlobalVariable* global) {
+            info.module_scope_writes.insert({global, expr});
+        },
+        [&](const sem::Parameter* param) { info.parameter_writes.insert(param); });
+}
+
+bool Resolver::AliasAnalysis(const sem::Call* call) {
+    auto* target = call->Target()->As<sem::Function>();
+    if (!target) {
+        return true;
+    }
+    if (validator_.IsValidationDisabled(target->Declaration()->attributes,
+                                        ast::DisabledValidation::kIgnorePointerAliasing)) {
+        return true;
+    }
+
+    // Helper to generate an aliasing error diagnostic.
+    struct Alias {
+        const sem::Expression* expr;          // the "other expression"
+        enum { Argument, ModuleScope } type;  // the type of the "other" expression
+        std::string access;                   // the access performed for the "other" expression
+    };
+    auto make_error = [&](const sem::Expression* arg, Alias&& var) {
+        // TODO(crbug.com/tint/1675): Switch to error and return false after deprecation period.
+        AddWarning("invalid aliased pointer argument", arg->Declaration()->source);
+        switch (var.type) {
+            case Alias::Argument:
+                AddNote("aliases with another argument passed here",
+                        var.expr->Declaration()->source);
+                break;
+            case Alias::ModuleScope: {
+                auto* func = var.expr->Stmt()->Function();
+                auto func_name = builder_->Symbols().NameFor(func->Declaration()->symbol);
+                AddNote(
+                    "aliases with module-scope variable " + var.access + " in '" + func_name + "'",
+                    var.expr->Declaration()->source);
+                break;
+            }
+        }
+        return true;
+    };
+
+    auto& args = call->Arguments();
+    auto& target_info = alias_analysis_infos_[target];
+    auto& caller_info = alias_analysis_infos_[current_function_];
+
+    // Track the set of root identifiers that are read and written by arguments passed in this call.
+    std::unordered_map<const sem::Variable*, const sem::Expression*> arg_reads;
+    std::unordered_map<const sem::Variable*, const sem::Expression*> arg_writes;
+    for (size_t i = 0; i < args.Length(); i++) {
+        auto* arg = args[i];
+        if (!arg->Type()->Is<sem::Pointer>()) {
+            continue;
+        }
+
+        auto* root = arg->RootIdentifier();
+        if (target_info.parameter_writes.count(target->Parameters()[i])) {
+            // Arguments that are written to can alias with any other argument or module-scope
+            // variable access.
+            if (arg_writes.count(root)) {
+                return make_error(arg, {arg_writes.at(root), Alias::Argument, "write"});
+            }
+            if (arg_reads.count(root)) {
+                return make_error(arg, {arg_reads.at(root), Alias::Argument, "read"});
+            }
+            if (target_info.module_scope_reads.count(root)) {
+                return make_error(
+                    arg, {target_info.module_scope_reads.at(root), Alias::ModuleScope, "read"});
+            }
+            if (target_info.module_scope_writes.count(root)) {
+                return make_error(
+                    arg, {target_info.module_scope_writes.at(root), Alias::ModuleScope, "write"});
+            }
+            arg_writes.insert({root, arg});
+
+            // Propagate the write access to the caller.
+            Switch(
+                root,
+                [&](const sem::GlobalVariable* global) {
+                    caller_info.module_scope_writes.insert({global, arg});
+                },
+                [&](const sem::Parameter* param) { caller_info.parameter_writes.insert(param); });
+        } else if (target_info.parameter_reads.count(target->Parameters()[i])) {
+            // Arguments that are read from can alias with arguments or module-scope variables that
+            // are written to.
+            if (arg_writes.count(root)) {
+                return make_error(arg, {arg_writes.at(root), Alias::Argument, "write"});
+            }
+            if (target_info.module_scope_writes.count(root)) {
+                return make_error(
+                    arg, {target_info.module_scope_writes.at(root), Alias::ModuleScope, "write"});
+            }
+            arg_reads.insert({root, arg});
+
+            // Propagate the read access to the caller.
+            Switch(
+                root,
+                [&](const sem::GlobalVariable* global) {
+                    caller_info.module_scope_reads.insert({global, arg});
+                },
+                [&](const sem::Parameter* param) { caller_info.parameter_reads.insert(param); });
+        }
+    }
+
+    // Propagate module-scope variable uses to the caller.
+    for (auto read : target_info.module_scope_reads) {
+        caller_info.module_scope_reads.insert({read.first, read.second});
+    }
+    for (auto write : target_info.module_scope_writes) {
+        caller_info.module_scope_writes.insert({write.first, write.second});
+    }
+
+    return true;
 }
 
 const sem::Type* Resolver::ConcreteType(const sem::Type* ty,
@@ -1670,6 +1830,7 @@ sem::Expression* Resolver::IndexAccessor(const ast::IndexAccessorExpression* exp
         //     vec2(1, 2)[runtime-index]
         obj = Materialize(obj);
     }
+    RegisterLoadIfNeeded(idx);
     if (!obj) {
         return nullptr;
     }
@@ -1712,7 +1873,7 @@ sem::Expression* Resolver::IndexAccessor(const ast::IndexAccessorExpression* exp
     bool has_side_effects = idx->HasSideEffects() || obj->HasSideEffects();
     auto* sem = builder_->create<sem::IndexAccessorExpression>(
         expr, ty, stage, obj, idx, current_statement_, std::move(val), has_side_effects,
-        obj->SourceVariable());
+        obj->RootIdentifier());
     sem->Behaviors() = idx->Behaviors() + obj->Behaviors();
     return sem;
 }
@@ -1726,6 +1887,8 @@ sem::Expression* Resolver::Bitcast(const ast::BitcastExpression* expr) {
     if (!ty) {
         return nullptr;
     }
+
+    RegisterLoadIfNeeded(inner);
 
     const sem::Constant* val = nullptr;
     if (auto r = const_eval_.Bitcast(ty, inner)) {
@@ -1766,6 +1929,8 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
         args.Push(arg);
         args_stage = sem::EarliestStage(args_stage, arg->Stage());
         arg_behaviors.Add(arg->Behaviors());
+
+        RegisterLoadIfNeeded(arg);
     }
     arg_behaviors.Remove(sem::Behavior::kNext);
 
@@ -1850,8 +2015,8 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
             [&](const sem::F32*) { return ct_init_or_conv(InitConvIntrinsic::kF32, nullptr); },
             [&](const sem::Bool*) { return ct_init_or_conv(InitConvIntrinsic::kBool, nullptr); },
             [&](const sem::Array* arr) -> sem::Call* {
-                auto* call_target = utils::GetOrCreate(
-                    array_inits_, ArrayInitializerSig{{arr, args.Length(), args_stage}},
+                auto* call_target = array_inits_.GetOrCreate(
+                    ArrayInitializerSig{{arr, args.Length(), args_stage}},
                     [&]() -> sem::TypeInitializer* {
                         auto params = utils::Transform(args, [&](auto, size_t i) {
                             return builder_->create<sem::Parameter>(
@@ -1877,8 +2042,8 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
                 return call;
             },
             [&](const sem::Struct* str) -> sem::Call* {
-                auto* call_target = utils::GetOrCreate(
-                    struct_inits_, StructInitializerSig{{str, args.Length(), args_stage}},
+                auto* call_target = struct_inits_.GetOrCreate(
+                    StructInitializerSig{{str, args.Length(), args_stage}},
                     [&]() -> sem::TypeInitializer* {
                         utils::Vector<const sem::Parameter*, 8> params;
                         params.Resize(std::min(args.Length(), str->Members().size()));
@@ -1981,9 +2146,9 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
                         AddError(
                             "cannot infer common array element type from initializer arguments",
                             expr->source);
-                        std::unordered_set<const sem::Type*> types;
+                        utils::Hashset<const sem::Type*, 8> types;
                         for (size_t i = 0; i < args.Length(); i++) {
-                            if (types.emplace(args[i]->Type()).second) {
+                            if (types.Add(args[i]->Type())) {
                                 AddNote("argument " + std::to_string(i) + " is of type '" +
                                             sem_.TypeNameOf(args[i]->Type()) + "'",
                                         args[i]->Declaration()->source);
@@ -2207,6 +2372,10 @@ sem::Call* Resolver::FunctionCall(const ast::CallExpression* expr,
             current_function_->AddTransitivelyReferencedGlobal(var);
         }
 
+        if (!AliasAnalysis(call)) {
+            return nullptr;
+        }
+
         // Note: Validation *must* be performed before calling this method.
         CollectTextureSamplerPairs(target, call->Arguments());
     }
@@ -2321,9 +2490,22 @@ sem::Expression* Resolver::Identifier(const ast::IdentifierExpression* expr) {
             }
         }
 
+        auto* global = variable->As<sem::GlobalVariable>();
         if (current_function_) {
-            if (auto* global = variable->As<sem::GlobalVariable>()) {
+            if (global) {
                 current_function_->AddDirectlyReferencedGlobal(global);
+                for (auto* var : global->TransitivelyReferencedOverrides()) {
+                    current_function_->AddTransitivelyReferencedGlobal(var);
+                }
+            }
+        } else if (variable->Declaration()->Is<ast::Override>()) {
+            if (resolved_overrides_) {
+                // Track the reference to this pipeline-overridable constant and any other
+                // pipeline-overridable constants that it references.
+                resolved_overrides_->Add(global);
+                for (auto* var : global->TransitivelyReferencedOverrides()) {
+                    resolved_overrides_->Add(var);
+                }
             }
         } else if (variable->Declaration()->Is<ast::Var>()) {
             // Use of a module-scope 'var' outside of a function.
@@ -2365,7 +2547,7 @@ sem::Expression* Resolver::MemberAccessor(const ast::MemberAccessorExpression* e
     auto* structure = sem_.TypeOf(expr->structure);
     auto* storage_ty = structure->UnwrapRef();
     auto* object = sem_.Get(expr->structure);
-    auto* source_var = object->SourceVariable();
+    auto* root_ident = object->RootIdentifier();
 
     const sem::Type* ty = nullptr;
 
@@ -2381,17 +2563,28 @@ sem::Expression* Resolver::MemberAccessor(const ast::MemberAccessorExpression* e
             const sem::StructMember* member = nullptr;
             for (auto* m : str->Members()) {
                 if (m->Name() == symbol) {
-                    ty = m->Type();
                     member = m;
                     break;
                 }
             }
 
-            if (ty == nullptr) {
+            // TODO(crbug.com/tint/1757): Remove
+            if (utils::HasPrefix(builder_->Symbols().NameFor(str->Name()), "__frexp_result")) {
+                if (builder_->Symbols().NameFor(symbol) == "sig") {
+                    AddWarning(
+                        "use of deprecated language feature: 'sig' has been renamed to 'fract'",
+                        expr->member->source);
+                    member = str->Members()[0];
+                }
+            }
+
+            if (member == nullptr) {
                 AddError("struct member " + builder_->Symbols().NameFor(symbol) + " not found",
                          expr->source);
                 return nullptr;
             }
+
+            ty = member->Type();
 
             // If we're extracting from a reference, we return a reference.
             if (auto* ref = structure->As<sem::Reference>()) {
@@ -2404,7 +2597,7 @@ sem::Expression* Resolver::MemberAccessor(const ast::MemberAccessorExpression* e
             }
             return builder_->create<sem::StructMemberAccess>(expr, ty, current_statement_,
                                                              val.Get(), object, member,
-                                                             has_side_effects, source_var);
+                                                             has_side_effects, root_ident);
         },
 
         [&](const sem::Vector* vec) -> sem::Expression* {
@@ -2476,7 +2669,7 @@ sem::Expression* Resolver::MemberAccessor(const ast::MemberAccessorExpression* e
                 return nullptr;
             }
             return builder_->create<sem::Swizzle>(expr, ty, current_statement_, val.Get(), object,
-                                                  std::move(swizzle), has_side_effects, source_var);
+                                                  std::move(swizzle), has_side_effects, root_ident);
         },
 
         [&](Default) {
@@ -2510,6 +2703,9 @@ sem::Expression* Resolver::Binary(const ast::BinaryExpression* expr) {
             return nullptr;
         }
     }
+
+    RegisterLoadIfNeeded(lhs);
+    RegisterLoadIfNeeded(rhs);
 
     const sem::Constant* value = nullptr;
     if (stage == sem::EvaluationStage::kConstant) {
@@ -2549,7 +2745,7 @@ sem::Expression* Resolver::UnaryOp(const ast::UnaryOpExpression* unary) {
     }
 
     const sem::Type* ty = nullptr;
-    const sem::Variable* source_var = nullptr;
+    const sem::Variable* root_ident = nullptr;
     const sem::Constant* value = nullptr;
     auto stage = sem::EvaluationStage::kRuntime;
 
@@ -2573,7 +2769,7 @@ sem::Expression* Resolver::UnaryOp(const ast::UnaryOpExpression* unary) {
                 ty = builder_->create<sem::Pointer>(ref->StoreType(), ref->AddressSpace(),
                                                     ref->Access());
 
-                source_var = expr->SourceVariable();
+                root_ident = expr->RootIdentifier();
             } else {
                 AddError("cannot take the address of expression", unary->expr->source);
                 return nullptr;
@@ -2584,7 +2780,7 @@ sem::Expression* Resolver::UnaryOp(const ast::UnaryOpExpression* unary) {
             if (auto* ptr = expr_ty->As<sem::Pointer>()) {
                 ty = builder_->create<sem::Reference>(ptr->StoreType(), ptr->AddressSpace(),
                                                       ptr->Access());
-                source_var = expr->SourceVariable();
+                root_ident = expr->RootIdentifier();
             } else {
                 AddError("cannot dereference expression of type '" + sem_.TypeNameOf(expr_ty) + "'",
                          unary->expr->source);
@@ -2618,12 +2814,13 @@ sem::Expression* Resolver::UnaryOp(const ast::UnaryOpExpression* unary) {
                     stage = sem::EvaluationStage::kRuntime;
                 }
             }
+            RegisterLoadIfNeeded(expr);
             break;
         }
     }
 
     auto* sem = builder_->create<sem::Expression>(unary, ty, stage, current_statement_, value,
-                                                  expr->HasSideEffects(), source_var);
+                                                  expr->HasSideEffects(), root_ident);
     sem->Behaviors() = expr->Behaviors();
     return sem;
 }
@@ -2657,6 +2854,9 @@ sem::Array* Resolver::Array(const ast::Array* arr) {
         return nullptr;
     }
 
+    utils::UniqueVector<const sem::GlobalVariable*, 4> transitively_referenced_overrides;
+    TINT_SCOPED_ASSIGNMENT(resolved_overrides_, &transitively_referenced_overrides);
+
     auto* el_ty = Type(arr->type);
     if (!el_ty) {
         return nullptr;
@@ -2687,12 +2887,16 @@ sem::Array* Resolver::Array(const ast::Array* arr) {
     }
 
     if (el_ty->Is<sem::Atomic>()) {
-        atomic_composite_info_.emplace(out, arr->type->source);
+        atomic_composite_info_.Add(out, &arr->type->source);
     } else {
-        auto found = atomic_composite_info_.find(el_ty);
-        if (found != atomic_composite_info_.end()) {
-            atomic_composite_info_.emplace(out, found->second);
+        if (auto found = atomic_composite_info_.Get(el_ty)) {
+            atomic_composite_info_.Add(out, *found);
         }
+    }
+
+    // Track the pipeline-overridable constants that are transitively referenced by this array type.
+    for (auto* var : transitively_referenced_overrides) {
+        out->AddTransitivelyReferencedOverride(var);
     }
 
     return out;
@@ -2750,9 +2954,14 @@ bool Resolver::ArrayAttributes(utils::VectorRef<const ast::Attribute*> attribute
     for (auto* attr : attributes) {
         Mark(attr);
         if (auto* sd = attr->As<ast::StrideAttribute>()) {
-            explicit_stride = sd->stride;
-            if (!validator_.ArrayStrideAttribute(sd, el_ty->Size(), el_ty->Align())) {
-                return false;
+            // If the element type is not plain, then el_ty->Align() may be 0, in which case we
+            // could get a DBZ in ArrayStrideAttribute(). In this case, validation will error about
+            // the invalid array element type (which is tested later), so this is just a seatbelt.
+            if (IsPlain(el_ty)) {
+                explicit_stride = sd->stride;
+                if (!validator_.ArrayStrideAttribute(sd, el_ty->Size(), el_ty->Align())) {
+                    return false;
+                }
             }
             continue;
         }
@@ -2832,15 +3041,14 @@ sem::Struct* Resolver::Structure(const ast::Struct* str) {
     // validation.
     uint64_t struct_size = 0;
     uint64_t struct_align = 1;
-    std::unordered_map<Symbol, const ast::StructMember*> member_map;
+    utils::Hashmap<Symbol, const ast::StructMember*, 8> member_map;
 
     for (auto* member : str->members) {
         Mark(member);
-        auto result = member_map.emplace(member->symbol, member);
-        if (!result.second) {
+        if (auto added = member_map.Add(member->symbol, member); !added) {
             AddError("redefinition of '" + builder_->Symbols().NameFor(member->symbol) + "'",
                      member->source);
-            AddNote("previous definition is here", result.first->second->source);
+            AddNote("previous definition is here", (*added.value)->source);
             return nullptr;
         }
 
@@ -3027,12 +3235,11 @@ sem::Struct* Resolver::Structure(const ast::Struct* str) {
     for (size_t i = 0; i < sem_members.size(); i++) {
         auto* mem_type = sem_members[i]->Type();
         if (mem_type->Is<sem::Atomic>()) {
-            atomic_composite_info_.emplace(out, sem_members[i]->Declaration()->source);
+            atomic_composite_info_.Add(out, &sem_members[i]->Declaration()->source);
             break;
         } else {
-            auto found = atomic_composite_info_.find(mem_type);
-            if (found != atomic_composite_info_.end()) {
-                atomic_composite_info_.emplace(out, found->second);
+            if (auto found = atomic_composite_info_.Get(mem_type)) {
+                atomic_composite_info_.Add(out, *found);
                 break;
             }
         }
@@ -3070,6 +3277,8 @@ sem::Statement* Resolver::ReturnStatement(const ast::ReturnStatement* stmt) {
             }
             behaviors.Add(expr->Behaviors() - sem::Behavior::kNext);
             value_ty = expr->Type()->UnwrapRef();
+
+            RegisterLoadIfNeeded(expr);
         } else {
             value_ty = builder_->create<sem::Void>();
         }
@@ -3092,6 +3301,8 @@ sem::SwitchStatement* Resolver::SwitchStatement(const ast::SwitchStatement* stmt
             return false;
         }
         behaviors = cond->Behaviors() - sem::Behavior::kNext;
+
+        RegisterLoadIfNeeded(cond);
 
         auto* cond_ty = cond->Type()->UnwrapRef();
 
@@ -3138,7 +3349,7 @@ sem::SwitchStatement* Resolver::SwitchStatement(const ast::SwitchStatement* stmt
         if (behaviors.Contains(sem::Behavior::kBreak)) {
             behaviors.Add(sem::Behavior::kNext);
         }
-        behaviors.Remove(sem::Behavior::kBreak, sem::Behavior::kFallthrough);
+        behaviors.Remove(sem::Behavior::kBreak);
 
         return validator_.SwitchStatement(stmt);
     });
@@ -3196,10 +3407,16 @@ sem::Statement* Resolver::AssignmentStatement(const ast::AssignmentStatement* st
             }
         }
 
+        RegisterLoadIfNeeded(rhs);
+
         auto& behaviors = sem->Behaviors();
         behaviors = rhs->Behaviors();
         if (!is_phony_assignment) {
             behaviors.Add(lhs->Behaviors());
+        }
+
+        if (!is_phony_assignment) {
+            RegisterStore(lhs);
         }
 
         return validator_.Assignment(stmt, sem_.TypeOf(stmt->rhs));
@@ -3227,6 +3444,8 @@ sem::Statement* Resolver::BreakIfStatement(const ast::BreakIfStatement* stmt) {
         sem->SetCondition(cond);
         sem->Behaviors() = cond->Behaviors();
         sem->Behaviors().Add(sem::Behavior::kBreak);
+
+        RegisterLoadIfNeeded(cond);
 
         return validator_.BreakIfStatement(sem, current_statement_);
     });
@@ -3258,6 +3477,9 @@ sem::Statement* Resolver::CompoundAssignmentStatement(
         if (!rhs) {
             return false;
         }
+
+        RegisterLoadIfNeeded(rhs);
+        RegisterStore(lhs);
 
         sem->Behaviors() = rhs->Behaviors() + lhs->Behaviors();
 
@@ -3295,20 +3517,8 @@ sem::Statement* Resolver::DiscardStatement(const ast::DiscardStatement* stmt) {
     auto* sem =
         builder_->create<sem::Statement>(stmt, current_compound_statement_, current_function_);
     return StatementScope(stmt, sem, [&] {
-        sem->Behaviors() = sem::Behavior::kDiscard;
         current_function_->SetDiscardStatement(sem);
-
-        return validator_.DiscardStatement(sem, current_statement_);
-    });
-}
-
-sem::Statement* Resolver::FallthroughStatement(const ast::FallthroughStatement* stmt) {
-    auto* sem =
-        builder_->create<sem::Statement>(stmt, current_compound_statement_, current_function_);
-    return StatementScope(stmt, sem, [&] {
-        sem->Behaviors() = sem::Behavior::kFallthrough;
-
-        return validator_.FallthroughStatement(sem);
+        return true;
     });
 }
 
@@ -3322,6 +3532,9 @@ sem::Statement* Resolver::IncrementDecrementStatement(
             return false;
         }
         sem->Behaviors() = lhs->Behaviors();
+
+        RegisterLoadIfNeeded(lhs);
+        RegisterStore(lhs);
 
         return validator_.IncrementDecrementStatement(stmt);
     });

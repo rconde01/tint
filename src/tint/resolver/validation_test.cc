@@ -766,69 +766,17 @@ TEST_F(ResolverTest, Stmt_Loop_DiscardInContinuing_Direct) {
     // loop  {
     //   continuing {
     //     discard;
+    //     breakif true;
     //   }
     // }
 
-    WrapInFunction(Loop(  // loop
-        Block(),          //   loop block
-        Block(            //   loop continuing block
-            Discard(Source{{12, 34}}))));
+    Func("my_func", utils::Empty, ty.void_(),
+         utils::Vector{Loop(  // loop
+             Block(),         //   loop block
+             Block(           //   loop continuing block
+                 Discard(Source{{12, 34}}), BreakIf(true)))});
 
-    EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              R"(12:34 error: continuing blocks must not contain a discard statement)");
-}
-
-TEST_F(ResolverTest, Stmt_Loop_DiscardInContinuing_Indirect) {
-    // loop {
-    //   if (false) { break; }
-    //   continuing {
-    //     loop { discard; }
-    //   }
-    // }
-
-    WrapInFunction(Loop(                   // outer loop
-        Block(If(false, Block(Break()))),  //   outer loop block
-        Block(Source{{56, 78}},            //   outer loop continuing block
-              Loop(                        //     inner loop
-                  Block(                   //       inner loop block
-                      Discard(Source{{12, 34}}))))));
-
-    EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              R"(12:34 error: continuing blocks must not contain a discard statement
-56:78 note: see continuing block here)");
-}
-
-TEST_F(ResolverTest, Stmt_Loop_DiscardInContinuing_Indirect_ViaCall) {
-    // fn MayDiscard() { if (true) { discard; } }
-    // fn F() { MayDiscard(); }
-    // loop {
-    //   continuing {
-    //     loop { F(); }
-    //   }
-    // }
-
-    Func("MayDiscard", utils::Empty, ty.void_(),
-         utils::Vector{
-             If(true, Block(Discard())),
-         });
-    Func("SomeFunc", utils::Empty, ty.void_(),
-         utils::Vector{
-             CallStmt(Call("MayDiscard")),
-         });
-
-    WrapInFunction(Loop(         // outer loop
-        Block(),                 //   outer loop block
-        Block(Source{{56, 78}},  //   outer loop continuing block
-              Loop(              //     inner loop
-                  Block(         //       inner loop block
-                      CallStmt(Call(Source{{12, 34}}, "SomeFunc")))))));
-
-    EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              R"(12:34 error: cannot call a function that may discard inside a continuing block
-56:78 note: see continuing block here)");
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
 }
 
 TEST_F(ResolverTest, Stmt_Loop_ContinueInContinuing_Direct) {
@@ -901,7 +849,8 @@ TEST_F(ResolverValidationTest, Stmt_Loop_Continuing_BreakIf_Not_Last) {
     WrapInFunction(loop_stmt);
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:23 error: break-if must be last statement in a continuing block
+    EXPECT_EQ(r()->error(),
+              R"(12:23 error: break-if must be the last statement in a continuing block
 10:9 note: see continuing block here)");
 }
 
@@ -919,7 +868,8 @@ TEST_F(ResolverValidationTest, Stmt_Loop_Continuing_BreakIf_Duplicate) {
     WrapInFunction(loop_stmt);
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:23 error: break-if must be last statement in a continuing block
+    EXPECT_EQ(r()->error(),
+              R"(12:23 error: break-if must be the last statement in a continuing block
 10:9 note: see continuing block here)");
 }
 
@@ -973,55 +923,11 @@ TEST_F(ResolverTest, Stmt_ForLoop_DiscardInContinuing_Direct) {
     //   break;
     // }
 
-    WrapInFunction(For(nullptr, nullptr, Discard(Source{{12, 34}}),  //
-                       Block(Break())));
+    Func("my_func", utils::Empty, ty.void_(),
+         utils::Vector{For(nullptr, nullptr, Discard(Source{{12, 34}}),  //
+                           Block(Break()))});
 
-    EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              R"(12:34 error: continuing blocks must not contain a discard statement)");
-}
-
-TEST_F(ResolverTest, Stmt_ForLoop_DiscardInContinuing_Indirect) {
-    // for(;; loop { discard }) {
-    //   break;
-    // }
-
-    WrapInFunction(For(nullptr, nullptr,
-                       Loop(Source{{56, 78}},                   //
-                            Block(Discard(Source{{12, 34}}))),  //
-                       Block(Break())));
-
-    EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              R"(12:34 error: continuing blocks must not contain a discard statement
-56:78 note: see continuing block here)");
-}
-
-TEST_F(ResolverTest, Stmt_ForLoop_DiscardInContinuing_Indirect_ViaCall) {
-    // fn MayDiscard() { if (true) { discard; } }
-    // fn F() { MayDiscard(); }
-    // for(;; loop { F() }) {
-    //   break;
-    // }
-
-    Func("MayDiscard", utils::Empty, ty.void_(),
-         utils::Vector{
-             If(true, Block(Discard())),
-         });
-    Func("F", utils::Empty, ty.void_(),
-         utils::Vector{
-             CallStmt(Call("MayDiscard")),
-         });
-
-    WrapInFunction(For(nullptr, nullptr,
-                       Loop(Source{{56, 78}},                               //
-                            Block(CallStmt(Call(Source{{12, 34}}, "F")))),  //
-                       Block(Break())));
-
-    EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              R"(12:34 error: cannot call a function that may discard inside a continuing block
-56:78 note: see continuing block here)");
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
 }
 
 TEST_F(ResolverTest, Stmt_ForLoop_ContinueInContinuing_Direct) {
@@ -1123,10 +1029,10 @@ TEST_F(ResolverValidationTest, Stmt_BreakInIfTrueInContinuing) {
                                                   //   }
                                                   // }
     WrapInFunction(Loop(Block(), cont));
-    EXPECT_TRUE(r()->Resolve()) << r()->error();
+    EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 warning: use of deprecated language feature: `break` must not be used to exit "
-              "from a continuing block. Use `break-if` instead.");
+              "12:34 error: `break` must not be used to exit from a continuing block. "
+              "Use `break-if` instead.");
 }
 
 TEST_F(ResolverValidationTest, Stmt_BreakInIfElseInContinuing) {
@@ -1137,10 +1043,10 @@ TEST_F(ResolverValidationTest, Stmt_BreakInIfElseInContinuing) {
                                              //   }
                                              // }
     WrapInFunction(Loop(Block(), cont));
-    EXPECT_TRUE(r()->Resolve()) << r()->error();
+    EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 warning: use of deprecated language feature: `break` must not be used to exit "
-              "from a continuing block. Use `break-if` instead.");
+              "12:34 error: `break` must not be used to exit from a continuing block. "
+              "Use `break-if` instead.");
 }
 
 TEST_F(ResolverValidationTest, Stmt_BreakInContinuing) {
@@ -1150,12 +1056,8 @@ TEST_F(ResolverValidationTest, Stmt_BreakInContinuing) {
     WrapInFunction(Loop(Block(), cont));
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 warning: use of deprecated language feature: `break` must not be used to exit "
-              "from a continuing block. Use `break-if` instead.\n"
-              "12:34 error: break statement in a continuing block must be the single "
-              "statement of an if statement's true or false block, and that if "
-              "statement must be the last statement of the continuing block\n"
-              "12:34 note: break statement is not directly in if statement block");
+              "12:34 error: `break` must not be used to exit from a continuing block. "
+              "Use `break-if` instead.");
 }
 
 TEST_F(ResolverValidationTest, Stmt_BreakInIfInIfInContinuing) {
@@ -1169,13 +1071,8 @@ TEST_F(ResolverValidationTest, Stmt_BreakInIfInIfInContinuing) {
     WrapInFunction(Loop(Block(), cont));
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 warning: use of deprecated language feature: `break` must not be used to exit "
-              "from a continuing block. Use `break-if` instead.\n"
-              "12:34 error: break statement in a continuing block must be the single "
-              "statement of an if statement's true or false block, and that if "
-              "statement must be the last statement of the continuing block\n"
-              "56:78 note: if statement containing break statement is not directly in "
-              "continuing block");
+              "12:34 error: `break` must not be used to exit from a continuing block. "
+              "Use `break-if` instead.");
 }
 
 TEST_F(ResolverValidationTest, Stmt_BreakInIfTrueMultipleStmtsInContinuing) {
@@ -1188,12 +1085,8 @@ TEST_F(ResolverValidationTest, Stmt_BreakInIfTrueMultipleStmtsInContinuing) {
     WrapInFunction(Loop(Block(), cont));
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 warning: use of deprecated language feature: `break` must not be used to exit "
-              "from a continuing block. Use `break-if` instead.\n"
-              "12:34 error: break statement in a continuing block must be the single "
-              "statement of an if statement's true or false block, and that if "
-              "statement must be the last statement of the continuing block\n"
-              "56:78 note: if statement block contains multiple statements");
+              "12:34 error: `break` must not be used to exit from a continuing block. "
+              "Use `break-if` instead.");
 }
 
 TEST_F(ResolverValidationTest, Stmt_BreakInIfElseMultipleStmtsInContinuing) {
@@ -1207,12 +1100,8 @@ TEST_F(ResolverValidationTest, Stmt_BreakInIfElseMultipleStmtsInContinuing) {
     WrapInFunction(Loop(Block(), cont));
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 warning: use of deprecated language feature: `break` must not be used to exit "
-              "from a continuing block. Use `break-if` instead.\n"
-              "12:34 error: break statement in a continuing block must be the single "
-              "statement of an if statement's true or false block, and that if "
-              "statement must be the last statement of the continuing block\n"
-              "56:78 note: if statement block contains multiple statements");
+              "12:34 error: `break` must not be used to exit from a continuing block. "
+              "Use `break-if` instead.");
 }
 
 TEST_F(ResolverValidationTest, Stmt_BreakInIfElseIfInContinuing) {
@@ -1225,12 +1114,8 @@ TEST_F(ResolverValidationTest, Stmt_BreakInIfElseIfInContinuing) {
     WrapInFunction(Loop(Block(), cont));
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 warning: use of deprecated language feature: `break` must not be used to exit "
-              "from a continuing block. Use `break-if` instead.\n"
-              "12:34 error: break statement in a continuing block must be the single "
-              "statement of an if statement's true or false block, and that if "
-              "statement must be the last statement of the continuing block\n"
-              "56:78 note: else has condition");
+              "12:34 error: `break` must not be used to exit from a continuing block. "
+              "Use `break-if` instead.");
 }
 
 TEST_F(ResolverValidationTest, Stmt_BreakInIfNonEmptyElseInContinuing) {
@@ -1244,12 +1129,8 @@ TEST_F(ResolverValidationTest, Stmt_BreakInIfNonEmptyElseInContinuing) {
     WrapInFunction(Loop(Block(), cont));
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 warning: use of deprecated language feature: `break` must not be used to exit "
-              "from a continuing block. Use `break-if` instead.\n"
-              "12:34 error: break statement in a continuing block must be the single "
-              "statement of an if statement's true or false block, and that if "
-              "statement must be the last statement of the continuing block\n"
-              "56:78 note: non-empty false block");
+              "12:34 error: `break` must not be used to exit from a continuing block. "
+              "Use `break-if` instead.");
 }
 
 TEST_F(ResolverValidationTest, Stmt_BreakInIfElseNonEmptyTrueInContinuing) {
@@ -1263,12 +1144,8 @@ TEST_F(ResolverValidationTest, Stmt_BreakInIfElseNonEmptyTrueInContinuing) {
     WrapInFunction(Loop(Block(), cont));
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 warning: use of deprecated language feature: `break` must not be used to exit "
-              "from a continuing block. Use `break-if` instead.\n"
-              "12:34 error: break statement in a continuing block must be the single "
-              "statement of an if statement's true or false block, and that if "
-              "statement must be the last statement of the continuing block\n"
-              "56:78 note: non-empty true block");
+              "12:34 error: `break` must not be used to exit from a continuing block. "
+              "Use `break-if` instead.");
 }
 
 TEST_F(ResolverValidationTest, Stmt_BreakInIfInContinuingNotLast) {
@@ -1281,13 +1158,8 @@ TEST_F(ResolverValidationTest, Stmt_BreakInIfInContinuingNotLast) {
     WrapInFunction(Loop(Block(), cont));
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 warning: use of deprecated language feature: `break` must not be used to exit "
-              "from a continuing block. Use `break-if` instead.\n"
-              "12:34 error: break statement in a continuing block must be the single "
-              "statement of an if statement's true or false block, and that if "
-              "statement must be the last statement of the continuing block\n"
-              "56:78 note: if statement containing break statement is not the last "
-              "statement of the continuing block");
+              "12:34 error: `break` must not be used to exit from a continuing block. "
+              "Use `break-if` instead.");
 }
 
 TEST_F(ResolverValidationTest, Stmt_BreakNotInLoopOrSwitch) {

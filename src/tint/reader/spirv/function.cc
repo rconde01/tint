@@ -25,7 +25,6 @@
 #include "src/tint/ast/call_statement.h"
 #include "src/tint/ast/continue_statement.h"
 #include "src/tint/ast/discard_statement.h"
-#include "src/tint/ast/fallthrough_statement.h"
 #include "src/tint/ast/if_statement.h"
 #include "src/tint/ast/loop_statement.h"
 #include "src/tint/ast/return_statement.h"
@@ -1514,7 +1513,13 @@ bool FunctionEmitter::ParseFunctionDeclaration(FunctionDeclaration* decl) {
 
     ParameterList ast_params;
     function_.ForEachParam([this, &ast_params](const spvtools::opt::Instruction* param) {
-        auto* type = parser_impl_.ConvertType(param->type_id());
+        // Valid SPIR-V requires function call parameters to be non-null
+        // instructions.
+        TINT_ASSERT(Reader, param != nullptr);
+        const Type* const type = IsHandleObj(*param)
+                                     ? parser_impl_.GetHandleTypeForSpirvHandle(*param)
+                                     : parser_impl_.ConvertType(param->type_id());
+
         if (type != nullptr) {
             auto* ast_param = parser_impl_.MakeParameter(param->result_id(), type, AttributeList{});
             // Parameters are treated as const declarations.
@@ -1535,6 +1540,20 @@ bool FunctionEmitter::ParseFunctionDeclaration(FunctionDeclaration* decl) {
     decl->attributes.Clear();
 
     return success();
+}
+
+bool FunctionEmitter::IsHandleObj(const spvtools::opt::Instruction& obj) {
+    TINT_ASSERT(Reader, obj.type_id() != 0u);
+    auto* spirv_type = type_mgr_->GetType(obj.type_id());
+    TINT_ASSERT(Reader, spirv_type);
+    return spirv_type->AsImage() || spirv_type->AsSampler() ||
+           (spirv_type->AsPointer() &&
+            (static_cast<spv::StorageClass>(spirv_type->AsPointer()->storage_class()) ==
+             spv::StorageClass::UniformConstant));
+}
+
+bool FunctionEmitter::IsHandleObj(const spvtools::opt::Instruction* obj) {
+    return (obj != nullptr) && IsHandleObj(*obj);
 }
 
 const Type* FunctionEmitter::GetVariableStoreType(const spvtools::opt::Instruction& var_decl_inst) {
@@ -2139,8 +2158,7 @@ bool FunctionEmitter::ClassifyCFGEdges() {
     // For each branch encountered, classify each edge (S,T) as:
     //    - a back-edge
     //    - a structured exit (specific ways of branching to enclosing construct)
-    //    - a normal (forward) edge, either natural control flow or a case
-    //    fallthrough
+    //    - a normal (forward) edge, either natural control flow or a case fallthrough
     //
     // If more than one block is targeted by a normal edge, then S must be a
     // structured header.
@@ -2174,11 +2192,10 @@ bool FunctionEmitter::ClassifyCFGEdges() {
         // There should only be one backedge per backedge block.
         uint32_t num_backedges = 0;
 
-        // Track destinations for normal forward edges, either kForward
-        // or kCaseFallThrough. These count toward the need
-        // to have a merge instruction.  We also track kIfBreak edges
-        // because when used with normal forward edges, we'll need
-        // to generate a flow guard variable.
+        // Track destinations for normal forward edges, either kForward or kCaseFallThrough.
+        // These count toward the need to have a merge instruction.  We also track kIfBreak edges
+        // because when used with normal forward edges, we'll need to generate a flow guard
+        // variable.
         utils::Vector<uint32_t, 4> normal_forward_edges;
         utils::Vector<uint32_t, 4> if_break_edges;
 
@@ -2355,6 +2372,12 @@ bool FunctionEmitter::ClassifyCFGEdges() {
                                                                                : "header ")
                                << dest_construct.begin_id << " (dominance rule violated)";
                     }
+                }
+
+                // Error on the fallthrough at the end in order to allow the better error messages
+                // from the above checks to happen.
+                if (edge_kind == EdgeKind::kCaseFallThrough) {
+                    return Fail() << "Fallthrough not permitted in WGSL";
                 }
             }  // end forward edge
         }      // end successor
@@ -3187,8 +3210,8 @@ bool FunctionEmitter::EmitNormalTerminator(const BlockInfo& block_info) {
                 return false;
             }
             AddStatement(create<ast::ReturnStatement>(Source{}, value.expr));
-        }
             return true;
+        }
         case spv::Op::OpKill:
             // For now, assume SPIR-V OpKill has same semantics as WGSL discard.
             // TODO(dneto): https://github.com/gpuweb/gpuweb/issues/676
@@ -3238,31 +3261,63 @@ bool FunctionEmitter::EmitNormalTerminator(const BlockInfo& block_info) {
             // start of an if-selection or a switch-selection.  So at most one branch
             // is a kForward, kCaseFallThrough, or kIfBreak.
 
-            // The fallthrough case is special because WGSL requires the fallthrough
-            // statement to be last in the case clause.
-            if (true_kind == EdgeKind::kCaseFallThrough) {
-                return EmitConditionalCaseFallThrough(block_info, cond, false_kind, *false_info,
-                                                      true);
-            } else if (false_kind == EdgeKind::kCaseFallThrough) {
-                return EmitConditionalCaseFallThrough(block_info, cond, true_kind, *true_info,
-                                                      false);
+            if (true_kind == EdgeKind::kCaseFallThrough ||
+                false_kind == EdgeKind::kCaseFallThrough) {
+                return Fail() << "Fallthrough not supported in WGSL";
+            }
+
+            // In the case of a continuing block a `break-if` needs to be emitted for either an
+            // if-break or an if-else-break statement. This only happens inside the continue block.
+            // It's possible for a continue block to also be the loop block, so checks are needed
+            // that this is a continue construct and the header construct will cause a continuing
+            // construct to be emitted. (i.e. the header is not `continue is entire loop`.
+            bool needs_break_if = false;
+            if ((true_kind == EdgeKind::kLoopBreak || false_kind == EdgeKind::kLoopBreak) &&
+                block_info.construct && block_info.construct->kind == Construct::Kind::kContinue) {
+                auto* header = GetBlockInfo(block_info.construct->begin_id);
+
+                TINT_ASSERT(Reader, header->construct &&
+                                        header->construct->kind == Construct::Kind::kContinue);
+                if (!header->is_continue_entire_loop) {
+                    needs_break_if = true;
+                }
             }
 
             // At this point, at most one edge is kForward or kIfBreak.
 
-            // Emit an 'if' statement to express the *other* branch as a conditional
-            // break or continue.  Either or both of these could be nullptr.
-            // (A nullptr is generated for kIfBreak, kForward, or kBack.)
-            // Also if one of the branches is an if-break out of an if-selection
-            // requiring a flow guard, then get that flow guard name too.  It will
-            // come from at most one of these two branches.
-            std::string flow_guard;
-            auto* true_branch = MakeBranchDetailed(block_info, *true_info, false, &flow_guard);
-            auto* false_branch = MakeBranchDetailed(block_info, *false_info, false, &flow_guard);
+            // If this is a continuing block and a `break` is to be emitted, then this needs to be
+            // converted to a `break-if`. This may involve inverting the condition if this was a
+            // `break-unless`.
+            if (needs_break_if) {
+                if (true_kind == EdgeKind::kLoopBreak && false_kind == EdgeKind::kLoopBreak) {
+                    // Both branches break ... ?
+                    return Fail() << "Both branches of if inside continuing break.";
+                }
 
-            AddStatement(MakeSimpleIf(cond, true_branch, false_branch));
-            if (!flow_guard.empty()) {
-                PushGuard(flow_guard, statements_stack_.Back().GetEndId());
+                if (true_kind == EdgeKind::kLoopBreak) {
+                    AddStatement(create<ast::BreakIfStatement>(Source{}, cond));
+                } else {
+                    AddStatement(create<ast::BreakIfStatement>(
+                        Source{},
+                        create<ast::UnaryOpExpression>(Source{}, ast::UnaryOp::kNot, cond)));
+                }
+                return true;
+
+            } else {
+                // Emit an 'if' statement to express the *other* branch as a conditional
+                // break or continue.  Either or both of these could be nullptr.
+                // (A nullptr is generated for kIfBreak, kForward, or kBack.)
+                // Also if one of the branches is an if-break out of an if-selection
+                // requiring a flow guard, then get that flow guard name too.  It will
+                // come from at most one of these two branches.
+                std::string flow_guard;
+                auto* true_branch = MakeBranchDetailed(block_info, *true_info, &flow_guard);
+                auto* false_branch = MakeBranchDetailed(block_info, *false_info, &flow_guard);
+
+                AddStatement(MakeSimpleIf(cond, true_branch, false_branch));
+                if (!flow_guard.empty()) {
+                    PushGuard(flow_guard, statements_stack_.Back().GetEndId());
+                }
             }
             return true;
         }
@@ -3283,19 +3338,14 @@ bool FunctionEmitter::EmitNormalTerminator(const BlockInfo& block_info) {
 
 const ast::Statement* FunctionEmitter::MakeBranchDetailed(const BlockInfo& src_info,
                                                           const BlockInfo& dest_info,
-                                                          bool forced,
-                                                          std::string* flow_guard_name_ptr) const {
+                                                          std::string* flow_guard_name_ptr) {
     auto kind = src_info.succ_edge.find(dest_info.id)->second;
     switch (kind) {
         case EdgeKind::kBack:
             // Nothing to do. The loop backedge is implicit.
             break;
         case EdgeKind::kSwitchBreak: {
-            if (forced) {
-                return create<ast::BreakStatement>(Source{});
-            }
-            // Unless forced, don't bother with a break at the end of a case/default
-            // clause.
+            // Don't bother with a break at the end of a case/default clause.
             const auto header = dest_info.header_for_merge;
             TINT_ASSERT(Reader, header != 0);
             const auto* exiting_construct = GetBlockInfo(header)->construct;
@@ -3347,8 +3397,10 @@ const ast::Statement* FunctionEmitter::MakeBranchDetailed(const BlockInfo& src_i
             // merge block is implicit.
             break;
         }
-        case EdgeKind::kCaseFallThrough:
-            return create<ast::FallthroughStatement>(Source{});
+        case EdgeKind::kCaseFallThrough: {
+            Fail() << "Fallthrough not supported in WGSL";
+            return nullptr;
+        }
         case EdgeKind::kForward:
             // Unconditional forward branch is implicit.
             break;
@@ -3376,45 +3428,6 @@ const ast::Statement* FunctionEmitter::MakeSimpleIf(const ast::Expression* condi
     auto* if_stmt = create<ast::IfStatement>(Source{}, condition, if_block, else_block);
 
     return if_stmt;
-}
-
-bool FunctionEmitter::EmitConditionalCaseFallThrough(const BlockInfo& src_info,
-                                                     const ast::Expression* cond,
-                                                     EdgeKind other_edge_kind,
-                                                     const BlockInfo& other_dest,
-                                                     bool fall_through_is_true_branch) {
-    // In WGSL, the fallthrough statement must come last in the case clause.
-    // So we'll emit an if statement for the other branch, and then emit
-    // the fallthrough.
-
-    // We have two distinct destinations. But we only get here if this
-    // is a normal terminator; in particular the source block is *not* the
-    // start of an if-selection.  So at most one branch is a kForward or
-    // kCaseFallThrough.
-    if (other_edge_kind == EdgeKind::kForward) {
-        return Fail() << "internal error: normal terminator OpBranchConditional has "
-                         "both forward and fallthrough edges";
-    }
-    if (other_edge_kind == EdgeKind::kIfBreak) {
-        return Fail() << "internal error: normal terminator OpBranchConditional has "
-                         "both IfBreak and fallthrough edges.  Violates nesting rule";
-    }
-    if (other_edge_kind == EdgeKind::kBack) {
-        return Fail() << "internal error: normal terminator OpBranchConditional has "
-                         "both backedge and fallthrough edges.  Violates nesting rule";
-    }
-    auto* other_branch = MakeForcedBranch(src_info, other_dest);
-    if (other_branch == nullptr) {
-        return Fail() << "internal error: expected a branch for edge-kind " << int(other_edge_kind);
-    }
-    if (fall_through_is_true_branch) {
-        AddStatement(MakeSimpleIf(cond, nullptr, other_branch));
-    } else {
-        AddStatement(MakeSimpleIf(cond, other_branch, nullptr));
-    }
-    AddStatement(create<ast::FallthroughStatement>(Source{}));
-
-    return success();
 }
 
 bool FunctionEmitter::EmitStatementsInBasicBlock(const BlockInfo& block_info,
@@ -3982,7 +3995,11 @@ TypedExpression FunctionEmitter::MaybeEmitCombinatorialValue(
     if (op == spv::Op::OpCompositeConstruct) {
         ExpressionList operands;
         for (uint32_t iarg = 0; iarg < inst.NumInOperands(); ++iarg) {
-            operands.Push(MakeOperand(inst, iarg).expr);
+            auto operand = MakeOperand(inst, iarg);
+            if (!operand) {
+                return {};
+            }
+            operands.Push(operand.expr);
         }
         return {ast_type,
                 builder_.Construct(Source{}, ast_type->Build(builder_), std::move(operands))};
@@ -5265,7 +5282,21 @@ bool FunctionEmitter::EmitFunctionCall(const spvtools::opt::Instruction& inst) {
 
     ExpressionList args;
     for (uint32_t iarg = 1; iarg < inst.NumInOperands(); ++iarg) {
-        auto expr = MakeOperand(inst, iarg);
+        uint32_t arg_id = inst.GetSingleWordInOperand(iarg);
+        TypedExpression expr;
+
+        if (IsHandleObj(def_use_mgr_->GetDef(arg_id))) {
+            // For textures and samplers, use the memory object declaration
+            // instead.
+            const auto usage = parser_impl_.GetHandleUsage(arg_id);
+            const auto* mem_obj_decl =
+                parser_impl_.GetMemoryObjectDeclarationForHandle(arg_id, usage.IsTexture());
+            expr = MakeExpression(mem_obj_decl->result_id());
+            // Pass the handle through instead of a pointer to the handle.
+            expr.type = parser_impl_.GetHandleTypeForSpirvHandle(*mem_obj_decl);
+        } else {
+            expr = MakeOperand(inst, iarg);
+        }
         if (!expr) {
             return false;
         }
@@ -5407,21 +5438,17 @@ const spvtools::opt::Instruction* FunctionEmitter::GetImage(
 }
 
 const Texture* FunctionEmitter::GetImageType(const spvtools::opt::Instruction& image) {
-    const Pointer* ptr_type = parser_impl_.GetTypeForHandleVar(image);
+    const Type* type = parser_impl_.GetHandleTypeForSpirvHandle(image);
     if (!parser_impl_.success()) {
         Fail();
         return {};
     }
-    if (!ptr_type) {
-        Fail() << "invalid texture type for " << image.PrettyPrint();
-        return {};
+    TINT_ASSERT(Reader, type != nullptr);
+    if (auto* result = type->UnwrapAll()->As<Texture>()) {
+        return result;
     }
-    auto* result = ptr_type->type->UnwrapAll()->As<Texture>();
-    if (!result) {
-        Fail() << "invalid texture type for " << image.PrettyPrint();
-        return {};
-    }
-    return result;
+    Fail() << "invalid texture type for " << image.PrettyPrint();
+    return {};
 }
 
 const ast::Expression* FunctionEmitter::GetImageExpression(const spvtools::opt::Instruction& inst) {
@@ -5471,12 +5498,7 @@ bool FunctionEmitter::EmitImageAccess(const spvtools::opt::Instruction& inst) {
     }
 
     // Find the texture type.
-    const Pointer* texture_ptr_type = parser_impl_.GetTypeForHandleVar(*image);
-    if (!texture_ptr_type) {
-        return Fail();
-    }
-    const Texture* texture_type = texture_ptr_type->type->UnwrapAll()->As<Texture>();
-
+    const auto* texture_type = parser_impl_.GetHandleTypeForSpirvHandle(*image)->As<Texture>();
     if (!texture_type) {
         return Fail();
     }
@@ -5736,7 +5758,8 @@ bool FunctionEmitter::EmitImageAccess(const spvtools::opt::Instruction& inst) {
         // If necessary, convert the result to the signedness of the instruction
         // result type. Compare the SPIR-V image's sampled component type with the
         // component of the result type of the SPIR-V instruction.
-        auto* spirv_image_type = parser_impl_.GetSpirvTypeForHandleMemoryObjectDeclaration(*image);
+        auto* spirv_image_type =
+            parser_impl_.GetSpirvTypeForHandleOrHandleMemoryObjectDeclaration(*image);
         if (!spirv_image_type || (opcode(spirv_image_type) != spv::Op::OpTypeImage)) {
             return Fail() << "invalid image type for image memory object declaration "
                           << image->PrettyPrint();

@@ -354,6 +354,7 @@ struct ModuleScopeVarToEntryPointParam::State {
         for (auto* func_ast : functions_to_process) {
             auto* func_sem = ctx.src->Sem().Get(func_ast);
             bool is_entry_point = func_ast->IsEntryPoint();
+            bool needs_pointer_aliasing = false;
 
             // Map module-scope variables onto their replacement.
             struct NewVar {
@@ -424,6 +425,9 @@ struct ModuleScopeVarToEntryPointParam::State {
                                                     is_wrapped);
                     } else {
                         ProcessVariableInUserFunction(func_ast, var, new_var_symbol, is_pointer);
+                        if (var->AddressSpace() == ast::AddressSpace::kWorkgroup) {
+                            needs_pointer_aliasing = true;
+                        }
                     }
 
                     // Record the replacement symbol.
@@ -434,6 +438,12 @@ struct ModuleScopeVarToEntryPointParam::State {
                 ReplaceUsesInFunction(func_ast, var, new_var_symbol, is_pointer, is_wrapped);
             }
 
+            // Allow pointer aliasing if needed.
+            if (needs_pointer_aliasing) {
+                ctx.InsertBack(func_ast->attributes,
+                               ctx.dst->Disable(ast::DisabledValidation::kIgnorePointerAliasing));
+            }
+
             if (!workgroup_parameter_members.IsEmpty()) {
                 // Create the workgroup memory parameter.
                 // The parameter is a struct that contains members for each workgroup variable.
@@ -441,10 +451,12 @@ struct ModuleScopeVarToEntryPointParam::State {
                     ctx.dst->Structure(ctx.dst->Sym(), std::move(workgroup_parameter_members));
                 auto* param_type =
                     ctx.dst->ty.pointer(ctx.dst->ty.Of(str), ast::AddressSpace::kWorkgroup);
-                auto* disable_validation =
-                    ctx.dst->Disable(ast::DisabledValidation::kEntryPointParameter);
-                auto* param = ctx.dst->Param(workgroup_param(), param_type,
-                                             utils::Vector{disable_validation});
+                auto* param = ctx.dst->Param(
+                    workgroup_param(), param_type,
+                    utils::Vector{
+                        ctx.dst->Disable(ast::DisabledValidation::kEntryPointParameter),
+                        ctx.dst->Disable(ast::DisabledValidation::kIgnoreAddressSpace),
+                    });
                 ctx.InsertFront(func_ast->params, param);
             }
 

@@ -28,7 +28,6 @@
 #include "src/tint/ast/depth_texture.h"
 #include "src/tint/ast/disable_validation_attribute.h"
 #include "src/tint/ast/discard_statement.h"
-#include "src/tint/ast/fallthrough_statement.h"
 #include "src/tint/ast/for_loop_statement.h"
 #include "src/tint/ast/id_attribute.h"
 #include "src/tint/ast/if_statement.h"
@@ -531,9 +530,13 @@ bool Validator::AddressSpaceLayout(const sem::Variable* var,
     }
 
     if (auto* str = var->Type()->UnwrapRef()->As<sem::Struct>()) {
-        if (!AddressSpaceLayout(str, var->AddressSpace(), str->Declaration()->source, layouts)) {
-            AddNote("see declaration of variable", var->Declaration()->source);
-            return false;
+        // Check the structure has a declaration. Builtins like modf() and frexp() return untypeable
+        // structures, and so they have no declaration. Just skip validation for these.
+        if (auto* str_decl = str->Declaration()) {
+            if (!AddressSpaceLayout(str, var->AddressSpace(), str_decl->source, layouts)) {
+                AddNote("see declaration of variable", var->Declaration()->source);
+                return false;
+            }
         }
     } else {
         Source source = var->Declaration()->source;
@@ -580,8 +583,8 @@ bool Validator::LocalVariable(const sem::Variable* local) const {
 
 bool Validator::GlobalVariable(
     const sem::GlobalVariable* global,
-    const std::unordered_map<OverrideId, const sem::Variable*>& override_ids,
-    const std::unordered_map<const sem::Type*, const Source&>& atomic_composite_info) const {
+    const utils::Hashmap<OverrideId, const sem::Variable*, 8>& override_ids,
+    const utils::Hashmap<const sem::Type*, const Source*, 8>& atomic_composite_info) const {
     auto* decl = global->Declaration();
     if (global->AddressSpace() != ast::AddressSpace::kWorkgroup &&
         IsArrayWithOverrideCount(global->Type())) {
@@ -702,7 +705,7 @@ bool Validator::GlobalVariable(
 // buffer variables with a read_write access mode.
 bool Validator::AtomicVariable(
     const sem::Variable* var,
-    std::unordered_map<const sem::Type*, const Source&> atomic_composite_info) const {
+    const utils::Hashmap<const sem::Type*, const Source*, 8>& atomic_composite_info) const {
     auto address_space = var->AddressSpace();
     auto* decl = var->Declaration();
     auto access = var->Access();
@@ -716,14 +719,13 @@ bool Validator::AtomicVariable(
             return false;
         }
     } else if (type->IsAnyOf<sem::Struct, sem::Array>()) {
-        auto found = atomic_composite_info.find(type);
-        if (found != atomic_composite_info.end()) {
+        if (auto* found = atomic_composite_info.Find(type)) {
             if (address_space != ast::AddressSpace::kStorage &&
                 address_space != ast::AddressSpace::kWorkgroup) {
                 AddError("atomic variables must have <storage> or <workgroup> address space",
                          source);
                 AddNote("atomic sub-type of '" + sem_.TypeNameOf(type) + "' is declared here",
-                        found->second);
+                        **found);
                 return false;
             } else if (address_space == ast::AddressSpace::kStorage &&
                        access != ast::Access::kReadWrite) {
@@ -732,7 +734,7 @@ bool Validator::AtomicVariable(
                     "access mode",
                     source);
                 AddNote("atomic sub-type of '" + sem_.TypeNameOf(type) + "' is declared here",
-                        found->second);
+                        **found);
                 return false;
             }
         }
@@ -783,7 +785,7 @@ bool Validator::Let(const sem::Variable* v) const {
 
 bool Validator::Override(
     const sem::GlobalVariable* v,
-    const std::unordered_map<OverrideId, const sem::Variable*>& override_ids) const {
+    const utils::Hashmap<OverrideId, const sem::Variable*, 8>& override_ids) const {
     auto* decl = v->Declaration();
     auto* storage_ty = v->Type()->UnwrapRef();
 
@@ -796,12 +798,12 @@ bool Validator::Override(
     for (auto* attr : decl->attributes) {
         if (attr->Is<ast::IdAttribute>()) {
             auto id = v->OverrideId();
-            if (auto it = override_ids.find(id); it != override_ids.end() && it->second != v) {
+            if (auto* var = override_ids.Find(id); var && *var != v) {
                 AddError("@id values must be unique", attr->source);
-                AddNote("a override with an ID of " + std::to_string(id.value) +
-                            " was previously declared here:",
-                        ast::GetAttribute<ast::IdAttribute>(it->second->Declaration()->attributes)
-                            ->source);
+                AddNote(
+                    "a override with an ID of " + std::to_string(id.value) +
+                        " was previously declared here:",
+                    ast::GetAttribute<ast::IdAttribute>((*var)->Declaration()->attributes)->source);
                 return false;
             }
         } else {
@@ -853,8 +855,7 @@ bool Validator::Parameter(const ast::Function* func, const sem::Variable* var) c
     if (auto* ref = var->Type()->As<sem::Pointer>()) {
         auto address_space = ref->AddressSpace();
         if (!(address_space == ast::AddressSpace::kFunction ||
-              address_space == ast::AddressSpace::kPrivate ||
-              address_space == ast::AddressSpace::kWorkgroup) &&
+              address_space == ast::AddressSpace::kPrivate) &&
             IsValidationEnabled(decl->attributes, ast::DisabledValidation::kIgnoreAddressSpace)) {
             std::stringstream ss;
             ss << "function parameter of pointer type cannot be in '" << address_space
@@ -1076,12 +1077,8 @@ bool Validator::Function(const sem::Function* func, ast::PipelineStage stage) co
     }
 
     // https://www.w3.org/TR/WGSL/#behaviors-rules
-    // a function behavior is always one of {}, {Next}, {Discard}, or
-    // {Next, Discard}.
-    if (func->Behaviors() != sem::Behaviors{} &&  // NOLINT: bad warning
-        func->Behaviors() != sem::Behavior::kNext && func->Behaviors() != sem::Behavior::kDiscard &&
-        func->Behaviors() != sem::Behaviors{sem::Behavior::kNext,  //
-                                            sem::Behavior::kDiscard}) {
+    // a function behavior is always one of {}, or {Next}.
+    if (func->Behaviors() != sem::Behaviors{} && func->Behaviors() != sem::Behavior::kNext) {
         auto name = symbols_.NameFor(decl->symbol);
         TINT_ICE(Resolver, diagnostics_)
             << "function '" << name << "' behaviors are: " << func->Behaviors();
@@ -1098,8 +1095,8 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
     // order to catch conflicts.
     // TODO(jrprice): This state could be stored in sem::Function instead, and then passed to
     // sem::Function since it would be useful there too.
-    std::unordered_set<ast::BuiltinValue> builtins;
-    std::unordered_set<uint32_t> locations;
+    utils::Hashset<ast::BuiltinValue, 4> builtins;
+    utils::Hashset<uint32_t, 8> locations;
     enum class ParamOrRetType {
         kParameter,
         kReturnType,
@@ -1135,7 +1132,7 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
                 }
                 pipeline_io_attribute = attr;
 
-                if (builtins.count(builtin->builtin)) {
+                if (builtins.Contains(builtin->builtin)) {
                     AddError(attr_to_str(builtin) +
                                  " attribute appears multiple times as pipeline " +
                                  (param_or_ret == ParamOrRetType::kParameter ? "input" : "output"),
@@ -1147,7 +1144,7 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
                                       /* is_input */ param_or_ret == ParamOrRetType::kParameter)) {
                     return false;
                 }
-                builtins.emplace(builtin->builtin);
+                builtins.Add(builtin->builtin);
             } else if (auto* loc_attr = attr->As<ast::LocationAttribute>()) {
                 if (pipeline_io_attribute) {
                     AddError("multiple entry point IO attributes", attr->source);
@@ -1292,8 +1289,8 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
 
     // Clear IO sets after parameter validation. Builtin and location attributes in return types
     // should be validated independently from those used in parameters.
-    builtins.clear();
-    locations.clear();
+    builtins.Clear();
+    locations.Clear();
 
     if (!func->ReturnType()->Is<sem::Void>()) {
         if (!validate_entry_point_attributes(decl->return_type_attributes, func->ReturnType(),
@@ -1304,7 +1301,7 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
     }
 
     if (decl->PipelineStage() == ast::PipelineStage::kVertex &&
-        builtins.count(ast::BuiltinValue::kPosition) == 0) {
+        !builtins.Contains(ast::BuiltinValue::kPosition)) {
         // Check module-scope variables, as the SPIR-V sanitizer generates these.
         bool found = false;
         for (auto* global : func->TransitivelyReferencedGlobals()) {
@@ -1332,18 +1329,18 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
     }
 
     // Validate there are no resource variable binding collisions
-    std::unordered_map<sem::BindingPoint, const ast::Variable*> binding_points;
+    utils::Hashmap<sem::BindingPoint, const ast::Variable*, 8> binding_points;
     for (auto* global : func->TransitivelyReferencedGlobals()) {
         auto* var_decl = global->Declaration()->As<ast::Var>();
         if (!var_decl || !var_decl->HasBindingPoint()) {
             continue;
         }
         auto bp = global->BindingPoint();
-        auto res = binding_points.emplace(bp, var_decl);
-        if (!res.second &&
+        if (auto added = binding_points.Add(bp, var_decl);
+            !added &&
             IsValidationEnabled(decl->attributes,
                                 ast::DisabledValidation::kBindingPointCollision) &&
-            IsValidationEnabled(res.first->second->attributes,
+            IsValidationEnabled((*added.value)->attributes,
                                 ast::DisabledValidation::kBindingPointCollision)) {
             // https://gpuweb.github.io/gpuweb/wgsl/#resource-interface
             // Bindings must not alias within a shader stage: two different variables in the
@@ -1355,7 +1352,7 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
                     "' references multiple variables that use the same resource binding @group(" +
                     std::to_string(bp.group) + "), @binding(" + std::to_string(bp.binding) + ")",
                 var_decl->source);
-            AddNote("first resource binding usage declared here", res.first->second->source);
+            AddNote("first resource binding usage declared here", (*added.value)->source);
             return false;
         }
     }
@@ -1441,64 +1438,11 @@ bool Validator::BreakStatement(const sem::Statement* stmt,
         AddError("break statement must be in a loop or switch case", stmt->Declaration()->source);
         return false;
     }
-    if (auto* continuing = ClosestContinuing(/*stop_at_loop*/ true, current_statement)) {
-        AddWarning(
-            "use of deprecated language feature: `break` must not be used to exit from "
-            "a continuing block. Use `break-if` instead.",
+    if (ClosestContinuing(/*stop_at_loop*/ true, current_statement) != nullptr) {
+        AddError(
+            "`break` must not be used to exit from a continuing block. Use `break-if` instead.",
             stmt->Declaration()->source);
-
-        auto fail = [&](const char* note_msg, const Source& note_src) {
-            constexpr const char* kErrorMsg =
-                "break statement in a continuing block must be the single statement of an if "
-                "statement's true or false block, and that if statement must be the last statement "
-                "of the continuing block";
-            AddError(kErrorMsg, stmt->Declaration()->source);
-            AddNote(note_msg, note_src);
-            return false;
-        };
-
-        if (auto* block = stmt->Parent()->As<sem::BlockStatement>()) {
-            auto* block_parent = block->Parent();
-            auto* if_stmt = block_parent->As<sem::IfStatement>();
-            if (!if_stmt) {
-                return fail("break statement is not directly in if statement block",
-                            stmt->Declaration()->source);
-            }
-            if (block->Declaration()->statements.Length() != 1) {
-                return fail("if statement block contains multiple statements",
-                            block->Declaration()->source);
-            }
-
-            if (if_stmt->Parent()->Is<sem::IfStatement>()) {
-                return fail("else has condition", if_stmt->Declaration()->source);
-            }
-
-            bool el_contains_break = block->Declaration() == if_stmt->Declaration()->else_statement;
-            if (el_contains_break) {
-                if (auto* true_block = if_stmt->Declaration()->body; !true_block->Empty()) {
-                    return fail("non-empty true block", true_block->source);
-                }
-            } else {
-                auto* else_stmt = if_stmt->Declaration()->else_statement;
-                if (else_stmt) {
-                    return fail("non-empty false block", else_stmt->source);
-                }
-            }
-
-            if (if_stmt->Parent()->Declaration() != continuing) {
-                return fail(
-                    "if statement containing break statement is not directly in continuing block",
-                    if_stmt->Declaration()->source);
-            }
-            if (auto* cont_block = continuing->As<ast::BlockStatement>()) {
-                if (if_stmt->Declaration() != cont_block->Last()) {
-                    return fail(
-                        "if statement containing break statement is not the last statement of the "
-                        "continuing block",
-                        if_stmt->Declaration()->source);
-                }
-            }
-        }
+        return false;
     }
     return true;
 }
@@ -1542,39 +1486,6 @@ bool Validator::Call(const sem::Call* call, sem::Statement* current_statement) c
     }
 
     return true;
-}
-
-bool Validator::DiscardStatement(const sem::Statement* stmt,
-                                 sem::Statement* current_statement) const {
-    if (auto* continuing = ClosestContinuing(/*stop_at_loop*/ false, current_statement)) {
-        AddError("continuing blocks must not contain a discard statement",
-                 stmt->Declaration()->source);
-        if (continuing != stmt->Declaration() && continuing != stmt->Parent()->Declaration()) {
-            AddNote("see continuing block here", continuing->source);
-        }
-        return false;
-    }
-    return true;
-}
-
-bool Validator::FallthroughStatement(const sem::Statement* stmt) const {
-    if (auto* block = As<sem::BlockStatement>(stmt->Parent())) {
-        if (auto* c = As<sem::CaseStatement>(block->Parent())) {
-            if (block->Declaration()->Last() == stmt->Declaration()) {
-                if (auto* s = As<sem::SwitchStatement>(c->Parent())) {
-                    if (c->Declaration() != s->Declaration()->body.Back()) {
-                        return true;
-                    }
-                    AddError("a fallthrough statement must not be used in the last switch case",
-                             stmt->Declaration()->source);
-                    return false;
-                }
-            }
-        }
-    }
-    AddError("fallthrough must only be used as the last statement of a case block",
-             stmt->Declaration()->source);
-    return false;
 }
 
 bool Validator::LoopStatement(const sem::LoopStatement* stmt) const {
@@ -1632,7 +1543,7 @@ bool Validator::BreakIfStatement(const sem::BreakIfStatement* stmt,
         }
         if (auto* continuing = s->As<sem::LoopContinuingBlockStatement>()) {
             if (continuing->Declaration()->statements.Back() != stmt->Declaration()) {
-                AddError("break-if must be last statement in a continuing block",
+                AddError("break-if must be the last statement in a continuing block",
                          stmt->Declaration()->source);
                 AddNote("see continuing block here", s->Declaration()->source);
                 return false;
@@ -1641,7 +1552,7 @@ bool Validator::BreakIfStatement(const sem::BreakIfStatement* stmt,
         }
     }
 
-    AddError("break-if must in a continuing block", stmt->Declaration()->source);
+    AddError("break-if must be in a continuing block", stmt->Declaration()->source);
     return false;
 }
 
@@ -1799,35 +1710,28 @@ bool Validator::FunctionCall(const sem::Call* call, sem::Statement* current_stat
         }
 
         if (param_type->Is<sem::Pointer>()) {
-            auto is_valid = false;
-            if (auto* ident_expr = arg_expr->As<ast::IdentifierExpression>()) {
-                auto* var = sem_.ResolvedSymbol<sem::Variable>(ident_expr);
-                if (!var) {
-                    TINT_ICE(Resolver, diagnostics_) << "failed to resolve identifier";
-                    return false;
-                }
-                if (var->Is<sem::Parameter>()) {
-                    is_valid = true;
-                }
-            } else if (auto* unary = arg_expr->As<ast::UnaryOpExpression>()) {
-                if (unary->op == ast::UnaryOp::kAddressOf) {
-                    if (auto* ident_unary = unary->expr->As<ast::IdentifierExpression>()) {
-                        auto* var = sem_.ResolvedSymbol<sem::Variable>(ident_unary);
-                        if (!var) {
-                            TINT_ICE(Resolver, diagnostics_) << "failed to resolve identifier";
-                            return false;
-                        }
-                        is_valid = true;
-                    }
-                }
+            // https://gpuweb.github.io/gpuweb/wgsl/#function-restriction
+            // Each argument of pointer type to a user-defined function must have the same memory
+            // view as its root identifier.
+            // We can validate this by just comparing the store type of the argument with that of
+            // its root identifier, as these will match iff the memory view is the same.
+            auto* arg_store_type = arg_type->As<sem::Pointer>()->StoreType();
+            auto* root = call->Arguments()[i]->RootIdentifier();
+            auto* root_ptr_ty = root->Type()->As<sem::Pointer>();
+            auto* root_ref_ty = root->Type()->As<sem::Reference>();
+            TINT_ASSERT(Resolver, root_ptr_ty || root_ref_ty);
+            const sem::Type* root_store_type;
+            if (root_ptr_ty) {
+                root_store_type = root_ptr_ty->StoreType();
+            } else {
+                root_store_type = root_ref_ty->StoreType();
             }
-
-            if (!is_valid &&
+            if (root_store_type != arg_store_type &&
                 IsValidationEnabled(param->Declaration()->attributes,
                                     ast::DisabledValidation::kIgnoreInvalidPointerArgument)) {
                 AddError(
-                    "expected an address-of expression of a variable identifier expression or a "
-                    "function parameter",
+                    "arguments of pointer type must not point to a subset of the originating "
+                    "variable",
                     arg_expr->source);
                 return false;
             }
@@ -1846,18 +1750,6 @@ bool Validator::FunctionCall(const sem::Call* call, sem::Statement* current_stat
             // If the called function does not return a value, a function call
             // statement should be used instead.
             AddError("function '" + name + "' does not return a value", decl->source);
-            return false;
-        }
-    }
-
-    if (call->Behaviors().Contains(sem::Behavior::kDiscard)) {
-        if (auto* continuing = ClosestContinuing(/*stop_at_loop*/ false, current_statement)) {
-            AddError("cannot call a function that may discard inside a continuing block",
-                     call->Declaration()->source);
-            if (continuing != call->Stmt()->Declaration() &&
-                continuing != call->Stmt()->Parent()->Declaration()) {
-                AddNote("see continuing block here", continuing->source);
-            }
             return false;
         }
     }
@@ -1954,7 +1846,7 @@ bool Validator::Matrix(const sem::Matrix* ty, const Source& source) const {
     return true;
 }
 
-bool Validator::PipelineStages(const std::vector<sem::Function*>& entry_points) const {
+bool Validator::PipelineStages(const utils::VectorRef<sem::Function*> entry_points) const {
     auto backtrace = [&](const sem::Function* func, const sem::Function* entry_point) {
         if (func != entry_point) {
             TraverseCallChain(diagnostics_, entry_point, func, [&](const sem::Function* f) {
@@ -2049,7 +1941,7 @@ bool Validator::PipelineStages(const std::vector<sem::Function*>& entry_points) 
     return true;
 }
 
-bool Validator::PushConstants(const std::vector<sem::Function*>& entry_points) const {
+bool Validator::PushConstants(const utils::VectorRef<sem::Function*> entry_points) const {
     for (auto* entry_point : entry_points) {
         // State checked and modified by check_push_constant so that it remembers previously seen
         // push_constant variables for an entry-point.
@@ -2167,7 +2059,7 @@ bool Validator::Structure(const sem::Struct* str, ast::PipelineStage stage) cons
         return false;
     }
 
-    std::unordered_set<uint32_t> locations;
+    utils::Hashset<uint32_t, 8> locations;
     for (auto* member : str->Members()) {
         if (auto* r = member->Type()->As<sem::Array>()) {
             if (r->IsRuntimeSized()) {
@@ -2285,7 +2177,7 @@ bool Validator::Structure(const sem::Struct* str, ast::PipelineStage stage) cons
 bool Validator::LocationAttribute(const ast::LocationAttribute* loc_attr,
                                   uint32_t location,
                                   const sem::Type* type,
-                                  std::unordered_set<uint32_t>& locations,
+                                  utils::Hashset<uint32_t, 8>& locations,
                                   ast::PipelineStage stage,
                                   const Source& source,
                                   const bool is_input) const {
@@ -2306,12 +2198,11 @@ bool Validator::LocationAttribute(const ast::LocationAttribute* loc_attr,
         return false;
     }
 
-    if (locations.count(location)) {
+    if (!locations.Add(location)) {
         AddError(attr_to_str(loc_attr, location) + " attribute appears multiple times",
                  loc_attr->source);
         return false;
     }
-    locations.emplace(location);
 
     return true;
 }
@@ -2348,7 +2239,7 @@ bool Validator::SwitchStatement(const ast::SwitchStatement* s) {
     }
 
     const sem::CaseSelector* default_selector = nullptr;
-    std::unordered_map<int64_t, Source> selectors;
+    utils::Hashmap<int64_t, Source, 4> selectors;
 
     for (auto* case_stmt : s->body) {
         auto* case_sem = sem_.Get<sem::CaseStatement>(case_stmt);
@@ -2375,18 +2266,16 @@ bool Validator::SwitchStatement(const ast::SwitchStatement* s) {
             }
 
             auto value = selector->Value()->As<uint32_t>();
-            auto it = selectors.find(value);
-            if (it != selectors.end()) {
+            if (auto added = selectors.Add(value, selector->Declaration()->source); !added) {
                 AddError("duplicate switch case '" +
                              (decl_ty->IsAnyOf<sem::I32, sem::AbstractNumeric>()
                                   ? std::to_string(i32(value))
                                   : std::to_string(value)) +
                              "'",
                          selector->Declaration()->source);
-                AddNote("previous case declared here", it->second);
+                AddNote("previous case declared here", *added.value);
                 return false;
             }
-            selectors.emplace(value, selector->Declaration()->source);
         }
     }
 
@@ -2514,12 +2403,12 @@ bool Validator::IncrementDecrementStatement(const ast::IncrementDecrementStateme
 }
 
 bool Validator::NoDuplicateAttributes(utils::VectorRef<const ast::Attribute*> attributes) const {
-    std::unordered_map<const TypeInfo*, Source> seen;
+    utils::Hashmap<const TypeInfo*, Source, 8> seen;
     for (auto* d : attributes) {
-        auto res = seen.emplace(&d->TypeInfo(), d->source);
-        if (!res.second && !d->Is<ast::InternalAttribute>()) {
+        auto added = seen.Add(&d->TypeInfo(), d->source);
+        if (!added && !d->Is<ast::InternalAttribute>()) {
             AddError("duplicate " + d->Name() + " attribute", d->source);
-            AddNote("first attribute declared here", res.first->second);
+            AddNote("first attribute declared here", *added.value);
             return false;
         }
     }

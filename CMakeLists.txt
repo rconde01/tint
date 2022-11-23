@@ -191,6 +191,12 @@ endif()
 
 set(TINT_ROOT_SOURCE_DIR ${PROJECT_SOURCE_DIR})
 
+set(IS_DEBUG_BUILD 0)
+string(TOUPPER "${CMAKE_BUILD_TYPE}" build_type)
+if ((NOT ${build_type} STREQUAL "RELEASE") AND (NOT ${build_type} STREQUAL "RELWITHDEBINFO"))
+  set(IS_DEBUG_BUILD 1)
+endif()
+
 # CMake < 3.15 sets /W3 in CMAKE_CXX_FLAGS. Remove it if it's there.
 # See https://gitlab.kitware.com/cmake/cmake/-/issues/18317
 if (MSVC)

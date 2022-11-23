@@ -139,8 +139,6 @@ list(APPEND TINT_LIB_SRCS
   ast/f16.h
   ast/f32.cc
   ast/f32.h
-  ast/fallthrough_statement.cc
-  ast/fallthrough_statement.h
   ast/float_literal_expression.cc
   ast/float_literal_expression.h
   ast/for_loop_statement.cc
@@ -425,6 +423,8 @@ list(APPEND TINT_LIB_SRCS
   transform/decompose_strided_array.h
   transform/decompose_strided_matrix.cc
   transform/decompose_strided_matrix.h
+  transform/demote_to_helper.cc
+  transform/demote_to_helper.h
   transform/disable_uniformity_analysis.cc
   transform/disable_uniformity_analysis.h
   transform/expand_compound_assignment.cc
@@ -475,10 +475,10 @@ list(APPEND TINT_LIB_SRCS
   transform/substitute_override.h
   transform/transform.cc
   transform/transform.h
+  transform/truncate_interstage_variables.cc
+  transform/truncate_interstage_variables.h
   transform/unshadow.cc
   transform/unshadow.h
-  transform/unwind_discard_functions.cc
-  transform/unwind_discard_functions.h
   transform/utils/get_insertion_point.cc
   transform/utils/get_insertion_point.h
   transform/utils/hoist_to_decl_before.cc
@@ -658,6 +658,8 @@ if(${TINT_BUILD_IR})
     ir/builder_impl.h
     ir/debug.cc
     ir/debug.h
+    ir/disassembler.cc
+    ir/disassembler.h
     ir/flow_node.cc
     ir/flow_node.h
     ir/function.cc
@@ -668,6 +670,10 @@ if(${TINT_BUILD_IR})
     ir/loop.h
     ir/module.cc
     ir/module.h
+    ir/op.cc
+    ir/op.h
+    ir/register.cc
+    ir/register.h
     ir/switch.cc
     ir/switch.h
     ir/terminator.cc
@@ -786,7 +792,6 @@ if(TINT_BUILD_TESTS)
     ast/external_texture_test.cc
     ast/f16_test.cc
     ast/f32_test.cc
-    ast/fallthrough_statement_test.cc
     ast/float_literal_expression_test.cc
     ast/for_loop_statement_test.cc
     ast/function_test.cc
@@ -843,6 +848,7 @@ if(TINT_BUILD_TESTS)
     program_builder_test.cc
     program_test.cc
     reflection_test.cc
+    resolver/alias_analysis_test.cc
     resolver/array_accessor_test.cc
     resolver/assignment_validation_test.cc
     resolver/atomics_test.cc
@@ -885,7 +891,7 @@ if(TINT_BUILD_TESTS)
     resolver/resolver_test.cc
     resolver/side_effects_test.cc
     resolver/static_assert_test.cc
-    resolver/source_variable_test.cc
+    resolver/root_identifier_test.cc
     resolver/address_space_layout_validation_test.cc
     resolver/address_space_validation_test.cc
     resolver/struct_layout_test.cc
@@ -1150,7 +1156,6 @@ if(TINT_BUILD_TESTS)
       writer/wgsl/generator_impl_continue_test.cc
       writer/wgsl/generator_impl_discard_test.cc
       writer/wgsl/generator_impl_enable_test.cc
-      writer/wgsl/generator_impl_fallthrough_test.cc
       writer/wgsl/generator_impl_function_test.cc
       writer/wgsl/generator_impl_global_decl_test.cc
       writer/wgsl/generator_impl_identifier_test.cc
@@ -1183,6 +1188,7 @@ if(TINT_BUILD_TESTS)
       transform/decompose_memory_access_test.cc
       transform/decompose_strided_array_test.cc
       transform/decompose_strided_matrix_test.cc
+      transform/demote_to_helper_test.cc
       transform/disable_uniformity_analysis_test.cc
       transform/expand_compound_assignment_test.cc
       transform/first_index_offset_test.cc
@@ -1209,8 +1215,8 @@ if(TINT_BUILD_TESTS)
       transform/std140_test.cc
       transform/substitute_override_test.cc
       transform/test_helper.h
+      transform/truncate_interstage_variables_test.cc
       transform/unshadow_test.cc
-      transform/unwind_discard_functions_test.cc
       transform/var_for_dynamic_index_test.cc
       transform/vectorize_matrix_conversions_test.cc
       transform/vectorize_scalar_matrix_initializers_test.cc
@@ -1333,6 +1339,8 @@ if(TINT_BUILD_TESTS)
   if (${TINT_BUILD_IR})
     list(APPEND TINT_TEST_SRCS
       ir/builder_impl_test.cc
+      ir/op_test.cc
+      ir/register_test.cc
       ir/test_helper.h
     )
   endif()
@@ -1357,9 +1365,8 @@ if(TINT_BUILD_TESTS)
     # overflows when resolving deeply nested expression chains or statements.
     # Production builds neither use MSVC nor debug, so just bump the stack size
     # for this build combination.
-    string(TOUPPER "${CMAKE_BUILD_TYPE}" build_type)
-    if ((NOT ${build_type} STREQUAL "RELEASE") AND (NOT ${build_type} STREQUAL "RELWITHDEBINFO"))
-      target_link_options(tint_unittests PRIVATE "/STACK 2097152") # 2MB, default is 1MB
+    if (IS_DEBUG_BUILD)
+      target_link_options(tint_unittests PRIVATE "/STACK:4194304") # 4MB, default is 1MB
     endif()
   else()
     target_compile_options(tint_unittests PRIVATE
