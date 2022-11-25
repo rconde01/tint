@@ -395,13 +395,11 @@ bool Validator::AddressSpaceLayout(const sem::Type* store_ty,
         return true;
     }
 
-    // Temporally forbid using f16 types in "uniform" and "storage" address space.
-    // TODO(tint:1473, tint:1502): Remove this error after f16 is supported in "uniform" and
-    // "storage" address space but keep for "push_constant" address space.
-    if (Is<sem::F16>(sem::Type::DeepestElementOf(store_ty))) {
-        AddError("using f16 types in '" + utils::ToString(address_space) +
-                     "' address space is not implemented yet",
-                 source);
+    // Among three host-shareable address spaces, f16 is supported in "uniform" and
+    // "storage" address space, but not "push_constant" address space yet.
+    if (Is<sem::F16>(sem::Type::DeepestElementOf(store_ty)) &&
+        address_space == ast::AddressSpace::kPushConstant) {
+        AddError("using f16 types in 'push_constant' address space is not implemented yet", source);
         return false;
     }
 
@@ -719,7 +717,7 @@ bool Validator::AtomicVariable(
             return false;
         }
     } else if (type->IsAnyOf<sem::Struct, sem::Array>()) {
-        if (auto* found = atomic_composite_info.Find(type)) {
+        if (auto found = atomic_composite_info.Find(type)) {
             if (address_space != ast::AddressSpace::kStorage &&
                 address_space != ast::AddressSpace::kWorkgroup) {
                 AddError("atomic variables must have <storage> or <workgroup> address space",
@@ -798,7 +796,7 @@ bool Validator::Override(
     for (auto* attr : decl->attributes) {
         if (attr->Is<ast::IdAttribute>()) {
             auto id = v->OverrideId();
-            if (auto* var = override_ids.Find(id); var && *var != v) {
+            if (auto var = override_ids.Find(id); var && *var != v) {
                 AddError("@id values must be unique", attr->source);
                 AddNote(
                     "a override with an ID of " + std::to_string(id.value) +

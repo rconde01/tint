@@ -416,19 +416,19 @@ TEST_F(MslGeneratorImplTest, Runtime_Modf_Scalar_f32) {
 
 using namespace metal;
 
-struct modf_result {
+struct modf_result_f32 {
   float fract;
   float whole;
 };
-modf_result tint_modf(float param_0) {
-  modf_result result;
+modf_result_f32 tint_modf(float param_0) {
+  modf_result_f32 result;
   result.fract = modf(param_0, result.whole);
   return result;
 }
 
 kernel void test_function() {
   float const f = 1.5f;
-  modf_result const v = tint_modf(f);
+  modf_result_f32 const v = tint_modf(f);
   return;
 }
 
@@ -478,19 +478,19 @@ TEST_F(MslGeneratorImplTest, Runtime_Modf_Vector_f32) {
 
 using namespace metal;
 
-struct modf_result_vec3 {
+struct modf_result_vec3_f32 {
   float3 fract;
   float3 whole;
 };
-modf_result_vec3 tint_modf(float3 param_0) {
-  modf_result_vec3 result;
+modf_result_vec3_f32 tint_modf(float3 param_0) {
+  modf_result_vec3_f32 result;
   result.fract = modf(param_0, result.whole);
   return result;
 }
 
 kernel void test_function() {
   float3 const f = float3(1.5f, 2.5f, 3.5f);
-  modf_result_vec3 const v = tint_modf(f);
+  modf_result_vec3_f32 const v = tint_modf(f);
   return;
 }
 
@@ -539,12 +539,12 @@ TEST_F(MslGeneratorImplTest, Const_Modf_Scalar_f32) {
 
 using namespace metal;
 
-struct modf_result {
+struct modf_result_f32 {
   float fract;
   float whole;
 };
 kernel void test_function() {
-  modf_result const v = modf_result{.fract=0.5f, .whole=1.0f};
+  modf_result_f32 const v = modf_result_f32{.fract=0.5f, .whole=1.0f};
   return;
 }
 
@@ -585,12 +585,12 @@ TEST_F(MslGeneratorImplTest, Const_Modf_Vector_f32) {
 
 using namespace metal;
 
-struct modf_result_vec3 {
+struct modf_result_vec3_f32 {
   float3 fract;
   float3 whole;
 };
 kernel void test_function() {
-  modf_result_vec3 const v = modf_result_vec3{.fract=float3(0.5f), .whole=float3(1.0f, 2.0f, 3.0f)};
+  modf_result_vec3_f32 const v = modf_result_vec3_f32{.fract=float3(0.5f), .whole=float3(1.0f, 2.0f, 3.0f)};
   return;
 }
 
@@ -621,9 +621,9 @@ kernel void test_function() {
 )");
 }
 
-TEST_F(MslGeneratorImplTest, Frexp_Scalar_f32) {
-    auto* call = Call("frexp", 1_f);
-    WrapInFunction(CallStmt(call));
+TEST_F(MslGeneratorImplTest, Runtime_Frexp_Scalar_f32) {
+    WrapInFunction(Var("f", Expr(1_f)),  //
+                   Var("v", Call("frexp", "f")));
 
     GeneratorImpl& gen = SanitizeAndBuild();
 
@@ -632,29 +632,30 @@ TEST_F(MslGeneratorImplTest, Frexp_Scalar_f32) {
 
 using namespace metal;
 
-struct frexp_result {
+struct frexp_result_f32 {
   float fract;
   int exp;
 };
-frexp_result tint_frexp(float param_0) {
-  frexp_result result;
+frexp_result_f32 tint_frexp(float param_0) {
+  frexp_result_f32 result;
   result.fract = frexp(param_0, result.exp);
   return result;
 }
 
 kernel void test_function() {
-  tint_frexp(1.0f);
+  float f = 1.0f;
+  frexp_result_f32 v = tint_frexp(f);
   return;
 }
 
 )");
 }
 
-TEST_F(MslGeneratorImplTest, Frexp_Scalar_f16) {
+TEST_F(MslGeneratorImplTest, Runtime_Frexp_Scalar_f16) {
     Enable(ast::Extension::kF16);
 
-    auto* call = Call("frexp", 1_h);
-    WrapInFunction(CallStmt(call));
+    WrapInFunction(Var("f", Expr(1_h)),  //
+                   Var("v", Call("frexp", "f")));
 
     GeneratorImpl& gen = SanitizeAndBuild();
 
@@ -674,16 +675,17 @@ frexp_result_f16 tint_frexp(half param_0) {
 }
 
 kernel void test_function() {
-  tint_frexp(1.0h);
+  half f = 1.0h;
+  frexp_result_f16 v = tint_frexp(f);
   return;
 }
 
 )");
 }
 
-TEST_F(MslGeneratorImplTest, Frexp_Vector_f32) {
-    auto* call = Call("frexp", vec3<f32>());
-    WrapInFunction(CallStmt(call));
+TEST_F(MslGeneratorImplTest, Runtime_Frexp_Vector_f32) {
+    WrapInFunction(Var("f", Expr(vec3<f32>())),  //
+                   Var("v", Call("frexp", "f")));
 
     GeneratorImpl& gen = SanitizeAndBuild();
 
@@ -692,29 +694,30 @@ TEST_F(MslGeneratorImplTest, Frexp_Vector_f32) {
 
 using namespace metal;
 
-struct frexp_result_vec3 {
+struct frexp_result_vec3_f32 {
   float3 fract;
   int3 exp;
 };
-frexp_result_vec3 tint_frexp(float3 param_0) {
-  frexp_result_vec3 result;
+frexp_result_vec3_f32 tint_frexp(float3 param_0) {
+  frexp_result_vec3_f32 result;
   result.fract = frexp(param_0, result.exp);
   return result;
 }
 
 kernel void test_function() {
-  tint_frexp(float3(0.0f));
+  float3 f = float3(0.0f);
+  frexp_result_vec3_f32 v = tint_frexp(f);
   return;
 }
 
 )");
 }
 
-TEST_F(MslGeneratorImplTest, Frexp_Vector_f16) {
+TEST_F(MslGeneratorImplTest, Runtime_Frexp_Vector_f16) {
     Enable(ast::Extension::kF16);
 
-    auto* call = Call("frexp", vec3<f16>());
-    WrapInFunction(CallStmt(call));
+    WrapInFunction(Var("f", Expr(vec3<f16>())),  //
+                   Var("v", Call("frexp", "f")));
 
     GeneratorImpl& gen = SanitizeAndBuild();
 
@@ -734,7 +737,100 @@ frexp_result_vec3_f16 tint_frexp(half3 param_0) {
 }
 
 kernel void test_function() {
-  tint_frexp(half3(0.0h));
+  half3 f = half3(0.0h);
+  frexp_result_vec3_f16 v = tint_frexp(f);
+  return;
+}
+
+)");
+}
+
+TEST_F(MslGeneratorImplTest, Const_Frexp_Scalar_f32) {
+    WrapInFunction(Decl(Let("v", Call("frexp", 1_f))));
+
+    GeneratorImpl& gen = SanitizeAndBuild();
+
+    ASSERT_TRUE(gen.Generate()) << gen.error();
+    EXPECT_EQ(gen.result(), R"(#include <metal_stdlib>
+
+using namespace metal;
+
+struct frexp_result_f32 {
+  float fract;
+  int exp;
+};
+kernel void test_function() {
+  frexp_result_f32 const v = frexp_result_f32{.fract=0.5f, .exp=1};
+  return;
+}
+
+)");
+}
+
+TEST_F(MslGeneratorImplTest, Const_Frexp_Scalar_f16) {
+    Enable(ast::Extension::kF16);
+
+    WrapInFunction(Decl(Let("v", Call("frexp", 1_h))));
+
+    GeneratorImpl& gen = SanitizeAndBuild();
+
+    ASSERT_TRUE(gen.Generate()) << gen.error();
+    EXPECT_EQ(gen.result(), R"(#include <metal_stdlib>
+
+using namespace metal;
+
+struct frexp_result_f16 {
+  half fract;
+  int exp;
+};
+kernel void test_function() {
+  frexp_result_f16 const v = frexp_result_f16{.fract=0.5h, .exp=1};
+  return;
+}
+
+)");
+}
+
+TEST_F(MslGeneratorImplTest, Const_Frexp_Vector_f32) {
+    WrapInFunction(Decl(Let("v", Call("frexp", vec3<f32>()))));
+
+    GeneratorImpl& gen = SanitizeAndBuild();
+
+    ASSERT_TRUE(gen.Generate()) << gen.error();
+    EXPECT_EQ(gen.result(), R"(#include <metal_stdlib>
+
+using namespace metal;
+
+struct frexp_result_vec3_f32 {
+  float3 fract;
+  int3 exp;
+};
+kernel void test_function() {
+  frexp_result_vec3_f32 const v = frexp_result_vec3_f32{};
+  return;
+}
+
+)");
+}
+
+TEST_F(MslGeneratorImplTest, Const_Frexp_Vector_f16) {
+    Enable(ast::Extension::kF16);
+
+    WrapInFunction(Decl(Let("v", Call("frexp", vec3<f16>()))));
+
+    GeneratorImpl& gen = SanitizeAndBuild();
+
+    ASSERT_TRUE(gen.Generate()) << gen.error();
+    EXPECT_EQ(gen.result(), R"(#include <metal_stdlib>
+
+using namespace metal;
+
+struct frexp_result_vec3_f16 {
+  half3 fract;
+  int3 exp;
+};
+kernel void test_function() {
+  frexp_result_vec3_f16 const v = frexp_result_vec3_f16{};
   return;
 }
 
@@ -751,19 +847,8 @@ TEST_F(MslGeneratorImplTest, Frexp_Sig_Deprecation) {
     EXPECT_EQ(gen.result(), R"(#include <metal_stdlib>
 
 using namespace metal;
-
-struct frexp_result {
-  float fract;
-  int exp;
-};
-frexp_result tint_frexp(float param_0) {
-  frexp_result result;
-  result.fract = frexp(param_0, result.exp);
-  return result;
-}
-
 kernel void test_function() {
-  float const tint_symbol = tint_frexp(1.0f).fract;
+  float const tint_symbol = 0.5f;
   return;
 }
 

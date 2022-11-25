@@ -202,6 +202,15 @@ std::string OverflowErrorMessage(VALUE_TY value, std::string_view target_ty) {
     return ss.str();
 }
 
+template <typename NumberT>
+std::string OverflowExpErrorMessage(std::string_view base, NumberT value) {
+    std::stringstream ss;
+    ss << std::setprecision(20);
+    ss << base << "^" << value << " cannot be represented as "
+       << "'" << FriendlyName<NumberT>() << "'";
+    return ss.str();
+}
+
 /// @returns the number of consecutive leading bits in `@p e` set to `@p bit_value_to_count`.
 template <typename T>
 std::make_unsigned_t<T> CountLeadingBits(T e, T bit_value_to_count) {
@@ -403,13 +412,26 @@ struct Composite : ImplConstant {
                        const sem::Type* target_ty,
                        const Source& source) const override {
         // Convert each of the composite element types.
-        auto* el_ty = sem::Type::ElementOf(target_ty);
         utils::Vector<const sem::Constant*, 4> conv_els;
         conv_els.Reserve(elements.Length());
+        std::function<const sem::Type*(size_t idx)> target_el_ty;
+        if (auto* str = target_ty->As<sem::Struct>()) {
+            if (str->Members().size() != elements.Length()) {
+                TINT_ICE(Resolver, builder.Diagnostics())
+                    << "const-eval conversion of structure has mismatched element counts";
+                return utils::Failure;
+            }
+            target_el_ty = [str](size_t idx) { return str->Members()[idx]->Type(); };
+        } else {
+            auto* el_ty = sem::Type::ElementOf(target_ty);
+            target_el_ty = [el_ty](size_t) { return el_ty; };
+        }
+
         for (auto* el : elements) {
-            // Note: This file is the only place where `sem::Constant`s are created, so this
+            // Note: This file is the only place where `sem::Constant`s are created, so the
             // static_cast is safe.
-            auto conv_el = static_cast<const ImplConstant*>(el)->Convert(builder, el_ty, source);
+            auto conv_el = static_cast<const ImplConstant*>(el)->Convert(
+                builder, target_el_ty(conv_els.Length()), source);
             if (!conv_el) {
                 return utils::Failure;
             }
@@ -439,6 +461,8 @@ struct Composite : ImplConstant {
 /// CreateElement constructs and returns an Element<T>.
 template <typename T>
 ImplResult CreateElement(ProgramBuilder& builder, const Source& source, const sem::Type* t, T v) {
+    TINT_ASSERT(Resolver, t->is_scalar());
+
     if constexpr (IsFloatingPoint<T>) {
         if (!std::isfinite(v.value)) {
             auto msg = OverflowErrorMessage(v, builder.FriendlyName(t));
@@ -630,8 +654,9 @@ ImplResult TransformBinaryElements(ProgramBuilder& builder,
                                    F&& f,
                                    const sem::Constant* c0,
                                    const sem::Constant* c1) {
-    uint32_t n0 = 0, n1 = 0;
+    uint32_t n0 = 0;
     sem::Type::ElementOf(c0->Type(), &n0);
+    uint32_t n1 = 0;
     sem::Type::ElementOf(c1->Type(), &n1);
     uint32_t max_n = std::max(n0, n1);
     // If arity of both constants is 1, invoke callback
@@ -642,7 +667,7 @@ ImplResult TransformBinaryElements(ProgramBuilder& builder,
     utils::Vector<const sem::Constant*, 8> els;
     els.Reserve(max_n);
     for (uint32_t i = 0; i < max_n; i++) {
-        auto nested_or_self = [&](auto& c, uint32_t num_elems) {
+        auto nested_or_self = [&](auto* c, uint32_t num_elems) {
             if (num_elems == 1) {
                 return c;
             }
@@ -871,15 +896,22 @@ utils::Result<NumberT> ConstEval::Dot4(const Source& source,
 
 template <typename NumberT>
 utils::Result<NumberT> ConstEval::Det2(const Source& source,
-                                       NumberT a1,
-                                       NumberT a2,
-                                       NumberT b1,
-                                       NumberT b2) {
-    auto r1 = Mul(source, a1, b2);
+                                       NumberT a,
+                                       NumberT b,
+                                       NumberT c,
+                                       NumberT d) {
+    // | a c |
+    // | b d |
+    //
+    // =
+    //
+    // a * d - c * b
+
+    auto r1 = Mul(source, a, d);
     if (!r1) {
         return utils::Failure;
     }
-    auto r2 = Mul(source, b1, a2);
+    auto r2 = Mul(source, c, b);
     if (!r2) {
         return utils::Failure;
     }
@@ -888,6 +920,129 @@ utils::Result<NumberT> ConstEval::Det2(const Source& source,
         return utils::Failure;
     }
     return r;
+}
+
+template <typename NumberT>
+utils::Result<NumberT> ConstEval::Det3(const Source& source,
+                                       NumberT a,
+                                       NumberT b,
+                                       NumberT c,
+                                       NumberT d,
+                                       NumberT e,
+                                       NumberT f,
+                                       NumberT g,
+                                       NumberT h,
+                                       NumberT i) {
+    // | a d g |
+    // | b e h |
+    // | c f i |
+    //
+    // =
+    //
+    // a | e h | - d | b h | + g | b e |
+    //   | f i |     | c i |     | c f |
+
+    auto det1 = Det2(source, e, f, h, i);
+    if (!det1) {
+        return utils::Failure;
+    }
+    auto a_det1 = Mul(source, a, det1.Get());
+    if (!a_det1) {
+        return utils::Failure;
+    }
+    auto det2 = Det2(source, b, c, h, i);
+    if (!det2) {
+        return utils::Failure;
+    }
+    auto d_det2 = Mul(source, d, det2.Get());
+    if (!d_det2) {
+        return utils::Failure;
+    }
+    auto det3 = Det2(source, b, c, e, f);
+    if (!det3) {
+        return utils::Failure;
+    }
+    auto g_det3 = Mul(source, g, det3.Get());
+    if (!g_det3) {
+        return utils::Failure;
+    }
+    auto r = Sub(source, a_det1.Get(), d_det2.Get());
+    if (!r) {
+        return utils::Failure;
+    }
+    return Add(source, r.Get(), g_det3.Get());
+}
+
+template <typename NumberT>
+utils::Result<NumberT> ConstEval::Det4(const Source& source,
+                                       NumberT a,
+                                       NumberT b,
+                                       NumberT c,
+                                       NumberT d,
+                                       NumberT e,
+                                       NumberT f,
+                                       NumberT g,
+                                       NumberT h,
+                                       NumberT i,
+                                       NumberT j,
+                                       NumberT k,
+                                       NumberT l,
+                                       NumberT m,
+                                       NumberT n,
+                                       NumberT o,
+                                       NumberT p) {
+    // | a e i m |
+    // | b f j n |
+    // | c g k o |
+    // | d h l p |
+    //
+    // =
+    //
+    // a | f j n | - e | b j n | + i | b f n | - m | b f j |
+    //   | g k o |     | c k o |     | c g o |     | c g k |
+    //   | h l p |     | d l p |     | d h p |     | d h l |
+
+    auto det1 = Det3(source, f, g, h, j, k, l, n, o, p);
+    if (!det1) {
+        return utils::Failure;
+    }
+    auto a_det1 = Mul(source, a, det1.Get());
+    if (!a_det1) {
+        return utils::Failure;
+    }
+    auto det2 = Det3(source, b, c, d, j, k, l, n, o, p);
+    if (!det2) {
+        return utils::Failure;
+    }
+    auto e_det2 = Mul(source, e, det2.Get());
+    if (!e_det2) {
+        return utils::Failure;
+    }
+    auto det3 = Det3(source, b, c, d, f, g, h, n, o, p);
+    if (!det3) {
+        return utils::Failure;
+    }
+    auto i_det3 = Mul(source, i, det3.Get());
+    if (!i_det3) {
+        return utils::Failure;
+    }
+    auto det4 = Det3(source, b, c, d, f, g, h, j, k, l);
+    if (!det4) {
+        return utils::Failure;
+    }
+    auto m_det4 = Mul(source, m, det4.Get());
+    if (!m_det4) {
+        return utils::Failure;
+    }
+    auto r = Sub(source, a_det1.Get(), e_det2.Get());
+    if (!r) {
+        return utils::Failure;
+    }
+    r = Add(source, r.Get(), i_det3.Get());
+    if (!r) {
+        return utils::Failure;
+    }
+    return Sub(source, r.Get(), m_det4.Get());
 }
 
 template <typename NumberT>
@@ -1013,9 +1168,50 @@ ConstEval::Result ConstEval::Dot(const Source& source,
     return utils::Failure;
 }
 
+ConstEval::Result ConstEval::Length(const Source& source,
+                                    const sem::Type* ty,
+                                    const sem::Constant* c0) {
+    auto* vec_ty = c0->Type()->As<sem::Vector>();
+    // Evaluates to the absolute value of e if T is scalar.
+    if (vec_ty == nullptr) {
+        auto create = [&](auto e) {
+            using NumberT = decltype(e);
+            return CreateElement(builder, source, ty, NumberT{std::abs(e)});
+        };
+        return Dispatch_fa_f32_f16(create, c0);
+    }
+
+    // Evaluates to sqrt(e[0]^2 + e[1]^2 + ...) if T is a vector type.
+    auto d = Dot(source, c0, c0);
+    if (!d) {
+        return utils::Failure;
+    }
+    return Dispatch_fa_f32_f16(SqrtFunc(source, ty), d.Get());
+}
+
 auto ConstEval::Det2Func(const Source& source, const sem::Type* elem_ty) {
     return [=](auto a, auto b, auto c, auto d) -> ImplResult {
         if (auto r = Det2(source, a, b, c, d)) {
+            return CreateElement(builder, source, elem_ty, r.Get());
+        }
+        return utils::Failure;
+    };
+}
+
+auto ConstEval::Det3Func(const Source& source, const sem::Type* elem_ty) {
+    return
+        [=](auto a, auto b, auto c, auto d, auto e, auto f, auto g, auto h, auto i) -> ImplResult {
+            if (auto r = Det3(source, a, b, c, d, e, f, g, h, i)) {
+                return CreateElement(builder, source, elem_ty, r.Get());
+            }
+            return utils::Failure;
+        };
+}
+
+auto ConstEval::Det4Func(const Source& source, const sem::Type* elem_ty) {
+    return [=](auto a, auto b, auto c, auto d, auto e, auto f, auto g, auto h, auto i, auto j,
+               auto k, auto l, auto m, auto n, auto o, auto p) -> ImplResult {
+        if (auto r = Det4(source, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)) {
             return CreateElement(builder, source, elem_ty, r.Get());
         }
         return utils::Failure;
@@ -2014,6 +2210,62 @@ ConstEval::Result ConstEval::degrees(const sem::Type* ty,
     return TransformElements(builder, ty, transform, args[0]);
 }
 
+ConstEval::Result ConstEval::determinant(const sem::Type* ty,
+                                         utils::VectorRef<const sem::Constant*> args,
+                                         const Source& source) {
+    auto calculate = [&]() -> ImplResult {
+        auto* m = args[0];
+        auto* mat_ty = m->Type()->As<sem::Matrix>();
+        auto me = [&](size_t r, size_t c) { return m->Index(c)->Index(r); };
+        switch (mat_ty->rows()) {
+            case 2:
+                return Dispatch_fa_f32_f16(Det2Func(source, ty),  //
+                                           me(0, 0), me(1, 0),    //
+                                           me(0, 1), me(1, 1));
+
+            case 3:
+                return Dispatch_fa_f32_f16(Det3Func(source, ty),          //
+                                           me(0, 0), me(1, 0), me(2, 0),  //
+                                           me(0, 1), me(1, 1), me(2, 1),  //
+                                           me(0, 2), me(1, 2), me(2, 2));
+
+            case 4:
+                return Dispatch_fa_f32_f16(Det4Func(source, ty),                    //
+                                           me(0, 0), me(1, 0), me(2, 0), me(3, 0),  //
+                                           me(0, 1), me(1, 1), me(2, 1), me(3, 1),  //
+                                           me(0, 2), me(1, 2), me(2, 2), me(3, 2),  //
+                                           me(0, 3), me(1, 3), me(2, 3), me(3, 3));
+        }
+        TINT_ICE(Resolver, builder.Diagnostics()) << "Unexpected number of matrix rows";
+        return utils::Failure;
+    };
+    auto r = calculate();
+    if (!r) {
+        AddNote("when calculating determinant", source);
+    }
+    return r;
+}
+
+ConstEval::Result ConstEval::distance(const sem::Type* ty,
+                                      utils::VectorRef<const sem::Constant*> args,
+                                      const Source& source) {
+    auto err = [&]() -> ImplResult {
+        AddNote("when calculating distance", source);
+        return utils::Failure;
+    };
+
+    auto minus = OpMinus(args[0]->Type(), args, source);
+    if (!minus) {
+        return err();
+    }
+
+    auto len = Length(source, ty, minus.Get());
+    if (!len) {
+        return err();
+    }
+    return len;
+}
+
 ConstEval::Result ConstEval::dot(const sem::Type*,
                                  utils::VectorRef<const sem::Constant*> args,
                                  const Source& source) {
@@ -2022,6 +2274,42 @@ ConstEval::Result ConstEval::dot(const sem::Type*,
         AddNote("when calculating dot", source);
     }
     return r;
+}
+
+ConstEval::Result ConstEval::exp(const sem::Type* ty,
+                                 utils::VectorRef<const sem::Constant*> args,
+                                 const Source& source) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto e0) -> ImplResult {
+            using NumberT = decltype(e0);
+            auto val = NumberT(std::exp(e0));
+            if (!std::isfinite(val.value)) {
+                AddError(OverflowExpErrorMessage("e", e0), source);
+                return utils::Failure;
+            }
+            return CreateElement(builder, source, c0->Type(), val);
+        };
+        return Dispatch_fa_f32_f16(create, c0);
+    };
+    return TransformElements(builder, ty, transform, args[0]);
+}
+
+ConstEval::Result ConstEval::exp2(const sem::Type* ty,
+                                  utils::VectorRef<const sem::Constant*> args,
+                                  const Source& source) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto e0) -> ImplResult {
+            using NumberT = decltype(e0);
+            auto val = NumberT(std::exp2(e0));
+            if (!std::isfinite(val.value)) {
+                AddError(OverflowExpErrorMessage("2", e0), source);
+                return utils::Failure;
+            }
+            return CreateElement(builder, source, c0->Type(), val);
+        };
+        return Dispatch_fa_f32_f16(create, c0);
+    };
+    return TransformElements(builder, ty, transform, args[0]);
 }
 
 ConstEval::Result ConstEval::extractBits(const sem::Type* ty,
@@ -2161,6 +2449,106 @@ ConstEval::Result ConstEval::floor(const sem::Type* ty,
     return TransformElements(builder, ty, transform, args[0]);
 }
 
+ConstEval::Result ConstEval::fma(const sem::Type* ty,
+                                 utils::VectorRef<const sem::Constant*> args,
+                                 const Source& source) {
+    auto transform = [&](const sem::Constant* c1, const sem::Constant* c2,
+                         const sem::Constant* c3) {
+        auto create = [&](auto e1, auto e2, auto e3) -> ImplResult {
+            auto err_msg = [&] {
+                AddNote("when calculating fma", source);
+                return utils::Failure;
+            };
+
+            auto mul = Mul(source, e1, e2);
+            if (!mul) {
+                return err_msg();
+            }
+
+            auto val = Add(source, mul.Get(), e3);
+            if (!val) {
+                return err_msg();
+            }
+            return CreateElement(builder, source, c1->Type(), val.Get());
+        };
+        return Dispatch_fa_f32_f16(create, c1, c2, c3);
+    };
+    return TransformElements(builder, ty, transform, args[0], args[1], args[2]);
+}
+
+ConstEval::Result ConstEval::frexp(const sem::Type* ty,
+                                   utils::VectorRef<const sem::Constant*> args,
+                                   const Source& source) {
+    auto* arg = args[0];
+
+    struct FractExp {
+        ImplResult fract;
+        ImplResult exp;
+    };
+
+    auto scalar = [&](const sem::Constant* s) {
+        int exp = 0;
+        double fract = std::frexp(s->As<AFloat>(), &exp);
+        return Switch(
+            s->Type(),
+            [&](const sem::F32*) {
+                return FractExp{
+                    CreateElement(builder, source, builder.create<sem::F32>(), f32(fract)),
+                    CreateElement(builder, source, builder.create<sem::I32>(), i32(exp)),
+                };
+            },
+            [&](const sem::F16*) {
+                return FractExp{
+                    CreateElement(builder, source, builder.create<sem::F16>(), f16(fract)),
+                    CreateElement(builder, source, builder.create<sem::I32>(), i32(exp)),
+                };
+            },
+            [&](const sem::AbstractFloat*) {
+                return FractExp{
+                    CreateElement(builder, source, builder.create<sem::AbstractFloat>(),
+                                  AFloat(fract)),
+                    CreateElement(builder, source, builder.create<sem::AbstractInt>(), AInt(exp)),
+                };
+            },
+            [&](Default) {
+                TINT_ICE(Resolver, builder.Diagnostics())
+                    << "unhandled element type for frexp() const-eval: "
+                    << builder.FriendlyName(s->Type());
+                return FractExp{utils::Failure, utils::Failure};
+            });
+    };
+
+    if (auto* vec = arg->Type()->As<sem::Vector>()) {
+        utils::Vector<const sem::Constant*, 4> fract_els;
+        utils::Vector<const sem::Constant*, 4> exp_els;
+        for (uint32_t i = 0; i < vec->Width(); i++) {
+            auto fe = scalar(arg->Index(i));
+            if (!fe.fract || !fe.exp) {
+                return utils::Failure;
+            }
+            fract_els.Push(fe.fract.Get());
+            exp_els.Push(fe.exp.Get());
+        }
+        auto fract_ty = builder.create<sem::Vector>(fract_els[0]->Type(), vec->Width());
+        auto exp_ty = builder.create<sem::Vector>(exp_els[0]->Type(), vec->Width());
+        return CreateComposite(builder, ty,
+                               utils::Vector<const sem::Constant*, 2>{
+                                   CreateComposite(builder, fract_ty, std::move(fract_els)),
+                                   CreateComposite(builder, exp_ty, std::move(exp_els)),
+                               });
+    } else {
+        auto fe = scalar(arg);
+        if (!fe.fract || !fe.exp) {
+            return utils::Failure;
+        }
+        return CreateComposite(builder, ty,
+                               utils::Vector<const sem::Constant*, 2>{
+                                   fe.fract.Get(),
+                                   fe.exp.Get(),
+                               });
+    }
+}
+
 ConstEval::Result ConstEval::insertBits(const sem::Type* ty,
                                         utils::VectorRef<const sem::Constant*> args,
                                         const Source& source) {
@@ -2213,33 +2601,82 @@ ConstEval::Result ConstEval::insertBits(const sem::Type* ty,
     return TransformElements(builder, ty, transform, args[0], args[1]);
 }
 
+ConstEval::Result ConstEval::inverseSqrt(const sem::Type* ty,
+                                         utils::VectorRef<const sem::Constant*> args,
+                                         const Source& source) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto e) -> ImplResult {
+            using NumberT = decltype(e);
+
+            if (e <= NumberT(0)) {
+                AddError("inverseSqrt must be called with a value > 0", source);
+                return utils::Failure;
+            }
+
+            auto err = [&] {
+                AddNote("when calculating inverseSqrt", source);
+                return utils::Failure;
+            };
+
+            auto s = Sqrt(source, e);
+            if (!s) {
+                return err();
+            }
+            auto div = Div(source, NumberT(1), s.Get());
+            if (!div) {
+                return err();
+            }
+
+            return CreateElement(builder, source, c0->Type(), div.Get());
+        };
+        return Dispatch_fa_f32_f16(create, c0);
+    };
+
+    return TransformElements(builder, ty, transform, args[0]);
+}
+
 ConstEval::Result ConstEval::length(const sem::Type* ty,
                                     utils::VectorRef<const sem::Constant*> args,
                                     const Source& source) {
-    auto calculate = [&]() -> ImplResult {
-        auto* vec_ty = args[0]->Type()->As<sem::Vector>();
-
-        // Evaluates to the absolute value of e if T is scalar.
-        if (vec_ty == nullptr) {
-            auto create = [&](auto e) {
-                using NumberT = decltype(e);
-                return CreateElement(builder, source, ty, NumberT{std::abs(e)});
-            };
-            return Dispatch_fa_f32_f16(create, args[0]);
-        }
-
-        // Evaluates to sqrt(e[0]^2 + e[1]^2 + ...) if T is a vector type.
-        auto d = Dot(source, args[0], args[0]);
-        if (!d) {
-            return utils::Failure;
-        }
-        return Dispatch_fa_f32_f16(SqrtFunc(source, ty), d.Get());
-    };
-    auto r = calculate();
+    auto r = Length(source, ty, args[0]);
     if (!r) {
         AddNote("when calculating length", source);
     }
     return r;
+}
+
+ConstEval::Result ConstEval::log(const sem::Type* ty,
+                                 utils::VectorRef<const sem::Constant*> args,
+                                 const Source& source) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto v) -> ImplResult {
+            using NumberT = decltype(v);
+            if (v <= NumberT(0)) {
+                AddError("log must be called with a value > 0", source);
+                return utils::Failure;
+            }
+            return CreateElement(builder, source, c0->Type(), NumberT(std::log(v)));
+        };
+        return Dispatch_fa_f32_f16(create, c0);
+    };
+    return TransformElements(builder, ty, transform, args[0]);
+}
+
+ConstEval::Result ConstEval::log2(const sem::Type* ty,
+                                  utils::VectorRef<const sem::Constant*> args,
+                                  const Source& source) {
+    auto transform = [&](const sem::Constant* c0) {
+        auto create = [&](auto v) -> ImplResult {
+            using NumberT = decltype(v);
+            if (v <= NumberT(0)) {
+                AddError("log2 must be called with a value > 0", source);
+                return utils::Failure;
+            }
+            return CreateElement(builder, source, c0->Type(), NumberT(std::log2(v)));
+        };
+        return Dispatch_fa_f32_f16(create, c0);
+    };
+    return TransformElements(builder, ty, transform, args[0]);
 }
 
 ConstEval::Result ConstEval::max(const sem::Type* ty,
@@ -2298,6 +2735,23 @@ ConstEval::Result ConstEval::modf(const sem::Type* ty,
     }
 
     return CreateComposite(builder, ty, std::move(fields));
+}
+
+ConstEval::Result ConstEval::normalize(const sem::Type* ty,
+                                       utils::VectorRef<const sem::Constant*> args,
+                                       const Source& source) {
+    auto* len_ty = sem::Type::DeepestElementOf(ty);
+    auto len = Length(source, len_ty, args[0]);
+    if (!len) {
+        AddNote("when calculating normalize", source);
+        return utils::Failure;
+    }
+    auto* v = len.Get();
+    if (v->AllZero()) {
+        AddError("zero length vector can not be normalized", source);
+        return utils::Failure;
+    }
+    return OpDivide(ty, utils::Vector{args[0], v}, source);
 }
 
 ConstEval::Result ConstEval::pack2x16float(const sem::Type* ty,
@@ -2679,6 +3133,26 @@ ConstEval::Result ConstEval::tanh(const sem::Type* ty,
         return Dispatch_fa_f32_f16(create, c0);
     };
     return TransformElements(builder, ty, transform, args[0]);
+}
+
+ConstEval::Result ConstEval::transpose(const sem::Type* ty,
+                                       utils::VectorRef<const sem::Constant*> args,
+                                       const Source&) {
+    auto* m = args[0];
+    auto* mat_ty = m->Type()->As<sem::Matrix>();
+    auto me = [&](size_t r, size_t c) { return m->Index(c)->Index(r); };
+    auto* result_mat_ty = ty->As<sem::Matrix>();
+
+    // Produce column vectors from each row
+    utils::Vector<const sem::Constant*, 4> result_mat;
+    for (size_t r = 0; r < mat_ty->rows(); ++r) {
+        utils::Vector<const sem::Constant*, 4> new_col_vec;
+        for (size_t c = 0; c < mat_ty->columns(); ++c) {
+            new_col_vec.Push(me(r, c));
+        }
+        result_mat.Push(CreateComposite(builder, result_mat_ty->ColumnType(), new_col_vec));
+    }
+    return CreateComposite(builder, ty, result_mat);
 }
 
 ConstEval::Result ConstEval::trunc(const sem::Type* ty,
