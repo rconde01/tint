@@ -1935,6 +1935,141 @@ INSTANTIATE_TEST_SUITE_P(  //
                                               ReverseBitsCases<u32>()))));
 
 template <typename T>
+std::vector<Case> ReflectCases() {
+    auto pos_y = Vec(T(0), T(1), T(0));
+    auto neg_y = Vec(T(0), -T(1), T(0));
+    auto pos_large_y = Vec(T(0), T(10000), T(0));
+    auto neg_large_y = Vec(T(0), -T(10000), T(0));
+
+    auto cos_45 = T(0.70710678118654752440084436210485);
+    auto pos_xyz = Vec(cos_45, cos_45, cos_45);
+
+    auto r = std::vector<Case>{
+        C({Vec(T(1), -T(1), T(0)), pos_y}, Vec(T(1), T(1), T(0))),
+        C({Vec(T(24), -T(42), T(0)), pos_y}, Vec(T(24), T(42), T(0))),
+        // Flipping reflection vector doesn't change the result
+        C({Vec(T(1), -T(1), T(0)), neg_y}, Vec(T(1), T(1), T(0))),
+        C({Vec(T(24), -T(42), T(0)), neg_y}, Vec(T(24), T(42), T(0))),
+        // Parallel input and reflection vectors: result is negation of input
+        C({pos_y, pos_y}, neg_y),
+        C({neg_y, pos_y}, pos_y),
+        C({pos_large_y, pos_y}, neg_large_y),
+        C({neg_large_y, pos_y}, pos_large_y),
+        // Input axis vectors reflected by normalized(vec(1,1,1)) vector.
+        C({Vec(T(1), T(0), T(0)), pos_xyz}, Vec(T(0), -T(1), -T(1))).FloatComp(0.02),
+        C({Vec(T(0), T(1), T(0)), pos_xyz}, Vec(-T(1), T(0), -T(1))).FloatComp(0.02),
+        C({Vec(T(0), T(0), T(1)), pos_xyz}, Vec(-T(1), -T(1), T(0))).FloatComp(0.02),
+        C({Vec(-T(1), T(0), T(0)), pos_xyz}, Vec(T(0), T(1), T(1))).FloatComp(0.02),
+        C({Vec(T(0), -T(1), T(0)), pos_xyz}, Vec(T(1), T(0), T(1))).FloatComp(0.02),
+        C({Vec(T(0), T(0), -T(1)), pos_xyz}, Vec(T(1), T(1), T(0))).FloatComp(0.02),
+    };
+
+    auto error_msg = [](auto a, const char* op, auto b) {
+        return "12:34 error: " + OverflowErrorMessage(a, op, b) + R"(
+12:34 note: when calculating reflect)";
+    };
+    ConcatInto(  //
+        r, std::vector<Case>{
+               // Overflow the dot product operation
+               E({Vec(T::Highest(), T::Highest(), T(0)), Vec(T(1), T(1), T(0))},
+                 error_msg(T::Highest(), "+", T::Highest())),
+               E({Vec(T::Lowest(), T::Lowest(), T(0)), Vec(T(1), T(1), T(0))},
+                 error_msg(T::Lowest(), "+", T::Lowest())),
+           });
+
+    return r;
+}
+INSTANTIATE_TEST_SUITE_P(  //
+    Reflect,
+    ResolverConstEvalBuiltinTest,
+    testing::Combine(testing::Values(sem::BuiltinType::kReflect),
+                     testing::ValuesIn(Concat(ReflectCases<AFloat>(),  //
+                                              ReflectCases<f32>(),     //
+                                              ReflectCases<f16>()))));
+
+template <typename T>
+std::vector<Case> RefractCases() {
+    // Returns "eta" (Greek letter) that denotes the ratio of indices of refraction for the input
+    // and output vector angles from the normal vector.
+    auto eta = [](auto angle1, auto angle2) {
+        // Snell's law: sin(angle1) / sin(angle2) == n2 / n1
+        // We want the ratio of n1 to n2, so sin(angle2) / sin(angle1)
+        auto angle1_rads = T(angle1) * kPi<T> / T(180);
+        auto angle2_rads = T(angle2) * kPi<T> / T(180);
+        return T(std::sin(angle2_rads) / std::sin(angle1_rads));
+    };
+
+    auto zero = Vec(T(0), T(0), T(0));
+    auto pos_y = Vec(T(0), T(1), T(0));
+    auto neg_y = Vec(T(0), -T(1), T(0));
+    auto pos_x = Vec(T(1), T(0), T(0));
+    auto neg_x = Vec(-T(1), T(0), T(0));
+    auto cos_45 = T(0.70710678118654752440084436210485);
+    auto cos_30 = T(0.86602540378443864676372317075294);
+    auto down_right = Vec(T(cos_45), -T(cos_45), T(0));
+    auto up_right = Vec(T(cos_45), T(cos_45), T(0));
+
+    auto eps = 0.001;
+    if constexpr (std::is_same_v<T, f16>) {
+        eps = 0.1;
+    }
+
+    auto r = std::vector<Case>{
+        // e3 (eta) == 1, no refraction, so input is same as output
+        C({down_right, pos_y, Val(T(1))}, down_right),
+        C({neg_y, pos_y, Val(T(1))}, neg_y),
+        // Varying etas
+        C({down_right, pos_y, Val(eta(45, 45))}, down_right).FloatComp(eps),  // e3 == 1
+        C({down_right, pos_y, Val(eta(45, 30))}, Vec(T(0.5), -T(cos_30), T(0))).FloatComp(eps),
+        C({down_right, pos_y, Val(eta(45, 60))}, Vec(T(cos_30), -T(0.5), T(0))).FloatComp(eps),
+        C({down_right, pos_y, Val(eta(45, 90))}, Vec(T(1), T(0), T(0))).FloatComp(eps),
+        // Flip input and normal, same result
+        C({up_right, neg_y, Val(eta(45, 45))}, up_right).FloatComp(eps),  // e3 == 1
+        C({up_right, neg_y, Val(eta(45, 30))}, Vec(T(0.5), T(cos_30), T(0))).FloatComp(eps),
+        C({up_right, neg_y, Val(eta(45, 60))}, Vec(T(cos_30), T(0.5), T(0))).FloatComp(eps),
+        C({up_right, neg_y, Val(eta(45, 90))}, Vec(T(1), T(0), T(0))).FloatComp(eps),
+        // Flip only normal, result is flipped
+        C({down_right, neg_y, Val(eta(45, 45))}, up_right).FloatComp(eps),  // e3 == 1
+        C({down_right, neg_y, Val(eta(45, 30))}, Vec(T(0.5), T(cos_30), T(0))).FloatComp(eps),
+        C({down_right, neg_y, Val(eta(45, 60))}, Vec(T(cos_30), T(0.5), T(0))).FloatComp(eps),
+        C({down_right, neg_y, Val(eta(45, 90))}, Vec(T(1), T(0), T(0))).FloatComp(eps),
+
+        // If k < 0.0, returns the refraction vector 0.0
+        C({down_right, pos_y, Val(T(2))}, zero).FloatComp(eps),
+
+        // A few more with a different normal (e2)
+        C({down_right, neg_x, Val(eta(45, 45))}, down_right).FloatComp(eps),  // e3 == 1
+        C({down_right, neg_x, Val(eta(45, 30))}, Vec(cos_30, -T(0.5), T(0))).FloatComp(eps),
+        C({down_right, neg_x, Val(eta(45, 60))}, Vec(T(0.5), -T(cos_30), T(0))).FloatComp(eps),
+    };
+
+    auto error_msg = [](auto a, const char* op, auto b) {
+        return "12:34 error: " + OverflowErrorMessage(a, op, b) + R"(
+12:34 note: when calculating refract)";
+    };
+    ConcatInto(  //
+        r,
+        std::vector<Case>{
+            // Overflow the dot product operation
+            E({Vec(T::Highest(), T::Highest(), T(0)), Vec(T(1), T(1), T(0)), Val(T(1))},
+              error_msg(T::Highest(), "+", T::Highest())),
+            E({Vec(T::Lowest(), T::Lowest(), T(0)), Vec(T(1), T(1), T(0)), Val(T(1))},
+              error_msg(T::Lowest(), "+", T::Lowest())),
+            // Overflow the k^2 operation
+            E({down_right, pos_y, Val(T::Highest())}, error_msg(T::Highest(), "*", T::Highest())),
+        });
+
+    return r;
+}
+INSTANTIATE_TEST_SUITE_P(  //
+    Refract,
+    ResolverConstEvalBuiltinTest,
+    testing::Combine(testing::Values(sem::BuiltinType::kRefract),
+                     testing::ValuesIn(Concat(RefractCases<AFloat>(),  //
+                                              RefractCases<f32>(),     //
+                                              RefractCases<f16>()))));
+
+template <typename T>
 std::vector<Case> RadiansCases() {
     return std::vector<Case>{
         C({T(0)}, T(0)),                         //
