@@ -25,468 +25,509 @@ using IR_InstructionTest = TestHelper;
 TEST_F(IR_InstructionTest, CreateAnd) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.And(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr = b.builder.And(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kAnd);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kAnd);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 & 2");
 }
 
 TEST_F(IR_InstructionTest, CreateOr) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.Or(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr = b.builder.Or(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kOr);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kOr);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 | 2");
 }
 
 TEST_F(IR_InstructionTest, CreateXor) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.Xor(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr = b.builder.Xor(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kXor);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kXor);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 ^ 2");
 }
 
 TEST_F(IR_InstructionTest, CreateLogicalAnd) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.LogicalAnd(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr =
+        b.builder.LogicalAnd(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kLogicalAnd);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kLogicalAnd);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 && 2");
 }
 
 TEST_F(IR_InstructionTest, CreateLogicalOr) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.LogicalOr(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr = b.builder.LogicalOr(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kLogicalOr);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kLogicalOr);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 || 2");
 }
 
 TEST_F(IR_InstructionTest, CreateEqual) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.Equal(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr = b.builder.Equal(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kEqual);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kEqual);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 == 2");
 }
 
 TEST_F(IR_InstructionTest, CreateNotEqual) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.NotEqual(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr = b.builder.NotEqual(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kNotEqual);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kNotEqual);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 != 2");
 }
 
 TEST_F(IR_InstructionTest, CreateLessThan) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.LessThan(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr = b.builder.LessThan(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kLessThan);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kLessThan);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 < 2");
 }
 
 TEST_F(IR_InstructionTest, CreateGreaterThan) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.GreaterThan(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr =
+        b.builder.GreaterThan(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kGreaterThan);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kGreaterThan);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 > 2");
 }
 
 TEST_F(IR_InstructionTest, CreateLessThanEqual) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.LessThanEqual(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr =
+        b.builder.LessThanEqual(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kLessThanEqual);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kLessThanEqual);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 <= 2");
 }
 
 TEST_F(IR_InstructionTest, CreateGreaterThanEqual) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.GreaterThanEqual(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr =
+        b.builder.GreaterThanEqual(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kGreaterThanEqual);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kGreaterThanEqual);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 >= 2");
 }
 
 TEST_F(IR_InstructionTest, CreateShiftLeft) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.ShiftLeft(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr = b.builder.ShiftLeft(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kShiftLeft);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kShiftLeft);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 << 2");
 }
 
 TEST_F(IR_InstructionTest, CreateShiftRight) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.ShiftRight(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr =
+        b.builder.ShiftRight(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kShiftRight);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kShiftRight);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 >> 2");
 }
 
 TEST_F(IR_InstructionTest, CreateAdd) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.Add(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr = b.builder.Add(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kAdd);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kAdd);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 + 2");
 }
 
 TEST_F(IR_InstructionTest, CreateSubtract) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.Subtract(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr = b.builder.Subtract(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kSubtract);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kSubtract);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 - 2");
 }
 
 TEST_F(IR_InstructionTest, CreateMultiply) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.Multiply(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr = b.builder.Multiply(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kMultiply);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kMultiply);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 * 2");
 }
 
 TEST_F(IR_InstructionTest, CreateDivide) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.Divide(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr = b.builder.Divide(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kDivide);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kDivide);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 / 2");
 }
 
 TEST_F(IR_InstructionTest, CreateModulo) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_value_id = Value::Id(42);
-    auto instr = b.builder.Modulo(Value(i32(4)), Value(i32(2)));
+    b.builder.next_temp_id = Temp::Id(42);
+    const auto* instr = b.builder.Modulo(b.builder.Constant(i32(4)), b.builder.Constant(i32(2)));
 
-    EXPECT_EQ(instr.GetKind(), Instruction::Kind::kModulo);
+    EXPECT_EQ(instr->GetKind(), Instruction::Kind::kModulo);
 
-    ASSERT_TRUE(instr.Result().IsTemp());
-    EXPECT_EQ(Value::Id(42), instr.Result().AsId());
+    ASSERT_TRUE(instr->Result()->Is<Temp>());
+    EXPECT_EQ(Temp::Id(42), instr->Result()->As<Temp>()->AsId());
 
-    ASSERT_TRUE(instr.HasLHS());
-    auto& lhs = instr.LHS();
-    ASSERT_TRUE(lhs.IsI32());
-    EXPECT_EQ(i32(4), lhs.AsI32());
+    ASSERT_TRUE(instr->HasLHS());
+    ASSERT_TRUE(instr->LHS()->Is<Constant>());
+    auto lhs = instr->LHS()->As<Constant>();
+    ASSERT_TRUE(lhs->IsI32());
+    EXPECT_EQ(i32(4), lhs->AsI32());
 
-    ASSERT_TRUE(instr.HasRHS());
-    auto& rhs = instr.RHS();
-    ASSERT_TRUE(rhs.IsI32());
-    EXPECT_EQ(i32(2), rhs.AsI32());
+    ASSERT_TRUE(instr->HasRHS());
+    ASSERT_TRUE(instr->RHS()->Is<Constant>());
+    auto rhs = instr->RHS()->As<Constant>();
+    ASSERT_TRUE(rhs->IsI32());
+    EXPECT_EQ(i32(2), rhs->AsI32());
 
     std::stringstream str;
-    str << instr;
+    str << *instr;
     EXPECT_EQ(str.str(), "%42 = 4 % 2");
 }
 

@@ -103,7 +103,11 @@ Resolver::Resolver(ProgramBuilder* builder)
       const_eval_(*builder),
       intrinsic_table_(IntrinsicTable::Create(*builder)),
       sem_(builder, dependencies_),
-      validator_(builder, sem_) {}
+      validator_(builder,
+                 sem_,
+                 enabled_extensions_,
+                 atomic_composite_info_,
+                 valid_type_storage_layouts_) {}
 
 Resolver::~Resolver() = default;
 
@@ -258,7 +262,18 @@ sem::Type* Resolver::Type(const ast::Type* ty) {
                 if (access == ast::Access::kUndefined) {
                     access = DefaultAccessForAddressSpace(t->address_space);
                 }
-                return builder_->create<sem::Pointer>(el, t->address_space, access);
+                auto ptr = builder_->create<sem::Pointer>(el, t->address_space, access);
+                if (!ptr) {
+                    return nullptr;
+                }
+                if (!validator_.Pointer(t, ptr)) {
+                    return nullptr;
+                }
+                if (!ApplyAddressSpaceUsageToType(t->address_space, el, t->type->source)) {
+                    AddNote("while instantiating " + builder_->FriendlyName(ptr), t->source);
+                    return nullptr;
+                }
+                return ptr;
             }
             return nullptr;
         },
@@ -621,7 +636,8 @@ sem::Variable* Resolver::Var(const ast::Var* var, bool is_global) {
 
     auto* var_ty = builder_->create<sem::Reference>(storage_ty, address_space, access);
 
-    if (!ApplyAddressSpaceUsageToType(address_space, var_ty, var->source)) {
+    if (!ApplyAddressSpaceUsageToType(address_space, var_ty,
+                                      var->type ? var->type->source : var->source)) {
         AddNote("while instantiating 'var' " + builder_->Symbols().NameFor(var->symbol),
                 var->source);
         return nullptr;
@@ -723,7 +739,7 @@ sem::Parameter* Resolver::Parameter(const ast::Parameter* param, uint32_t index)
         return nullptr;
     }
 
-    if (!ApplyAddressSpaceUsageToType(ast::AddressSpace::kNone, ty, param->source)) {
+    if (!ApplyAddressSpaceUsageToType(ast::AddressSpace::kNone, ty, param->type->source)) {
         add_note();
         return nullptr;
     }
@@ -891,13 +907,7 @@ sem::GlobalVariable* Resolver::GlobalVariable(const ast::Variable* v) {
         return nullptr;
     }
 
-    if (!validator_.GlobalVariable(sem, override_ids_, atomic_composite_info_)) {
-        return nullptr;
-    }
-
-    // TODO(bclayton): Call this at the end of resolve on all uniform and storage
-    // referenced structs
-    if (!validator_.AddressSpaceLayout(sem, enabled_extensions_, valid_type_storage_layouts_)) {
+    if (!validator_.GlobalVariable(sem, override_ids_)) {
         return nullptr;
     }
 
@@ -2300,7 +2310,7 @@ sem::Call* Resolver::BuiltinCall(const ast::CallExpression* expr,
         current_function_->AddDirectCall(call);
     }
 
-    if (!validator_.RequiredExtensionForBuiltinFunction(call, enabled_extensions_)) {
+    if (!validator_.RequiredExtensionForBuiltinFunction(call)) {
         return nullptr;
     }
 
@@ -3564,12 +3574,14 @@ bool Resolver::ApplyAddressSpaceUsageToType(ast::AddressSpace address_space,
         str->AddUsage(address_space);
 
         for (auto* member : str->Members()) {
-            if (!ApplyAddressSpaceUsageToType(address_space, const_cast<sem::Type*>(member->Type()),
-                                              usage)) {
+            auto decl = member->Declaration();
+            if (decl &&
+                !ApplyAddressSpaceUsageToType(address_space, const_cast<sem::Type*>(member->Type()),
+                                              decl->type->source)) {
                 std::stringstream err;
                 err << "while analyzing structure member " << sem_.TypeNameOf(str) << "."
-                    << builder_->Symbols().NameFor(member->Declaration()->symbol);
-                AddNote(err.str(), member->Declaration()->source);
+                    << builder_->Symbols().NameFor(decl->symbol);
+                AddNote(err.str(), decl->source);
                 return false;
             }
         }

@@ -167,6 +167,32 @@ TEST(Hashmap, Iterator) {
                                                    Entry{3, "three"}, Entry{4, "four"}));
 }
 
+TEST(Hashmap, MutableIterator) {
+    using Map = Hashmap<int, std::string, 8>;
+    using Entry = typename Map::Entry;
+    Map map;
+    map.Add(1, "one");
+    map.Add(4, "four");
+    map.Add(3, "three");
+    map.Add(2, "two");
+    for (auto pair : map) {
+        pair.value += "!";
+    }
+    EXPECT_THAT(map, testing::UnorderedElementsAre(Entry{1, "one!"}, Entry{2, "two!"},
+                                                   Entry{3, "three!"}, Entry{4, "four!"}));
+}
+
+TEST(Hashmap, KeysValues) {
+    using Map = Hashmap<int, std::string, 8>;
+    Map map;
+    map.Add(1, "one");
+    map.Add(4, "four");
+    map.Add(3, "three");
+    map.Add(2, "two");
+    EXPECT_THAT(map.Keys(), testing::UnorderedElementsAre(1, 2, 3, 4));
+    EXPECT_THAT(map.Values(), testing::UnorderedElementsAre("one", "two", "three", "four"));
+}
+
 TEST(Hashmap, AddMany) {
     Hashmap<int, std::string, 8> map;
     for (size_t i = 0; i < kPrimes.size(); i++) {
@@ -327,6 +353,62 @@ TEST(Hashmap, Soak) {
             }
         }
     }
+}
+
+TEST(Hashmap, EqualitySameSize) {
+    Hashmap<int, std::string, 8> a;
+    Hashmap<int, std::string, 8> b;
+    EXPECT_EQ(a, b);
+    a.Add(1, "one");
+    EXPECT_NE(a, b);
+    b.Add(2, "two");
+    EXPECT_NE(a, b);
+    a.Add(2, "two");
+    EXPECT_NE(a, b);
+    b.Add(1, "one");
+    EXPECT_EQ(a, b);
+}
+
+TEST(Hashmap, EqualityDifferentSize) {
+    Hashmap<int, std::string, 8> a;
+    Hashmap<int, std::string, 4> b;
+    EXPECT_EQ(a, b);
+    a.Add(1, "one");
+    EXPECT_NE(a, b);
+    b.Add(2, "two");
+    EXPECT_NE(a, b);
+    a.Add(2, "two");
+    EXPECT_NE(a, b);
+    b.Add(1, "one");
+    EXPECT_EQ(a, b);
+}
+
+TEST(Hashmap, HashSameSize) {
+    Hashmap<int, std::string, 8> a;
+    Hashmap<int, std::string, 8> b;
+    EXPECT_EQ(Hash(a), Hash(b));
+    a.Add(1, "one");
+    EXPECT_NE(Hash(a), Hash(b));
+    b.Add(2, "two");
+    EXPECT_NE(Hash(a), Hash(b));
+    a.Add(2, "two");
+    EXPECT_NE(Hash(a), Hash(b));
+    b.Add(1, "one");
+    EXPECT_EQ(Hash(a), Hash(b));
+}
+
+TEST(Hashmap, HashDifferentSize) {
+    Hashmap<int, std::string, 8> a;
+    Hashmap<int, std::string, 4> b;
+    EXPECT_EQ(Hash(a), Hash(b));
+    a.Add(1, "one");
+    EXPECT_NE(Hash(a), Hash(b));
+    b.Add(2, "two");
+    EXPECT_NE(Hash(a), Hash(b));
+    a.Add(2, "two");
+    EXPECT_NE(Hash(a), Hash(b));
+    b.Add(1, "one");
+    EXPECT_EQ(Hash(a), Hash(b));
 }
 
 }  // namespace
