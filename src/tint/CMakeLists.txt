@@ -299,6 +299,8 @@ list(APPEND TINT_LIB_SRCS
   sem/abstract_numeric.h
   sem/array.cc
   sem/array.h
+  sem/array_count.cc
+  sem/array_count.h
   sem/atomic.cc
   sem/atomic.h
   sem/behavior.cc
@@ -425,6 +427,8 @@ list(APPEND TINT_LIB_SRCS
   transform/decompose_strided_matrix.h
   transform/demote_to_helper.cc
   transform/demote_to_helper.h
+  transform/direct_variable_access.cc
+  transform/direct_variable_access.h
   transform/disable_uniformity_analysis.cc
   transform/disable_uniformity_analysis.h
   transform/expand_compound_assignment.cc
@@ -535,13 +539,14 @@ list(APPEND TINT_LIB_SRCS
   writer/writer.h
 )
 
-tint_generated(ast/access)
+tint_generated(ast/access BENCH TEST)
 tint_generated(ast/address_space BENCH TEST)
 tint_generated(ast/builtin_value BENCH TEST)
 tint_generated(ast/extension BENCH TEST)
-tint_generated(ast/interpolate_attribute)
+tint_generated(ast/interpolate_attribute BENCH TEST)
 tint_generated(ast/texel_format BENCH TEST)
 tint_generated(resolver/init_conv_intrinsic)
+tint_generated(resolver/type_alias BENCH TEST)
 tint_generated(sem/builtin_type)
 tint_generated(sem/parameter_usage)
 
@@ -650,6 +655,8 @@ endif()
 
 if(${TINT_BUILD_IR})
   list(APPEND TINT_LIB_SRCS
+    ir/binary.cc
+    ir/binary.h
     ir/block.cc
     ir/block.h
     ir/builder.cc
@@ -807,7 +814,6 @@ if(TINT_BUILD_TESTS)
     ast/increment_decrement_statement_test.cc
     ast/index_accessor_expression_test.cc
     ast/int_literal_expression_test.cc
-    ast/interpolate_attribute_test.cc
     ast/invariant_attribute_test.cc
     ast/location_attribute_test.cc
     ast/loop_statement_test.cc
@@ -1193,6 +1199,7 @@ if(TINT_BUILD_TESTS)
       transform/decompose_strided_array_test.cc
       transform/decompose_strided_matrix_test.cc
       transform/demote_to_helper_test.cc
+      transform/direct_variable_access_test.cc
       transform/disable_uniformity_analysis_test.cc
       transform/expand_compound_assignment_test.cc
       transform/first_index_offset_test.cc
@@ -1344,9 +1351,9 @@ if(TINT_BUILD_TESTS)
 
   if (${TINT_BUILD_IR})
     list(APPEND TINT_TEST_SRCS
+      ir/binary_test.cc
       ir/builder_impl_test.cc
       ir/constant_test.cc
-      ir/instruction_test.cc
       ir/temp_test.cc
       ir/test_helper.h
     )
