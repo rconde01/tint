@@ -440,7 +440,7 @@ bool Validator::AddressSpaceLayout(const sem::Type* store_ty,
     }
 
     if (auto* str = store_ty->As<sem::Struct>()) {
-        for (size_t i = 0; i < str->Members().size(); ++i) {
+        for (size_t i = 0; i < str->Members().Length(); ++i) {
             auto* const m = str->Members()[i];
             uint32_t required_align = required_alignment_of(m->Type());
 
@@ -1068,13 +1068,6 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
                                                      ParamOrRetType param_or_ret,
                                                      bool is_struct_member,
                                                      std::optional<uint32_t> location) {
-        // Temporally forbid using f16 types in entry point IO.
-        // TODO(tint:1473, tint:1502): Remove this error after f16 is supported in entry point IO.
-        if (Is<sem::F16>(sem::Type::DeepestElementOf(ty))) {
-            AddError("entry point IO of f16 types is not implemented yet", source);
-            return false;
-        }
-
         // Scan attributes for pipeline IO attributes.
         // Check for overlap with attributes that have been seen previously.
         const ast::Attribute* pipeline_io_attribute = nullptr;
@@ -1724,10 +1717,10 @@ bool Validator::StructureInitializer(const ast::CallExpression* ctor,
     }
 
     if (ctor->args.Length() > 0) {
-        if (ctor->args.Length() != struct_type->Members().size()) {
-            std::string fm = ctor->args.Length() < struct_type->Members().size() ? "few" : "many";
+        if (ctor->args.Length() != struct_type->Members().Length()) {
+            std::string fm = ctor->args.Length() < struct_type->Members().Length() ? "few" : "many";
             AddError("struct initializer has too " + fm + " inputs: expected " +
-                         std::to_string(struct_type->Members().size()) + ", found " +
+                         std::to_string(struct_type->Members().Length()) + ", found " +
                          std::to_string(ctor->args.Length()),
                      ctor->source);
             return false;
@@ -1811,7 +1804,7 @@ bool Validator::Matrix(const sem::Matrix* ty, const Source& source) const {
     return true;
 }
 
-bool Validator::PipelineStages(const utils::VectorRef<sem::Function*> entry_points) const {
+bool Validator::PipelineStages(utils::VectorRef<sem::Function*> entry_points) const {
     auto backtrace = [&](const sem::Function* func, const sem::Function* entry_point) {
         if (func != entry_point) {
             TraverseCallChain(diagnostics_, entry_point, func, [&](const sem::Function* f) {
@@ -1906,7 +1899,7 @@ bool Validator::PipelineStages(const utils::VectorRef<sem::Function*> entry_poin
     return true;
 }
 
-bool Validator::PushConstants(const utils::VectorRef<sem::Function*> entry_points) const {
+bool Validator::PushConstants(utils::VectorRef<sem::Function*> entry_points) const {
     for (auto* entry_point : entry_points) {
         // State checked and modified by check_push_constant so that it remembers previously seen
         // push_constant variables for an entry-point.
@@ -2019,7 +2012,7 @@ bool Validator::Alias(const ast::Alias*) const {
 }
 
 bool Validator::Structure(const sem::Struct* str, ast::PipelineStage stage) const {
-    if (str->Members().empty()) {
+    if (str->Members().IsEmpty()) {
         AddError("structures must have at least one member", str->Source());
         return false;
     }
@@ -2028,7 +2021,7 @@ bool Validator::Structure(const sem::Struct* str, ast::PipelineStage stage) cons
     for (auto* member : str->Members()) {
         if (auto* r = member->Type()->As<sem::Array>()) {
             if (r->Count()->Is<sem::RuntimeArrayCount>()) {
-                if (member != str->Members().back()) {
+                if (member != str->Members().Back()) {
                     AddError("runtime arrays may only appear as the last member of a struct",
                              member->Source());
                     return false;
@@ -2422,7 +2415,7 @@ bool Validator::CheckTypeAccessAddressSpace(
     const sem::Type* store_ty,
     ast::Access access,
     ast::AddressSpace address_space,
-    const utils::VectorRef<const tint::ast::Attribute*> attributes,
+    utils::VectorRef<const tint::ast::Attribute*> attributes,
     const Source& source) const {
     if (!AddressSpaceLayout(store_ty, address_space, source)) {
         return false;

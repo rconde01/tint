@@ -59,6 +59,7 @@
 #include "src/tint/transform/expand_compound_assignment.h"
 #include "src/tint/transform/manager.h"
 #include "src/tint/transform/pad_structs.h"
+#include "src/tint/transform/preserve_padding.h"
 #include "src/tint/transform/promote_initializers_to_let.h"
 #include "src/tint/transform/promote_side_effects_to_decl.h"
 #include "src/tint/transform/remove_phonies.h"
@@ -210,6 +211,9 @@ SanitizedResult Sanitize(const Program* in,
     manager.Add<transform::Renamer>();
     data.Add<transform::Renamer::Config>(transform::Renamer::Target::kGlslKeywords,
                                          /* preserve_unicode */ false);
+
+    manager.Add<transform::PreservePadding>();  // Must come before DirectVariableAccess
+
     manager.Add<transform::Unshadow>();  // Must come before DirectVariableAccess
     manager.Add<transform::DirectVariableAccess>();
 
@@ -291,7 +295,7 @@ bool GeneratorImpl::Generate() {
         } else if (auto* str = decl->As<ast::Struct>()) {
             auto* sem = builder_.Sem().Get(str);
             bool has_rt_arr = false;
-            if (auto* arr = sem->Members().back()->Type()->As<sem::Array>()) {
+            if (auto* arr = sem->Members().Back()->Type()->As<sem::Array>()) {
                 has_rt_arr = arr->Count()->Is<sem::RuntimeArrayCount>();
             }
             bool is_block =
@@ -2381,7 +2385,7 @@ bool GeneratorImpl::EmitConstant(std::ostream& out, const sem::Constant* constan
 
             ScopedParen sp(out);
 
-            for (size_t i = 0; i < s->Members().size(); i++) {
+            for (size_t i = 0; i < s->Members().Length(); i++) {
                 if (i > 0) {
                     out << ", ";
                 }
