@@ -296,7 +296,7 @@ bool GeneratorImpl::Generate() {
             auto* sem = builder_.Sem().Get(str);
             bool has_rt_arr = false;
             if (auto* arr = sem->Members().Back()->Type()->As<sem::Array>()) {
-                has_rt_arr = arr->Count()->Is<sem::RuntimeArrayCount>();
+                has_rt_arr = arr->Count()->Is<type::RuntimeArrayCount>();
             }
             bool is_block =
                 ast::HasAttribute<transform::AddBlockAttribute::BlockAttribute>(str->attributes);
@@ -396,13 +396,16 @@ bool GeneratorImpl::EmitBitcast(std::ostream& out, const ast::BitcastExpression*
         return EmitExpression(out, expr->expr);
     }
 
-    if (src_type->is_float_scalar_or_vector() && dst_type->is_signed_scalar_or_vector()) {
+    if (src_type->is_float_scalar_or_vector() && dst_type->is_signed_integer_scalar_or_vector()) {
         out << "floatBitsToInt";
-    } else if (src_type->is_float_scalar_or_vector() && dst_type->is_unsigned_scalar_or_vector()) {
+    } else if (src_type->is_float_scalar_or_vector() &&
+               dst_type->is_unsigned_integer_scalar_or_vector()) {
         out << "floatBitsToUint";
-    } else if (src_type->is_signed_scalar_or_vector() && dst_type->is_float_scalar_or_vector()) {
+    } else if (src_type->is_signed_integer_scalar_or_vector() &&
+               dst_type->is_float_scalar_or_vector()) {
         out << "intBitsToFloat";
-    } else if (src_type->is_unsigned_scalar_or_vector() && dst_type->is_float_scalar_or_vector()) {
+    } else if (src_type->is_unsigned_integer_scalar_or_vector() &&
+               dst_type->is_float_scalar_or_vector()) {
         out << "uintBitsToFloat";
     } else {
         if (!EmitType(out, dst_type, ast::AddressSpace::kNone, ast::Access::kReadWrite, "")) {
@@ -823,7 +826,7 @@ bool GeneratorImpl::EmitBuiltinCall(std::ostream& out,
         return EmitEmulatedFMA(out, expr);
     }
     if (builtin->Type() == sem::BuiltinType::kAbs &&
-        TypeOf(expr->args[0])->UnwrapRef()->is_unsigned_scalar_or_vector()) {
+        TypeOf(expr->args[0])->UnwrapRef()->is_unsigned_integer_scalar_or_vector()) {
         // GLSL does not support abs() on unsigned arguments. However, it's a no-op.
         return EmitExpression(out, expr->args[0]);
     }
@@ -1276,7 +1279,7 @@ bool GeneratorImpl::EmitFrexpCall(std::ostream& out,
 bool GeneratorImpl::EmitDegreesCall(std::ostream& out,
                                     const ast::CallExpression* expr,
                                     const sem::Builtin* builtin) {
-    auto* return_elem_type = sem::Type::DeepestElementOf(builtin->ReturnType());
+    auto* return_elem_type = type::Type::DeepestElementOf(builtin->ReturnType());
     const std::string suffix = Is<sem::F16>(return_elem_type) ? "hf" : "f";
     return CallBuiltinHelper(out, expr, builtin,
                              [&](TextBuffer* b, const std::vector<std::string>& params) {
@@ -1289,7 +1292,7 @@ bool GeneratorImpl::EmitDegreesCall(std::ostream& out,
 bool GeneratorImpl::EmitRadiansCall(std::ostream& out,
                                     const ast::CallExpression* expr,
                                     const sem::Builtin* builtin) {
-    auto* return_elem_type = sem::Type::DeepestElementOf(builtin->ReturnType());
+    auto* return_elem_type = type::Type::DeepestElementOf(builtin->ReturnType());
     const std::string suffix = Is<sem::F16>(return_elem_type) ? "hf" : "f";
     return CallBuiltinHelper(out, expr, builtin,
                              [&](TextBuffer* b, const std::vector<std::string>& params) {
@@ -1379,9 +1382,9 @@ bool GeneratorImpl::EmitTextureCall(std::ostream& out,
 
     auto* texture_type = TypeOf(texture)->UnwrapRef()->As<sem::Texture>();
 
-    auto emit_signed_int_type = [&](const sem::Type* ty) {
+    auto emit_signed_int_type = [&](const type::Type* ty) {
         uint32_t width = 0;
-        sem::Type::ElementOf(ty, &width);
+        type::Type::ElementOf(ty, &width);
         if (width > 1) {
             out << "ivec" << width;
         } else {
@@ -1389,9 +1392,9 @@ bool GeneratorImpl::EmitTextureCall(std::ostream& out,
         }
     };
 
-    auto emit_unsigned_int_type = [&](const sem::Type* ty) {
+    auto emit_unsigned_int_type = [&](const type::Type* ty) {
         uint32_t width = 0;
-        sem::Type::ElementOf(ty, &width);
+        type::Type::ElementOf(ty, &width);
         if (width > 1) {
             out << "uvec" << width;
         } else {
@@ -1401,7 +1404,7 @@ bool GeneratorImpl::EmitTextureCall(std::ostream& out,
 
     auto emit_expr_as_signed = [&](const ast::Expression* e) {
         auto* ty = TypeOf(e)->UnwrapRef();
-        if (!ty->is_unsigned_scalar_or_vector()) {
+        if (!ty->is_unsigned_integer_scalar_or_vector()) {
             return EmitExpression(out, e);
         }
         emit_signed_int_type(ty);
@@ -2432,7 +2435,7 @@ bool GeneratorImpl::EmitLiteral(std::ostream& out, const ast::LiteralExpression*
         });
 }
 
-bool GeneratorImpl::EmitZeroValue(std::ostream& out, const sem::Type* type) {
+bool GeneratorImpl::EmitZeroValue(std::ostream& out, const type::Type* type) {
     if (type->Is<sem::Bool>()) {
         out << "false";
     } else if (type->Is<sem::F32>()) {
@@ -2808,7 +2811,7 @@ bool GeneratorImpl::EmitSwitch(const ast::SwitchStatement* stmt) {
 }
 
 bool GeneratorImpl::EmitType(std::ostream& out,
-                             const sem::Type* type,
+                             const type::Type* type,
                              ast::AddressSpace address_space,
                              ast::Access access,
                              const std::string& name,
@@ -2835,10 +2838,10 @@ bool GeneratorImpl::EmitType(std::ostream& out,
     }
 
     if (auto* ary = type->As<sem::Array>()) {
-        const sem::Type* base_type = ary;
+        const type::Type* base_type = ary;
         std::vector<uint32_t> sizes;
         while (auto* arr = base_type->As<sem::Array>()) {
-            if (arr->Count()->Is<sem::RuntimeArrayCount>()) {
+            if (arr->Count()->Is<type::RuntimeArrayCount>()) {
                 sizes.push_back(0);
             } else {
                 auto count = arr->ConstantCount();
@@ -2989,7 +2992,7 @@ bool GeneratorImpl::EmitType(std::ostream& out,
 }
 
 bool GeneratorImpl::EmitTypeAndName(std::ostream& out,
-                                    const sem::Type* type,
+                                    const type::Type* type,
                                     ast::AddressSpace address_space,
                                     ast::Access access,
                                     const std::string& name) {
@@ -3202,7 +3205,7 @@ bool GeneratorImpl::CallBuiltinHelper(std::ostream& out,
     return true;
 }
 
-sem::Type* GeneratorImpl::BoolTypeToUint(const sem::Type* type) {
+type::Type* GeneratorImpl::BoolTypeToUint(const type::Type* type) {
     auto* u32 = builder_.create<sem::U32>();
     if (type->Is<sem::Bool>()) {
         return u32;
