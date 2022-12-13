@@ -416,7 +416,7 @@ struct Composite : ImplConstant {
         utils::Vector<const sem::Constant*, 4> conv_els;
         conv_els.Reserve(elements.Length());
         std::function<const type::Type*(size_t idx)> target_el_ty;
-        if (auto* str = target_ty->As<type::StructBase>()) {
+        if (auto* str = target_ty->As<type::Struct>()) {
             if (str->Members().Length() != elements.Length()) {
                 TINT_ICE(Resolver, builder.Diagnostics())
                     << "const-eval conversion of structure has mismatched element counts";
@@ -494,7 +494,7 @@ const ImplConstant* ZeroValue(ProgramBuilder& builder, const type::Type* type) {
             }
             return nullptr;
         },
-        [&](const type::StructBase* s) -> const ImplConstant* {
+        [&](const type::Struct* s) -> const ImplConstant* {
             utils::Hashmap<const type::Type*, const ImplConstant*, 8> zero_by_type;
             utils::Vector<const sem::Constant*, 4> zeros;
             zeros.Reserve(s->Members().Length());
@@ -1449,7 +1449,7 @@ ConstEval::Result ConstEval::Index(const sem::Expression* obj_expr,
 }
 
 ConstEval::Result ConstEval::MemberAccess(const sem::Expression* obj_expr,
-                                          const type::StructMemberBase* member) {
+                                          const type::StructMember* member) {
     auto obj_val = obj_expr->ConstantValue();
     if (!obj_val) {
         return nullptr;
@@ -2862,6 +2862,49 @@ ConstEval::Result ConstEval::min(const type::Type* ty,
         return Dispatch_fia_fiu32_f16(create, c0, c1);
     };
     return TransformElements(builder, ty, transform, args[0], args[1]);
+}
+
+ConstEval::Result ConstEval::mix(const type::Type* ty,
+                                 utils::VectorRef<const sem::Constant*> args,
+                                 const Source& source) {
+    auto transform = [&](const sem::Constant* c0, const sem::Constant* c1, size_t index) {
+        auto create = [&](auto e1, auto e2) -> ImplResult {
+            using NumberT = decltype(e1);
+            // e3 is either a vector or a scalar
+            NumberT e3;
+            auto* c2 = args[2];
+            if (c2->Type()->Is<type::Vector>()) {
+                e3 = c2->Index(index)->As<NumberT>();
+            } else {
+                e3 = c2->As<NumberT>();
+            }
+            // Implement as `e1 * (1 - e3) + e2 * e3)` instead of as `e1 + e3 * (e2 - e1)` to avoid
+            // float precision loss when e1 and e2 significantly differ in magnitude.
+            auto one_sub_e3 = Sub(source, NumberT{1}, e3);
+            if (!one_sub_e3) {
+                return utils::Failure;
+            }
+            auto e1_mul_one_sub_e3 = Mul(source, e1, one_sub_e3.Get());
+            if (!e1_mul_one_sub_e3) {
+                return utils::Failure;
+            }
+            auto e2_mul_e3 = Mul(source, e2, e3);
+            if (!e2_mul_e3) {
+                return utils::Failure;
+            }
+            auto r = Add(source, e1_mul_one_sub_e3.Get(), e2_mul_e3.Get());
+            if (!r) {
+                return utils::Failure;
+            }
+            return CreateElement(builder, source, c0->Type(), r.Get());
+        };
+        return Dispatch_fa_f32_f16(create, c0, c1);
+    };
+    auto r = TransformElements(builder, ty, transform, args[0], args[1]);
+    if (!r) {
+        AddNote("when calculating mix", source);
+    }
+    return r;
 }
 
 ConstEval::Result ConstEval::modf(const type::Type* ty,
