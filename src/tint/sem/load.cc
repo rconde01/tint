@@ -12,24 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/tint/sem/materialize.h"
+#include "src/tint/sem/load.h"
 
-TINT_INSTANTIATE_TYPEINFO(tint::sem::Materialize);
+#include "src/tint/debug.h"
+#include "src/tint/type/reference.h"
+
+TINT_INSTANTIATE_TYPEINFO(tint::sem::Load);
 
 namespace tint::sem {
-Materialize::Materialize(const Expression* expr,
-                         const Statement* statement,
-                         const type::Type* type,
-                         const constant::Constant* constant)
-    : Base(/* declaration */ expr->Declaration(),
-           /* type */ type,
-           /* stage */ constant ? EvaluationStage::kConstant : EvaluationStage::kNotEvaluated,
+Load::Load(const Expression* ref, const Statement* statement)
+    : Base(/* declaration */ ref->Declaration(),
+           /* type */ ref->Type()->UnwrapRef(),
+           /* stage */ EvaluationStage::kRuntime,  // Loads can only be runtime
            /* statement */ statement,
-           /* constant */ constant,
-           /* has_side_effects */ false,
-           /* root_ident */ expr->RootIdentifier()),
-      expr_(expr) {}
+           /* constant */ nullptr,
+           /* has_side_effects */ ref->HasSideEffects(),
+           /* root_ident */ ref->RootIdentifier()),
+      reference_(ref) {
+    TINT_ASSERT(Semantic, ref->Type()->Is<type::Reference>());
+}
 
-Materialize::~Materialize() = default;
+Load::~Load() = default;
 
 }  // namespace tint::sem

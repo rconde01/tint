@@ -162,7 +162,7 @@ TEST_P(ResolverConstEvalBuiltinTest, Test) {
 
         auto* sem = Sem().Get(expr);
         ASSERT_NE(sem, nullptr);
-        const sem::Constant* value = sem->ConstantValue();
+        const constant::Constant* value = sem->ConstantValue();
         ASSERT_NE(value, nullptr);
         EXPECT_TYPE(value->Type(), sem->Type());
 
@@ -1173,6 +1173,38 @@ INSTANTIATE_TEST_SUITE_P(  //
                                               FmaCases<f16>()))));
 
 template <typename T>
+std::vector<Case> FractCases() {
+    auto r = std::vector<Case>{
+        C({T(0)}, T(0)),
+        C({T(0.1)}, T(0.1)),
+        C({T(-0.1)}, T(0.9)),
+        C({T(0.0000001)}, T(0.0000001)),
+        C({T(-0.0000001)}, T(0.9999999)),
+        C({T(12.34567)}, T(0.34567)).FloatComp(0.002),
+        C({T(-12.34567)}, T(0.65433)).FloatComp(0.002),
+        C({T::Lowest()}, T(0)),
+        C({T::Highest()}, T(0)),
+        // Vector tests
+        C({Vec(T(0.1), T(-0.1), T(-0.0000001))}, Vec(T(0.1), T(0.9), T(0.9999999))),
+    };
+    // Note: Valid results are in the closed interval [0, 1.0]. For example, if e is a very small
+    // negative number, then fract(e) may be 1.0.
+    ConcatIntoIf<!std::is_same_v<T, f16>>(  //
+        r, std::vector<Case>{
+               C({T(-0.000000000000000001)}, T(1)),
+           });
+
+    return r;
+}
+INSTANTIATE_TEST_SUITE_P(  //
+    Fract,
+    ResolverConstEvalBuiltinTest,
+    testing::Combine(testing::Values(sem::BuiltinType::kFract),
+                     testing::ValuesIn(Concat(FractCases<AFloat>(),  //
+                                              FractCases<f32>(),
+                                              FractCases<f16>()))));
+
+template <typename T>
 std::vector<Case> FrexpCases() {
     using F = T;                                                         // fract type
     using E = std::conditional_t<std::is_same_v<T, AFloat>, AInt, i32>;  // exp type
@@ -1970,6 +2002,54 @@ INSTANTIATE_TEST_SUITE_P(  //
     ResolverConstEvalBuiltinTest,
     testing::Combine(testing::Values(sem::BuiltinType::kPack2X16Unorm),
                      testing::ValuesIn(Pack2x16unormCases())));
+
+template <typename T>
+std::vector<Case> PowCases() {
+    auto error_msg = [](auto base, auto exp) {
+        return "12:34 error: " + OverflowErrorMessage(base, "^", exp);
+    };
+    return {
+        C({T(0), T(1)}, T(0)),          //
+        C({T(0), T::Highest()}, T(0)),  //
+        C({T(1), T(1)}, T(1)),          //
+        C({T(1), T::Lowest()}, T(1)),   //
+        C({T(2), T(2)}, T(4)),          //
+        C({T(2), T(3)}, T(8)),          //
+        // Positive base, negative exponent
+        C({T(1), T::Highest()}, T(1)),  //
+        C({T(1), -T(1)}, T(1)),         //
+        C({T(2), -T(2)}, T(0.25)),      //
+        C({T(2), -T(3)}, T(0.125)),     //
+        // Decimal values
+        C({T(2.5), T(3)}, T(15.625)),                      //
+        C({T(2), T(3.5)}, T(11.313708498)).FloatComp(),    //
+        C({T(2.5), T(3.5)}, T(24.705294220)).FloatComp(),  //
+        C({T(2), -T(3.5)}, T(0.0883883476)).FloatComp(),   //
+
+        // Vector tests
+        C({Vec(T(0), T(1), T(2)), Vec(T(2), T(2), T(2))}, Vec(T(0), T(1), T(4))),
+        C({Vec(T(2), T(2), T(2)), Vec(T(2), T(3), T(4))}, Vec(T(4), T(8), T(16))),
+
+        // Error if base < 0
+        E({-T(1), T(1)}, error_msg(-T(1), T(1))),
+        E({-T(1), T::Highest()}, error_msg(-T(1), T::Highest())),
+        E({T::Lowest(), T(1)}, error_msg(T::Lowest(), T(1))),
+        E({T::Lowest(), T::Highest()}, error_msg(T::Lowest(), T::Highest())),
+        E({T::Lowest(), T::Lowest()}, error_msg(T::Lowest(), T::Lowest())),
+
+        // Error if base == 0 and exp <= 0
+        E({T(0), T(0)}, error_msg(T(0), T(0))),
+        E({T(0), -T(1)}, error_msg(T(0), -T(1))),
+        E({T(0), T::Lowest()}, error_msg(T(0), T::Lowest())),
+    };
+}
+INSTANTIATE_TEST_SUITE_P(  //
+    Pow,
+    ResolverConstEvalBuiltinTest,
+    testing::Combine(testing::Values(sem::BuiltinType::kPow),
+                     testing::ValuesIn(Concat(PowCases<AFloat>(),  //
+                                              PowCases<f32>(),     //
+                                              PowCases<f16>()))));
 
 template <typename T>
 std::vector<Case> ReverseBitsCases() {
