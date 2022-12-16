@@ -87,7 +87,9 @@
 #include "src/tint/ast/void.h"
 #include "src/tint/ast/while_statement.h"
 #include "src/tint/ast/workgroup_attribute.h"
-#include "src/tint/constant/constant.h"
+#include "src/tint/constant/composite.h"
+#include "src/tint/constant/splat.h"
+#include "src/tint/constant/value.h"
 #include "src/tint/number.h"
 #include "src/tint/program.h"
 #include "src/tint/program_id.h"
@@ -265,8 +267,8 @@ class ProgramBuilder {
     /// SemNodeAllocator is an alias to BlockAllocator<sem::Node>
     using SemNodeAllocator = utils::BlockAllocator<sem::Node>;
 
-    /// ConstantAllocator is an alias to BlockAllocator<constant::Constant>
-    using ConstantAllocator = utils::BlockAllocator<constant::Constant>;
+    /// ConstantAllocator is an alias to BlockAllocator<constant::Value>
+    using ConstantAllocator = utils::BlockAllocator<constant::Value>;
 
     /// Constructor
     ProgramBuilder();
@@ -465,14 +467,76 @@ class ProgramBuilder {
         return sem_nodes_.Create<T>(std::forward<ARGS>(args)...);
     }
 
-    /// Creates a new constant::Constant owned by the ProgramBuilder.
+    /// Creates a new constant::Value owned by the ProgramBuilder.
     /// When the ProgramBuilder is destructed, the sem::Node will also be destructed.
     /// @param args the arguments to pass to the constructor
     /// @returns the node pointer
     template <typename T, typename... ARGS>
-    traits::EnableIf<traits::IsTypeOrDerived<T, constant::Constant>, T>* create(ARGS&&... args) {
+    traits::EnableIf<traits::IsTypeOrDerived<T, constant::Value> &&
+                         !traits::IsTypeOrDerived<T, constant::Composite> &&
+                         !traits::IsTypeOrDerived<T, constant::Splat>,
+                     T>*
+    create(ARGS&&... args) {
         AssertNotMoved();
         return constant_nodes_.Create<T>(std::forward<ARGS>(args)...);
+    }
+
+    /// Constructs a constant of a vector, matrix or array type.
+    ///
+    /// Examines the element values and will return either a constant::Composite or a
+    /// constant::Splat, depending on the element types and values.
+    ///
+    /// @param type the composite type
+    /// @param elements the composite elements
+    /// @returns the node pointer
+    template <typename T>
+    traits::EnableIf<traits::IsTypeOrDerived<T, constant::Composite> ||
+                         traits::IsTypeOrDerived<T, constant::Splat>,
+                     const constant::Value>*
+    create(const type::Type* type, utils::VectorRef<const constant::Value*> elements) {
+        AssertNotMoved();
+        if (elements.IsEmpty()) {
+            return nullptr;
+        }
+
+        bool any_zero = false;
+        bool all_zero = true;
+        bool all_equal = true;
+        auto* first = elements.Front();
+        for (auto* el : elements) {
+            if (!el) {
+                return nullptr;
+            }
+            if (!any_zero && el->AnyZero()) {
+                any_zero = true;
+            }
+            if (all_zero && !el->AllZero()) {
+                all_zero = false;
+            }
+            if (all_equal && el != first) {
+                if (!el->Equal(first)) {
+                    all_equal = false;
+                }
+            }
+        }
+        if (all_equal) {
+            return create<constant::Splat>(type, elements[0], elements.Length());
+        }
+
+        return constant_nodes_.Create<constant::Composite>(type, std::move(elements), all_zero,
+                                                           any_zero);
+    }
+
+    /// Constructs a splat constant.
+    /// @param type the splat type
+    /// @param element the splat element
+    /// @param n the number of elements
+    /// @returns the node pointer
+    template <typename T>
+    traits::EnableIf<traits::IsTypeOrDerived<T, constant::Splat>, const constant::Splat>*
+    create(const type::Type* type, const constant::Value* element, size_t n) {
+        AssertNotMoved();
+        return constant_nodes_.Create<constant::Splat>(type, element, n);
     }
 
     /// Creates a new type::Type owned by the ProgramBuilder.

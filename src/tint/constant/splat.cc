@@ -12,30 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <sstream>
+#include "src/tint/constant/splat.h"
 
-#include "src/tint/ir/temp.h"
-#include "src/tint/ir/test_helper.h"
+TINT_INSTANTIATE_TYPEINFO(tint::constant::Splat);
 
-namespace tint::ir {
-namespace {
+namespace tint::constant {
 
-using namespace tint::number_suffixes;  // NOLINT
+Splat::Splat(const type::Type* t, const constant::Value* e, size_t n) : type(t), el(e), count(n) {}
 
-using IR_TempTest = TestHelper;
+Splat::~Splat() = default;
 
-TEST_F(IR_TempTest, id) {
-    auto& b = CreateEmptyBuilder();
-
-    std::stringstream str;
-
-    b.builder.next_temp_id = Temp::Id(4);
-    auto* val = b.builder.Temp();
-    EXPECT_EQ(4u, val->AsId());
-
-    val->ToString(str, program->Symbols());
-    EXPECT_EQ("%4", str.str());
-}
-
-}  // namespace
-}  // namespace tint::ir
+}  // namespace tint::constant

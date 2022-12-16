@@ -1,6 +1,6 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2022 The Tint Authors.
 //
-// Licensed under the Apache License, Version 2.0(the "License");
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -12,14 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/tint/constant/constant.h"
+#include "src/tint/constant/composite.h"
 
-TINT_INSTANTIATE_TYPEINFO(tint::constant::Constant);
+#include <utility>
+
+TINT_INSTANTIATE_TYPEINFO(tint::constant::Composite);
 
 namespace tint::constant {
 
-Constant::Constant() = default;
+Composite::Composite(const type::Type* t,
+                     utils::VectorRef<const constant::Value*> els,
+                     bool all_0,
+                     bool any_0)
+    : type(t), elements(std::move(els)), all_zero(all_0), any_zero(any_0), hash(CalcHash()) {}
 
-Constant::~Constant() = default;
+Composite::~Composite() = default;
 
 }  // namespace tint::constant

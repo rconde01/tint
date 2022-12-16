@@ -12,30 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <sstream>
+#include "src/tint/constant/scalar.h"
 
-#include "src/tint/ir/temp.h"
-#include "src/tint/ir/test_helper.h"
-
-namespace tint::ir {
-namespace {
-
-using namespace tint::number_suffixes;  // NOLINT
-
-using IR_TempTest = TestHelper;
-
-TEST_F(IR_TempTest, id) {
-    auto& b = CreateEmptyBuilder();
-
-    std::stringstream str;
-
-    b.builder.next_temp_id = Temp::Id(4);
-    auto* val = b.builder.Temp();
-    EXPECT_EQ(4u, val->AsId());
-
-    val->ToString(str, program->Symbols());
-    EXPECT_EQ("%4", str.str());
-}
-
-}  // namespace
-}  // namespace tint::ir
+TINT_INSTANTIATE_TYPEINFO(tint::constant::Scalar<tint::AInt>);
+TINT_INSTANTIATE_TYPEINFO(tint::constant::Scalar<tint::AFloat>);
+TINT_INSTANTIATE_TYPEINFO(tint::constant::Scalar<tint::i32>);
+TINT_INSTANTIATE_TYPEINFO(tint::constant::Scalar<tint::u32>);
+TINT_INSTANTIATE_TYPEINFO(tint::constant::Scalar<tint::f16>);
+TINT_INSTANTIATE_TYPEINFO(tint::constant::Scalar<tint::f32>);
+TINT_INSTANTIATE_TYPEINFO(tint::constant::Scalar<bool>);

@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-#include "src/tint/constant/constant.h"
+#include "src/tint/constant/value.h"
 #include "src/tint/program_builder.h"
 #include "src/tint/resolver/const_eval.h"
 #include "src/tint/resolver/dependency_graph.h"
@@ -197,13 +197,13 @@ class Resolver {
 
     /// Converts `c` to `target_ty`
     /// @returns true on success, false on failure.
-    bool Convert(const constant::Constant*& c, const type::Type* target_ty, const Source& source);
+    bool Convert(const constant::Value*& c, const type::Type* target_ty, const Source& source);
 
     /// Transforms `args` to a vector of constants, and converts each constant to the call target's
     /// parameter type.
     /// @returns the vector of constants, `utils::Failure` on failure.
     template <size_t N>
-    utils::Result<utils::Vector<const constant::Constant*, N>> ConvertArguments(
+    utils::Result<utils::Vector<const constant::Value*, N>> ConvertArguments(
         const utils::Vector<const sem::Expression*, N>& args,
         const sem::CallTarget* target);
 
@@ -420,8 +420,9 @@ class Resolver {
     /// @returns true if the symbol is the name of a builtin function.
     bool IsBuiltin(Symbol) const;
 
-    /// @returns the builtin type alias for the given symbol
-    type::Type* BuiltinTypeAlias(Symbol) const;
+    /// @returns the type short-name alias for the symbol @p symbol at @p source
+    /// @note: Will raise an ICE if @p symbol is not a short-name type.
+    type::Type* ShortName(Symbol symbol, const Source& source) const;
 
     // ArrayInitializerSig represents a unique array initializer signature.
     // It is a tuple of the array type, number of arguments provided and earliest evaluation stage.
