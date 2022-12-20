@@ -12,38 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/tint/type/u32.h"
+#include "src/tint/type/unique_node.h"
 
-#include "src/tint/program_builder.h"
-
-TINT_INSTANTIATE_TYPEINFO(tint::type::U32);
+TINT_INSTANTIATE_TYPEINFO(tint::type::UniqueNode);
 
 namespace tint::type {
 
-U32::U32()
-    : Base(static_cast<size_t>(TypeInfo::Of<U32>().full_hashcode),
-           type::Flags{
-               Flag::kConstructable,
-               Flag::kCreationFixedFootprint,
-               Flag::kFixedFootprint,
-           }) {}
-
-U32::~U32() = default;
-
-bool U32::Equals(const UniqueNode& other) const {
-    return other.Is<U32>();
-}
-
-std::string U32::FriendlyName(const SymbolTable&) const {
-    return "u32";
-}
-
-uint32_t U32::Size() const {
-    return 4;
-}
-
-uint32_t U32::Align() const {
-    return 4;
-}
+UniqueNode::~UniqueNode() = default;
 
 }  // namespace tint::type

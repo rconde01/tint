@@ -514,6 +514,8 @@ list(APPEND TINT_LIB_SRCS
   type/type.h
   type/u32.cc
   type/u32.h
+  type/unique_node.cc
+  type/unique_node.h
   type/vector.cc
   type/vector.h
   type/void.cc
@@ -911,6 +913,7 @@ if(TINT_BUILD_TESTS)
     resolver/intrinsic_table_test.cc
     resolver/is_host_shareable_test.cc
     resolver/is_storeable_test.cc
+    resolver/load_test.cc
     resolver/materialize_test.cc
     resolver/override_test.cc
     resolver/ptr_ref_test.cc
