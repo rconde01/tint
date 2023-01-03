@@ -1957,24 +1957,27 @@ sem::Expression* Resolver::Bitcast(const ast::BitcastExpression* expr) {
     if (!ty) {
         return nullptr;
     }
-
-    const constant::Value* val = nullptr;
-    // TODO(crbug.com/tint/1582): short circuit 'expr' once const eval of Bitcast is implemented.
-    if (auto r = const_eval_.Bitcast(ty, inner)) {
-        val = r.Get();
-    } else {
-        return nullptr;
-    }
-    auto stage = sem::EvaluationStage::kRuntime;  // TODO(crbug.com/tint/1581)
-    auto* sem = builder_->create<sem::Expression>(expr, ty, stage, current_statement_,
-                                                  std::move(val), inner->HasSideEffects());
-
-    sem->Behaviors() = inner->Behaviors();
-
     if (!validator_.Bitcast(expr, ty)) {
         return nullptr;
     }
 
+    auto stage = inner->Stage();
+    if (stage == sem::EvaluationStage::kConstant && skip_const_eval_.Contains(expr)) {
+        stage = sem::EvaluationStage::kNotEvaluated;
+    }
+
+    const constant::Value* value = nullptr;
+    if (stage == sem::EvaluationStage::kConstant) {
+        if (auto r = const_eval_.Bitcast(ty, inner->ConstantValue(), expr->source)) {
+            value = r.Get();
+        } else {
+            return nullptr;
+        }
+    }
+
+    auto* sem = builder_->create<sem::Expression>(expr, ty, stage, current_statement_,
+                                                  std::move(value), inner->HasSideEffects());
+    sem->Behaviors() = inner->Behaviors();
     return sem;
 }
 
@@ -2047,8 +2050,8 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
             return nullptr;
         }
 
-        auto stage = args_stage;                    // The evaluation stage of the call
-        const constant::Value* value = nullptr;     // The constant value for the call
+        auto stage = args_stage;                 // The evaluation stage of the call
+        const constant::Value* value = nullptr;  // The constant value for the call
         if (stage == sem::EvaluationStage::kConstant) {
             if (auto r = const_eval_.ArrayOrStructInit(ty, args)) {
                 value = r.Get();
