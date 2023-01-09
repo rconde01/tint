@@ -1,4 +1,4 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2023 The Tint Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,14 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/tint/ir/function.h"
+#ifndef SRC_TINT_IR_BRANCH_H_
+#define SRC_TINT_IR_BRANCH_H_
 
-TINT_INSTANTIATE_TYPEINFO(tint::ir::Function);
+#include "src/tint/ir/flow_node.h"
+#include "src/tint/ir/value.h"
 
 namespace tint::ir {
 
-Function::Function() : Base() {}
+/// A information on a branch to another block
+struct Branch {
+    /// The block being branched too.
+    FlowNode* target = nullptr;
 
-Function::~Function() = default;
+    /// The arguments provided for that branch. These arguments could be the
+    /// return value in the case of a branch to the terminator, or they could
+    /// be the basic block arguments passed into the block.
+    utils::Vector<Value*, 2> args;
+};
 
 }  // namespace tint::ir
+
+#endif  // SRC_TINT_IR_BRANCH_H_
