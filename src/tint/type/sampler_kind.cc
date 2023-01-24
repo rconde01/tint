@@ -1,4 +1,4 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2023 The Tint Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,28 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/tint/type/void.h"
-
-#include "src/tint/type/manager.h"
-
-TINT_INSTANTIATE_TYPEINFO(tint::type::Void);
+#include "src/tint/type/sampler_kind.h"
 
 namespace tint::type {
 
-Void::Void() : Base(static_cast<size_t>(TypeInfo::Of<Void>().full_hashcode), type::Flags{}) {}
-
-Void::~Void() = default;
-
-bool Void::Equals(const UniqueNode& other) const {
-    return other.Is<Void>();
-}
-
-std::string Void::FriendlyName(const SymbolTable&) const {
-    return "void";
-}
-
-Void* Void::Clone(CloneContext& ctx) const {
-    return ctx.dst.mgr->Get<Void>();
+std::ostream& operator<<(std::ostream& out, SamplerKind kind) {
+    switch (kind) {
+        case SamplerKind::kSampler:
+            out << "sampler";
+            break;
+        case SamplerKind::kComparisonSampler:
+            out << "comparison_sampler";
+            break;
+    }
+    return out;
 }
 
 }  // namespace tint::type
