@@ -136,7 +136,7 @@ TEST_F(ParserImplTest, TextureSamplerTypes_SampledTexture_MissingGreaterThan) {
     EXPECT_EQ(t.value, nullptr);
     EXPECT_FALSE(t.matched);
     EXPECT_TRUE(t.errored);
-    EXPECT_EQ(p->error(), "1:15: expected '>' for sampled texture type");
+    EXPECT_EQ(p->error(), "1:11: missing closing '>' for sampled texture type");
 }
 
 TEST_F(ParserImplTest, TextureSamplerTypes_MultisampledTexture_I32) {
@@ -178,7 +178,7 @@ TEST_F(ParserImplTest, TextureSamplerTypes_MultisampledTexture_MissingGreaterTha
     EXPECT_EQ(t.value, nullptr);
     EXPECT_FALSE(t.matched);
     EXPECT_TRUE(t.errored);
-    EXPECT_EQ(p->error(), "1:28: expected '>' for multisampled texture type");
+    EXPECT_EQ(p->error(), "1:24: missing closing '>' for multisampled texture type");
 }
 
 TEST_F(ParserImplTest, TextureSamplerTypes_StorageTexture_Readonly1dRg32Float) {
@@ -270,7 +270,7 @@ TEST_F(ParserImplTest, TextureSamplerTypes_StorageTexture_MissingGreaterThan) {
     EXPECT_EQ(t.value, nullptr);
     EXPECT_FALSE(t.matched);
     EXPECT_TRUE(t.errored);
-    EXPECT_EQ(p->error(), "1:33: expected '>' for storage texture type");
+    EXPECT_EQ(p->error(), "1:19: missing closing '>' for storage texture type");
 }
 
 }  // namespace
