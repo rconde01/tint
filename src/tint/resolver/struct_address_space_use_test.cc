@@ -52,7 +52,7 @@ TEST_F(ResolverAddressSpaceUseTest, StructReachableFromParameter) {
 TEST_F(ResolverAddressSpaceUseTest, StructReachableFromReturnType) {
     auto* s = Structure("S", utils::Vector{Member("a", ty.f32())});
 
-    Func("f", utils::Empty, ty.Of(s), utils::Vector{Return(Construct(ty.Of(s)))}, utils::Empty);
+    Func("f", utils::Empty, ty.Of(s), utils::Vector{Return(Call(ty.Of(s)))}, utils::Empty);
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
 
@@ -99,7 +99,7 @@ TEST_F(ResolverAddressSpaceUseTest, StructReachableViaGlobalStruct) {
 
 TEST_F(ResolverAddressSpaceUseTest, StructReachableViaGlobalArray) {
     auto* s = Structure("S", utils::Vector{Member("a", ty.f32())});
-    auto* a = ty.array(ty.Of(s), 3_u);
+    auto a = ty.array(ty.Of(s), 3_u);
     GlobalVar("g", a, type::AddressSpace::kPrivate);
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -147,7 +147,7 @@ TEST_F(ResolverAddressSpaceUseTest, StructReachableViaLocalStruct) {
 
 TEST_F(ResolverAddressSpaceUseTest, StructReachableViaLocalArray) {
     auto* s = Structure("S", utils::Vector{Member("a", ty.f32())});
-    auto* a = ty.array(ty.Of(s), 3_u);
+    auto a = ty.array(ty.Of(s), 3_u);
     WrapInFunction(Var("g", a));
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();

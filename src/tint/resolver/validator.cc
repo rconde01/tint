@@ -19,13 +19,11 @@
 #include <utility>
 
 #include "src/tint/ast/alias.h"
-#include "src/tint/ast/array.h"
 #include "src/tint/ast/assignment_statement.h"
 #include "src/tint/ast/bitcast_expression.h"
 #include "src/tint/ast/break_statement.h"
 #include "src/tint/ast/call_statement.h"
 #include "src/tint/ast/continue_statement.h"
-#include "src/tint/ast/depth_texture.h"
 #include "src/tint/ast/disable_validation_attribute.h"
 #include "src/tint/ast/discard_statement.h"
 #include "src/tint/ast/for_loop_statement.h"
@@ -34,18 +32,11 @@
 #include "src/tint/ast/internal_attribute.h"
 #include "src/tint/ast/interpolate_attribute.h"
 #include "src/tint/ast/loop_statement.h"
-#include "src/tint/ast/matrix.h"
-#include "src/tint/ast/pointer.h"
 #include "src/tint/ast/return_statement.h"
-#include "src/tint/ast/sampled_texture.h"
-#include "src/tint/ast/sampler.h"
-#include "src/tint/ast/storage_texture.h"
 #include "src/tint/ast/switch_statement.h"
 #include "src/tint/ast/traverse_expressions.h"
-#include "src/tint/ast/type_name.h"
 #include "src/tint/ast/unary_op_expression.h"
 #include "src/tint/ast/variable_decl_statement.h"
-#include "src/tint/ast/vector.h"
 #include "src/tint/ast/workgroup_attribute.h"
 #include "src/tint/sem/break_if_statement.h"
 #include "src/tint/sem/call.h"
@@ -286,28 +277,28 @@ const ast::Statement* Validator::ClosestContinuing(bool stop_at_loop,
     return nullptr;
 }
 
-bool Validator::Atomic(const ast::Atomic* a, const type::Atomic* s) const {
+bool Validator::Atomic(const ast::TemplatedIdentifier* a, const type::Atomic* s) const {
     // https://gpuweb.github.io/gpuweb/wgsl/#atomic-types
     // T must be either u32 or i32.
     if (!s->Type()->IsAnyOf<type::U32, type::I32>()) {
-        AddError("atomic only supports i32 or u32 types", a->type ? a->type->source : a->source);
+        AddError("atomic only supports i32 or u32 types", a->arguments[0]->source);
         return false;
     }
     return true;
 }
 
-bool Validator::Pointer(const ast::Pointer* a, const type::Pointer* s) const {
+bool Validator::Pointer(const ast::TemplatedIdentifier* a, const type::Pointer* s) const {
     if (s->AddressSpace() == type::AddressSpace::kUndefined) {
         AddError("ptr missing address space", a->source);
         return false;
     }
 
-    if (a->access != type::Access::kUndefined) {
+    if (a->arguments.Length() > 2) {  // ptr<address-space, type [, access]>
         // https://www.w3.org/TR/WGSL/#access-mode-defaults
         // When writing a variable declaration or a pointer type in WGSL source:
         // * For the storage address space, the access mode is optional, and defaults to read.
         // * For other address spaces, the access mode must not be written.
-        if (a->address_space != type::AddressSpace::kStorage) {
+        if (s->AddressSpace() != type::AddressSpace::kStorage) {
             AddError("only pointers in <storage> address space may declare an access mode",
                      a->source);
             return false;
@@ -318,28 +309,28 @@ bool Validator::Pointer(const ast::Pointer* a, const type::Pointer* s) const {
                                        a->source);
 }
 
-bool Validator::StorageTexture(const ast::StorageTexture* t) const {
-    switch (t->access) {
+bool Validator::StorageTexture(const type::StorageTexture* t, const Source& source) const {
+    switch (t->access()) {
         case type::Access::kWrite:
             break;
         case type::Access::kUndefined:
-            AddError("storage texture missing access control", t->source);
+            AddError("storage texture missing access control", source);
             return false;
         default:
-            AddError("storage textures currently only support 'write' access control", t->source);
+            AddError("storage textures currently only support 'write' access control", source);
             return false;
     }
 
-    if (!IsValidStorageTextureDimension(t->dim)) {
-        AddError("cube dimensions for storage textures are not supported", t->source);
+    if (!IsValidStorageTextureDimension(t->dim())) {
+        AddError("cube dimensions for storage textures are not supported", source);
         return false;
     }
 
-    if (!IsValidStorageTextureTexelFormat(t->format)) {
+    if (!IsValidStorageTextureTexelFormat(t->texel_format())) {
         AddError(
             "image format must be one of the texel formats specified for storage "
             "textues in https://gpuweb.github.io/gpuweb/wgsl/#texel-formats",
-            t->source);
+            source);
         return false;
     }
     return true;
@@ -384,7 +375,7 @@ bool Validator::Materialize(const type::Type* to,
 bool Validator::VariableInitializer(const ast::Variable* v,
                                     type::AddressSpace address_space,
                                     const type::Type* storage_ty,
-                                    const sem::Expression* initializer) const {
+                                    const sem::ValueExpression* initializer) const {
     auto* initializer_ty = initializer->Type();
     auto* value_type = initializer_ty->UnwrapRef();  // Implicit load of RHS
 
@@ -1037,7 +1028,7 @@ bool Validator::Function(const sem::Function* func, ast::PipelineStage stage) co
         } else if (TINT_UNLIKELY(IsValidationEnabled(
                        decl->attributes, ast::DisabledValidation::kFunctionHasNoBody))) {
             TINT_ICE(Resolver, diagnostics_)
-                << "Function " << symbols_.NameFor(decl->symbol) << " has no body";
+                << "Function " << symbols_.NameFor(decl->name->symbol) << " has no body";
         }
 
         for (auto* attr : decl->return_type_attributes) {
@@ -1069,7 +1060,7 @@ bool Validator::Function(const sem::Function* func, ast::PipelineStage stage) co
     // a function behavior is always one of {}, or {Next}.
     if (TINT_UNLIKELY(func->Behaviors() != sem::Behaviors{} &&
                       func->Behaviors() != sem::Behavior::kNext)) {
-        auto name = symbols_.NameFor(decl->symbol);
+        auto name = symbols_.NameFor(decl->name->symbol);
         TINT_ICE(Resolver, diagnostics_)
             << "function '" << name << "' behaviors are: " << func->Behaviors();
     }
@@ -1236,30 +1227,30 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
     };
 
     // Outer lambda for validating the entry point attributes for a type.
-    auto validate_entry_point_attributes = [&](utils::VectorRef<const ast::Attribute*> attrs,
-                                               const type::Type* ty, Source source,
-                                               ParamOrRetType param_or_ret,
-                                               std::optional<uint32_t> location) {
-        if (!validate_entry_point_attributes_inner(attrs, ty, source, param_or_ret,
-                                                   /*is_struct_member*/ false, location)) {
-            return false;
-        }
+    auto validate_entry_point_attributes =
+        [&](utils::VectorRef<const ast::Attribute*> attrs, const type::Type* ty, Source source,
+            ParamOrRetType param_or_ret, std::optional<uint32_t> location) {
+            if (!validate_entry_point_attributes_inner(attrs, ty, source, param_or_ret,
+                                                       /*is_struct_member*/ false, location)) {
+                return false;
+            }
 
-        if (auto* str = ty->As<sem::Struct>()) {
-            for (auto* member : str->Members()) {
-                if (!validate_entry_point_attributes_inner(
-                        member->Declaration()->attributes, member->Type(), member->Source(),
-                        param_or_ret,
-                        /*is_struct_member*/ true, member->Location())) {
-                    AddNote("while analyzing entry point '" + symbols_.NameFor(decl->symbol) + "'",
-                            decl->source);
-                    return false;
+            if (auto* str = ty->As<sem::Struct>()) {
+                for (auto* member : str->Members()) {
+                    if (!validate_entry_point_attributes_inner(
+                            member->Declaration()->attributes, member->Type(), member->Source(),
+                            param_or_ret,
+                            /*is_struct_member*/ true, member->Location())) {
+                        AddNote("while analyzing entry point '" +
+                                    symbols_.NameFor(decl->name->symbol) + "'",
+                                decl->source);
+                        return false;
+                    }
                 }
             }
-        }
 
-        return true;
-    };
+            return true;
+        };
 
     for (auto* param : func->Parameters()) {
         auto* param_decl = param->Declaration();
@@ -1329,7 +1320,7 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
             // Bindings must not alias within a shader stage: two different variables in the
             // resource interface of a given shader must not have the same group and binding values,
             // when considered as a pair of values.
-            auto func_name = symbols_.NameFor(decl->symbol);
+            auto func_name = symbols_.NameFor(decl->name->symbol);
             AddError(
                 "entry point '" + func_name +
                     "' references multiple variables that use the same resource binding @group(" +
@@ -1343,7 +1334,7 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
     return true;
 }
 
-bool Validator::EvaluationStage(const sem::Expression* expr,
+bool Validator::EvaluationStage(const sem::ValueExpression* expr,
                                 sem::EvaluationStage latest_stage,
                                 std::string_view constraint) const {
     if (expr->Stage() == sem::EvaluationStage::kNotEvaluated) {
@@ -1570,10 +1561,10 @@ bool Validator::BuiltinCall(const sem::Call* call) const {
         }
         if (!is_call_statement) {
             // https://gpuweb.github.io/gpuweb/wgsl/#function-call-expr
-            // If the called function does not return a value, a function call
-            // statement should be used instead.
-            auto* ident = call->Declaration()->target.name;
-            auto name = symbols_.NameFor(ident->symbol);
+            // If the called function does not return a value, a function call statement should be
+            // used instead.
+            auto* builtin = call->Target()->As<sem::Builtin>();
+            auto name = utils::ToString(builtin->Type());
             AddError("builtin '" + name + "' does not return a value", call->Declaration()->source);
             return false;
         }
@@ -1688,7 +1679,7 @@ bool Validator::CheckF16Enabled(const Source& source) const {
 bool Validator::FunctionCall(const sem::Call* call, sem::Statement* current_statement) const {
     auto* decl = call->Declaration();
     auto* target = call->Target()->As<sem::Function>();
-    auto sym = decl->target.name->symbol;
+    auto sym = target->Declaration()->name->symbol;
     auto name = symbols_.NameFor(sym);
 
     if (!current_statement) {  // Function call at module-scope.
@@ -1855,16 +1846,16 @@ bool Validator::ArrayInitializer(const ast::CallExpression* ctor,
     return true;
 }
 
-bool Validator::Vector(const type::Vector* ty, const Source& source) const {
-    if (!ty->type()->is_scalar()) {
+bool Validator::Vector(const type::Type* el_ty, const Source& source) const {
+    if (!el_ty->is_scalar()) {
         AddError("vector element type must be 'bool', 'f32', 'f16', 'i32' or 'u32'", source);
         return false;
     }
     return true;
 }
 
-bool Validator::Matrix(const type::Matrix* ty, const Source& source) const {
-    if (!ty->is_float_matrix()) {
+bool Validator::Matrix(const type::Type* el_ty, const Source& source) const {
+    if (!el_ty->is_float_scalar()) {
         AddError("matrix element type must be 'f32' or 'f16'", source);
         return false;
     }
@@ -1875,11 +1866,12 @@ bool Validator::PipelineStages(utils::VectorRef<sem::Function*> entry_points) co
     auto backtrace = [&](const sem::Function* func, const sem::Function* entry_point) {
         if (func != entry_point) {
             TraverseCallChain(diagnostics_, entry_point, func, [&](const sem::Function* f) {
-                AddNote("called by function '" + symbols_.NameFor(f->Declaration()->symbol) + "'",
-                        f->Declaration()->source);
+                AddNote(
+                    "called by function '" + symbols_.NameFor(f->Declaration()->name->symbol) + "'",
+                    f->Declaration()->source);
             });
             AddNote("called by entry point '" +
-                        symbols_.NameFor(entry_point->Declaration()->symbol) + "'",
+                        symbols_.NameFor(entry_point->Declaration()->name->symbol) + "'",
                     entry_point->Declaration()->source);
         }
     };
@@ -1986,7 +1978,7 @@ bool Validator::PushConstants(utils::VectorRef<sem::Function*> entry_points) con
                     continue;
                 }
 
-                AddError("entry point '" + symbols_.NameFor(ep->Declaration()->symbol) +
+                AddError("entry point '" + symbols_.NameFor(ep->Declaration()->name->symbol) +
                              "' uses two different 'push_constant' variables.",
                          ep->Declaration()->source);
                 AddNote("first 'push_constant' variable declaration is here",
@@ -1994,11 +1986,11 @@ bool Validator::PushConstants(utils::VectorRef<sem::Function*> entry_points) con
                 if (func != ep) {
                     TraverseCallChain(diagnostics_, ep, func, [&](const sem::Function* f) {
                         AddNote("called by function '" +
-                                    symbols_.NameFor(f->Declaration()->symbol) + "'",
+                                    symbols_.NameFor(f->Declaration()->name->symbol) + "'",
                                 f->Declaration()->source);
                     });
                     AddNote("called by entry point '" +
-                                symbols_.NameFor(ep->Declaration()->symbol) + "'",
+                                symbols_.NameFor(ep->Declaration()->name->symbol) + "'",
                             ep->Declaration()->source);
                 }
                 AddNote("second 'push_constant' variable declaration is here",
@@ -2007,11 +1999,11 @@ bool Validator::PushConstants(utils::VectorRef<sem::Function*> entry_points) con
                     TraverseCallChain(
                         diagnostics_, ep, push_constant_func, [&](const sem::Function* f) {
                             AddNote("called by function '" +
-                                        symbols_.NameFor(f->Declaration()->symbol) + "'",
+                                        symbols_.NameFor(f->Declaration()->name->symbol) + "'",
                                     f->Declaration()->source);
                         });
                     AddNote("called by entry point '" +
-                                symbols_.NameFor(ep->Declaration()->symbol) + "'",
+                                symbols_.NameFor(ep->Declaration()->name->symbol) + "'",
                             ep->Declaration()->source);
                 }
                 return false;
@@ -2344,8 +2336,8 @@ bool Validator::Assignment(const ast::Statement* a, const type::Type* rhs_ty) co
     // https://gpuweb.github.io/gpuweb/wgsl/#assignment-statement
     auto const* lhs_ty = sem_.TypeOf(lhs);
 
-    if (auto* variable = sem_.ResolvedSymbol<sem::Variable>(lhs)) {
-        auto* v = variable->Declaration();
+    if (auto* var_user = sem_.Get<sem::VariableUser>(lhs)) {
+        auto* v = var_user->Variable()->Declaration();
         const char* err = Switch(
             v,  //
             [&](const ast::Parameter*) { return "cannot assign to function parameter"; },
@@ -2353,7 +2345,7 @@ bool Validator::Assignment(const ast::Statement* a, const type::Type* rhs_ty) co
             [&](const ast::Override*) { return "cannot assign to 'override'"; });
         if (err) {
             AddError(err, lhs->source);
-            AddNote("'" + symbols_.NameFor(v->symbol) + "' is declared here:", v->source);
+            AddNote("'" + symbols_.NameFor(v->name->symbol) + "' is declared here:", v->source);
             return false;
         }
     }
@@ -2392,8 +2384,8 @@ bool Validator::IncrementDecrementStatement(const ast::IncrementDecrementStateme
 
     // https://gpuweb.github.io/gpuweb/wgsl/#increment-decrement
 
-    if (auto* variable = sem_.ResolvedSymbol<sem::Variable>(lhs)) {
-        auto* v = variable->Declaration();
+    if (auto* var_user = sem_.Get<sem::VariableUser>(lhs)) {
+        auto* v = var_user->Variable()->Declaration();
         const char* err = Switch(
             v,  //
             [&](const ast::Parameter*) { return "cannot modify function parameter"; },
@@ -2401,7 +2393,7 @@ bool Validator::IncrementDecrementStatement(const ast::IncrementDecrementStateme
             [&](const ast::Override*) { return "cannot modify 'override'"; });
         if (err) {
             AddError(err, lhs->source);
-            AddNote("'" + symbols_.NameFor(v->symbol) + "' is declared here:", v->source);
+            AddNote("'" + symbols_.NameFor(v->name->symbol) + "' is declared here:", v->source);
             return false;
         }
     }
@@ -2429,11 +2421,42 @@ bool Validator::IncrementDecrementStatement(const ast::IncrementDecrementStateme
 
 bool Validator::NoDuplicateAttributes(utils::VectorRef<const ast::Attribute*> attributes) const {
     utils::Hashmap<const TypeInfo*, Source, 8> seen;
+    utils::Vector<const ast::DiagnosticControl*, 8> diagnostic_controls;
     for (auto* d : attributes) {
-        auto added = seen.Add(&d->TypeInfo(), d->source);
-        if (!added && !d->Is<ast::InternalAttribute>()) {
-            AddError("duplicate " + d->Name() + " attribute", d->source);
-            AddNote("first attribute declared here", *added.value);
+        if (auto* diag = d->As<ast::DiagnosticAttribute>()) {
+            // Allow duplicate diagnostic attributes, and check for conflicts later.
+            diagnostic_controls.Push(&diag->control);
+        } else {
+            auto added = seen.Add(&d->TypeInfo(), d->source);
+            if (!added && !d->Is<ast::InternalAttribute>()) {
+                AddError("duplicate " + d->Name() + " attribute", d->source);
+                AddNote("first attribute declared here", *added.value);
+                return false;
+            }
+        }
+    }
+    return DiagnosticControls(diagnostic_controls, "attribute");
+}
+
+bool Validator::DiagnosticControls(utils::VectorRef<const ast::DiagnosticControl*> controls,
+                                   const char* use) const {
+    // Make sure that no two diagnostic controls conflict.
+    // They conflict if the rule name is the same and the severity is different.
+    utils::Hashmap<Symbol, const ast::DiagnosticControl*, 8> diagnostics;
+    for (auto* dc : controls) {
+        auto diag_added = diagnostics.Add(dc->rule_name->symbol, dc);
+        if (!diag_added && (*diag_added.value)->severity != dc->severity) {
+            {
+                std::ostringstream ss;
+                ss << "conflicting diagnostic " << use;
+                AddError(ss.str(), dc->rule_name->source);
+            }
+            {
+                std::ostringstream ss;
+                ss << "severity of '" << symbols_.NameFor(dc->rule_name->symbol) << "' set to '"
+                   << dc->severity << "' here";
+                AddNote(ss.str(), (*diag_added.value)->rule_name->source);
+            }
             return false;
         }
     }

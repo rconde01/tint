@@ -177,10 +177,10 @@ TEST_F(ResolverStructLayoutTest, ExplicitStrideArrayStaticSize) {
     Enable(ast::Extension::kF16);
 
     auto* s = Structure("S", utils::Vector{
-                                 Member("a", ty.array<i32, 3>(/*stride*/ 8)),
-                                 Member("b", ty.array<f32, 5>(/*stride*/ 16)),
-                                 Member("c", ty.array<f16, 7>(/*stride*/ 4)),
-                                 Member("d", ty.array<f32, 1>(/*stride*/ 32)),
+                                 Member("a", ty.array<i32, 3>(utils::Vector{Stride(8)})),
+                                 Member("b", ty.array<f32, 5>(utils::Vector{Stride(16)})),
+                                 Member("c", ty.array<f16, 7>(utils::Vector{Stride(4)})),
+                                 Member("d", ty.array<f32, 1>(utils::Vector{Stride(32)})),
                              });
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -236,7 +236,7 @@ TEST_F(ResolverStructLayoutTest, ImplicitStrideArrayRuntimeSized) {
 
 TEST_F(ResolverStructLayoutTest, ExplicitStrideArrayRuntimeSized) {
     auto* s = Structure("S", utils::Vector{
-                                 Member("c", ty.array<f32>(/*stride*/ 32)),
+                                 Member("c", ty.array<f32>(utils::Vector{Stride(32)})),
                              });
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -256,8 +256,8 @@ TEST_F(ResolverStructLayoutTest, ExplicitStrideArrayRuntimeSized) {
 }
 
 TEST_F(ResolverStructLayoutTest, ImplicitStrideArrayOfExplicitStrideArray) {
-    auto* inner = ty.array<i32, 2>(/*stride*/ 16);  // size: 32
-    auto* outer = ty.array(inner, 12_u);            // size: 12 * 32
+    auto inner = ty.array<i32, 2>(utils::Vector{Stride(16)});  // size: 32
+    auto outer = ty.array(inner, 12_u);                        // size: 12 * 32
     auto* s = Structure("S", utils::Vector{
                                  Member("c", outer),
                              });
@@ -283,8 +283,8 @@ TEST_F(ResolverStructLayoutTest, ImplicitStrideArrayOfStructure) {
                                          Member("a", ty.vec2<i32>()),
                                          Member("b", ty.vec3<i32>()),
                                          Member("c", ty.vec4<i32>()),
-                                     });         // size: 48
-    auto* outer = ty.array(ty.Of(inner), 12_u);  // size: 12 * 48
+                                     });        // size: 48
+    auto outer = ty.array(ty.Of(inner), 12_u);  // size: 12 * 48
     auto* s = Structure("S", utils::Vector{
                                  Member("c", outer),
                              });

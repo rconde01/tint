@@ -70,7 +70,7 @@ TEST_F(ResolverAssignmentValidationTest, AssignArraysWithDifferentSizeExpression
 
     GlobalConst("len", Expr(4_u));
 
-    auto* a = Var("a", ty.array(ty.f32(), 4_u));
+    auto* a = Var("a", ty.array<f32, 4>());
     auto* b = Var("b", ty.array(ty.f32(), "len"));
 
     auto* assign = Assign(Source{{12, 34}}, "a", "b");
@@ -89,7 +89,7 @@ TEST_F(ResolverAssignmentValidationTest, AssignArraysWithDifferentSizeExpression
 
     GlobalConst("len", Expr(5_u));
 
-    auto* a = Var("a", ty.array(ty.f32(), 4_u));
+    auto* a = Var("a", ty.array<f32, 4>());
     auto* b = Var("b", ty.array(ty.f32(), "len"));
 
     auto* assign = Assign(Source{{12, 34}}, "a", "b");
@@ -373,8 +373,8 @@ TEST_F(ResolverAssignmentValidationTest, AssignToPhony_Pass) {
                    Assign(Phony(), 3_f),                                    //
                    Assign(Phony(), 4_a),                                    //
                    Assign(Phony(), 5.0_a),                                  //
-                   Assign(Phony(), vec(nullptr, 2u, 6_a)),                  //
-                   Assign(Phony(), vec(nullptr, 3u, 7.0_a)),                //
+                   Assign(Phony(), vec2<Infer>(6_a)),                       //
+                   Assign(Phony(), vec3<Infer>(7.0_a)),                     //
                    Assign(Phony(), vec4<bool>()),                           //
                    Assign(Phony(), "tex"),                                  //
                    Assign(Phony(), "smp"),                                  //

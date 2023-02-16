@@ -2005,6 +2005,232 @@ fn f() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// precise_float_mod
+////////////////////////////////////////////////////////////////////////////////
+DataMap polyfillPreciseFloatMod() {
+    BuiltinPolyfill::Builtins builtins;
+    builtins.precise_float_mod = true;
+    DataMap data;
+    data.Add<BuiltinPolyfill::Config>(builtins);
+    return data;
+}
+
+TEST_F(BuiltinPolyfillTest, ShouldRunPreciseFloatMod) {
+    auto* src = R"(
+fn f() {
+  let v = 10f;
+  let x = 20f % v;
+}
+)";
+
+    EXPECT_FALSE(ShouldRun<BuiltinPolyfill>(src));
+    EXPECT_TRUE(ShouldRun<BuiltinPolyfill>(src, polyfillPreciseFloatMod()));
+}
+
+TEST_F(BuiltinPolyfillTest, PreciseFloatMod_af_f32) {
+    auto* src = R"(
+fn f() {
+  let v = 10f;
+  let x = 20.0 % v;
+}
+)";
+
+    auto* expect = R"(
+fn tint_float_mod(lhs : f32, rhs : f32) -> f32 {
+  return (lhs - (trunc((lhs / rhs)) * rhs));
+}
+
+fn f() {
+  let v = 10.0f;
+  let x = tint_float_mod(20.0, v);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPreciseFloatMod());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, PreciseFloatMod_f32_af) {
+    auto* src = R"(
+fn f() {
+  let v = 10.0;
+  let x = 20f % v;
+}
+)";
+
+    auto* expect = R"(
+fn tint_float_mod(lhs : f32, rhs : f32) -> f32 {
+  return (lhs - (trunc((lhs / rhs)) * rhs));
+}
+
+fn f() {
+  let v = 10.0;
+  let x = tint_float_mod(20.0f, v);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPreciseFloatMod());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, PreciseFloatMod_f32_f32) {
+    auto* src = R"(
+fn f() {
+  let v = 10f;
+  let x = 20f % v;
+}
+)";
+
+    auto* expect = R"(
+fn tint_float_mod(lhs : f32, rhs : f32) -> f32 {
+  return (lhs - (trunc((lhs / rhs)) * rhs));
+}
+
+fn f() {
+  let v = 10.0f;
+  let x = tint_float_mod(20.0f, v);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPreciseFloatMod());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, PreciseFloatMod_Overloads) {
+    auto* src = R"(
+fn f() {
+  let v = 10f;
+  let x = 20f % v;
+  let w = 10i;
+  let y = 20i % w;
+  let u = 10u;
+  let z = 20u % u;
+}
+)";
+
+    auto* expect = R"(
+fn tint_float_mod(lhs : f32, rhs : f32) -> f32 {
+  return (lhs - (trunc((lhs / rhs)) * rhs));
+}
+
+fn f() {
+  let v = 10.0f;
+  let x = tint_float_mod(20.0f, v);
+  let w = 10i;
+  let y = (20i % w);
+  let u = 10u;
+  let z = (20u % u);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPreciseFloatMod());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, PreciseFloatMod_vec3_af_f32) {
+    auto* src = R"(
+fn f() {
+  let v = 10f;
+  let x = vec3(20.0) % v;
+}
+)";
+
+    auto* expect = R"(
+fn tint_float_mod(lhs : vec3<f32>, rhs : f32) -> vec3<f32> {
+  let r = vec3<f32>(rhs);
+  return (lhs - (trunc((lhs / r)) * r));
+}
+
+fn f() {
+  let v = 10.0f;
+  let x = tint_float_mod(vec3(20.0), v);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPreciseFloatMod());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, PreciseFloatMod_vec3_f32_af) {
+    auto* src = R"(
+fn f() {
+  let v = 10.0;
+  let x = vec3(20f) % v;
+}
+)";
+
+    auto* expect = R"(
+fn tint_float_mod(lhs : vec3<f32>, rhs : f32) -> vec3<f32> {
+  let r = vec3<f32>(rhs);
+  return (lhs - (trunc((lhs / r)) * r));
+}
+
+fn f() {
+  let v = 10.0;
+  let x = tint_float_mod(vec3(20.0f), v);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPreciseFloatMod());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, PreciseFloatMod_vec3_f32_f32) {
+    auto* src = R"(
+fn f() {
+  let v = 10f;
+  let x = vec3(20f) % v;
+}
+)";
+
+    auto* expect = R"(
+fn tint_float_mod(lhs : vec3<f32>, rhs : f32) -> vec3<f32> {
+  let r = vec3<f32>(rhs);
+  return (lhs - (trunc((lhs / r)) * r));
+}
+
+fn f() {
+  let v = 10.0f;
+  let x = tint_float_mod(vec3(20.0f), v);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPreciseFloatMod());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, PreciseFloatMod_vec3_f32_vec3_f32) {
+    auto* src = R"(
+fn f() {
+  let v = 10f;
+  let x = vec3<f32>(20f) % vec3<f32>(v);
+}
+)";
+
+    auto* expect = R"(
+fn tint_float_mod(lhs : vec3<f32>, rhs : vec3<f32>) -> vec3<f32> {
+  return (lhs - (trunc((lhs / rhs)) * rhs));
+}
+
+fn f() {
+  let v = 10.0f;
+  let x = tint_float_mod(vec3<f32>(20.0f), vec3<f32>(v));
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPreciseFloatMod());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // int_div_mod
 ////////////////////////////////////////////////////////////////////////////////
 DataMap polyfillIntDivMod() {
@@ -2073,7 +2299,12 @@ fn f() {
 
     auto* expect = R"(
 fn tint_mod(lhs : i32, rhs : i32) -> i32 {
-  return (lhs % select(rhs, 1, ((rhs == 0) | ((lhs == -2147483648) & (rhs == -1)))));
+  let rhs_or_one = select(rhs, 1, ((rhs == 0) | ((lhs == -2147483648) & (rhs == -1))));
+  if (any(((u32((lhs | rhs_or_one)) & 2147483648u) != 0u))) {
+    return (lhs - ((lhs / rhs_or_one) * rhs_or_one));
+  } else {
+    return (lhs % rhs_or_one);
+  }
 }
 
 fn f() {
@@ -2121,7 +2352,12 @@ fn f() {
 
     auto* expect = R"(
 fn tint_mod(lhs : i32, rhs : i32) -> i32 {
-  return (lhs % select(rhs, 1, ((rhs == 0) | ((lhs == -2147483648) & (rhs == -1)))));
+  let rhs_or_one = select(rhs, 1, ((rhs == 0) | ((lhs == -2147483648) & (rhs == -1))));
+  if (any(((u32((lhs | rhs_or_one)) & 2147483648u) != 0u))) {
+    return (lhs - ((lhs / rhs_or_one) * rhs_or_one));
+  } else {
+    return (lhs % rhs_or_one);
+  }
 }
 
 fn f() {
@@ -2169,7 +2405,12 @@ fn f() {
 
     auto* expect = R"(
 fn tint_mod(lhs : i32, rhs : i32) -> i32 {
-  return (lhs % select(rhs, 1, ((rhs == 0) | ((lhs == -2147483648) & (rhs == -1)))));
+  let rhs_or_one = select(rhs, 1, ((rhs == 0) | ((lhs == -2147483648) & (rhs == -1))));
+  if (any(((u32((lhs | rhs_or_one)) & 2147483648u) != 0u))) {
+    return (lhs - ((lhs / rhs_or_one) * rhs_or_one));
+  } else {
+    return (lhs % rhs_or_one);
+  }
 }
 
 fn f() {
@@ -2363,7 +2604,12 @@ fn f() {
     auto* expect = R"(
 fn tint_mod(lhs : vec3<i32>, rhs : i32) -> vec3<i32> {
   let r = vec3<i32>(rhs);
-  return (lhs % select(r, vec3(1), ((r == vec3(0)) | ((lhs == vec3(-2147483648)) & (r == vec3(-1))))));
+  let rhs_or_one = select(r, vec3(1), ((r == vec3(0)) | ((lhs == vec3(-2147483648)) & (r == vec3(-1)))));
+  if (any(((vec3<u32>((lhs | rhs_or_one)) & vec3<u32>(2147483648u)) != vec3<u32>(0u)))) {
+    return (lhs - ((lhs / rhs_or_one) * rhs_or_one));
+  } else {
+    return (lhs % rhs_or_one);
+  }
 }
 
 fn f() {
@@ -2413,7 +2659,12 @@ fn f() {
     auto* expect = R"(
 fn tint_mod(lhs : vec3<i32>, rhs : i32) -> vec3<i32> {
   let r = vec3<i32>(rhs);
-  return (lhs % select(r, vec3(1), ((r == vec3(0)) | ((lhs == vec3(-2147483648)) & (r == vec3(-1))))));
+  let rhs_or_one = select(r, vec3(1), ((r == vec3(0)) | ((lhs == vec3(-2147483648)) & (r == vec3(-1)))));
+  if (any(((vec3<u32>((lhs | rhs_or_one)) & vec3<u32>(2147483648u)) != vec3<u32>(0u)))) {
+    return (lhs - ((lhs / rhs_or_one) * rhs_or_one));
+  } else {
+    return (lhs % rhs_or_one);
+  }
 }
 
 fn f() {
@@ -2463,7 +2714,12 @@ fn f() {
     auto* expect = R"(
 fn tint_mod(lhs : vec3<i32>, rhs : i32) -> vec3<i32> {
   let r = vec3<i32>(rhs);
-  return (lhs % select(r, vec3(1), ((r == vec3(0)) | ((lhs == vec3(-2147483648)) & (r == vec3(-1))))));
+  let rhs_or_one = select(r, vec3(1), ((r == vec3(0)) | ((lhs == vec3(-2147483648)) & (r == vec3(-1)))));
+  if (any(((vec3<u32>((lhs | rhs_or_one)) & vec3<u32>(2147483648u)) != vec3<u32>(0u)))) {
+    return (lhs - ((lhs / rhs_or_one) * rhs_or_one));
+  } else {
+    return (lhs % rhs_or_one);
+  }
 }
 
 fn f() {
@@ -2563,7 +2819,12 @@ fn f() {
     auto* expect = R"(
 fn tint_mod(lhs : i32, rhs : vec3<i32>) -> vec3<i32> {
   let l = vec3<i32>(lhs);
-  return (l % select(rhs, vec3(1), ((rhs == vec3(0)) | ((l == vec3(-2147483648)) & (rhs == vec3(-1))))));
+  let rhs_or_one = select(rhs, vec3(1), ((rhs == vec3(0)) | ((l == vec3(-2147483648)) & (rhs == vec3(-1)))));
+  if (any(((vec3<u32>((l | rhs_or_one)) & vec3<u32>(2147483648u)) != vec3<u32>(0u)))) {
+    return (l - ((l / rhs_or_one) * rhs_or_one));
+  } else {
+    return (l % rhs_or_one);
+  }
 }
 
 fn f() {
@@ -2613,7 +2874,12 @@ fn f() {
     auto* expect = R"(
 fn tint_mod(lhs : i32, rhs : vec3<i32>) -> vec3<i32> {
   let l = vec3<i32>(lhs);
-  return (l % select(rhs, vec3(1), ((rhs == vec3(0)) | ((l == vec3(-2147483648)) & (rhs == vec3(-1))))));
+  let rhs_or_one = select(rhs, vec3(1), ((rhs == vec3(0)) | ((l == vec3(-2147483648)) & (rhs == vec3(-1)))));
+  if (any(((vec3<u32>((l | rhs_or_one)) & vec3<u32>(2147483648u)) != vec3<u32>(0u)))) {
+    return (l - ((l / rhs_or_one) * rhs_or_one));
+  } else {
+    return (l % rhs_or_one);
+  }
 }
 
 fn f() {
@@ -2711,7 +2977,12 @@ fn f() {
 
     auto* expect = R"(
 fn tint_mod(lhs : vec3<i32>, rhs : vec3<i32>) -> vec3<i32> {
-  return (lhs % select(rhs, vec3(1), ((rhs == vec3(0)) | ((lhs == vec3(-2147483648)) & (rhs == vec3(-1))))));
+  let rhs_or_one = select(rhs, vec3(1), ((rhs == vec3(0)) | ((lhs == vec3(-2147483648)) & (rhs == vec3(-1)))));
+  if (any(((vec3<u32>((lhs | rhs_or_one)) & vec3<u32>(2147483648u)) != vec3<u32>(0u)))) {
+    return (lhs - ((lhs / rhs_or_one) * rhs_or_one));
+  } else {
+    return (lhs % rhs_or_one);
+  }
 }
 
 fn f() {

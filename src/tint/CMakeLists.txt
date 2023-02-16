@@ -66,6 +66,8 @@ add_library(tint_diagnostic_utils
   diagnostic/formatter.h
   diagnostic/printer.cc
   diagnostic/printer.h
+  text/unicode.cc
+  text/unicode.h
   utils/debugger.cc
   utils/debugger.h
 )
@@ -78,15 +80,12 @@ endif()
 
 list(APPEND TINT_LIB_SRCS
   ../../include/tint/tint.h
+  ast/accessor_expression.cc
+  ast/accessor_expression.h
   ast/alias.cc
   ast/alias.h
-  ast/array.cc
-  ast/array.h
   ast/assignment_statement.cc
   ast/assignment_statement.h
-  ast/ast_type.cc  # TODO(bclayton) - rename to type.cc
-  ast/atomic.cc
-  ast/atomic.h
   ast/attribute.cc
   ast/attribute.h
   ast/binary_expression.cc
@@ -99,8 +98,6 @@ list(APPEND TINT_LIB_SRCS
   ast/block_statement.h
   ast/bool_literal_expression.cc
   ast/bool_literal_expression.h
-  ast/bool.cc
-  ast/bool.h
   ast/break_if_statement.cc
   ast/break_if_statement.h
   ast/break_statement.cc
@@ -123,14 +120,12 @@ list(APPEND TINT_LIB_SRCS
   ast/const_assert.h
   ast/continue_statement.cc
   ast/continue_statement.h
-  ast/depth_multisampled_texture.cc
-  ast/depth_multisampled_texture.h
-  ast/depth_texture.cc
-  ast/depth_texture.h
   ast/diagnostic_attribute.cc
   ast/diagnostic_attribute.h
   ast/diagnostic_control.cc
   ast/diagnostic_control.h
+  ast/diagnostic_directive.cc
+  ast/diagnostic_directive.h
   ast/disable_validation_attribute.cc
   ast/disable_validation_attribute.h
   ast/discard_statement.cc
@@ -139,12 +134,6 @@ list(APPEND TINT_LIB_SRCS
   ast/enable.h
   ast/expression.cc
   ast/expression.h
-  ast/external_texture.cc
-  ast/external_texture.h
-  ast/f16.cc
-  ast/f16.h
-  ast/f32.cc
-  ast/f32.h
   ast/float_literal_expression.cc
   ast/float_literal_expression.h
   ast/for_loop_statement.cc
@@ -153,10 +142,10 @@ list(APPEND TINT_LIB_SRCS
   ast/function.h
   ast/group_attribute.cc
   ast/group_attribute.h
-  ast/i32.cc
-  ast/i32.h
   ast/id_attribute.cc
   ast/id_attribute.h
+  ast/identifier.cc
+  ast/identifier.h
   ast/identifier_expression.cc
   ast/identifier_expression.h
   ast/if_statement.cc
@@ -179,14 +168,10 @@ list(APPEND TINT_LIB_SRCS
   ast/location_attribute.h
   ast/loop_statement.cc
   ast/loop_statement.h
-  ast/matrix.cc
-  ast/matrix.h
   ast/member_accessor_expression.cc
   ast/member_accessor_expression.h
   ast/module.cc
   ast/module.h
-  ast/multisampled_texture.cc
-  ast/multisampled_texture.h
   ast/node_id.h
   ast/node.cc
   ast/node.h
@@ -198,20 +183,12 @@ list(APPEND TINT_LIB_SRCS
   ast/phony_expression.h
   ast/pipeline_stage.cc
   ast/pipeline_stage.h
-  ast/pointer.cc
-  ast/pointer.h
   ast/return_statement.cc
   ast/return_statement.h
-  ast/sampled_texture.cc
-  ast/sampled_texture.h
-  ast/sampler.cc
-  ast/sampler.h
   ast/stage_attribute.cc
   ast/stage_attribute.h
   ast/statement.cc
   ast/statement.h
-  ast/storage_texture.cc
-  ast/storage_texture.h
   ast/stride_attribute.cc
   ast/stride_attribute.h
   ast/struct_member_align_attribute.cc
@@ -226,16 +203,13 @@ list(APPEND TINT_LIB_SRCS
   ast/struct.h
   ast/switch_statement.cc
   ast/switch_statement.h
-  ast/texture.cc
-  ast/texture.h
+  ast/templated_identifier.cc
+  ast/templated_identifier.h
   ast/traverse_expressions.h
+  ast/type.cc
+  ast/type.h
   ast/type_decl.cc
   ast/type_decl.h
-  ast/type_name.cc
-  ast/type_name.h
-  ast/type.h
-  ast/u32.cc
-  ast/u32.h
   ast/unary_op_expression.cc
   ast/unary_op_expression.h
   ast/unary_op.cc
@@ -246,10 +220,6 @@ list(APPEND TINT_LIB_SRCS
   ast/variable_decl_statement.h
   ast/variable.cc
   ast/variable.h
-  ast/vector.cc
-  ast/vector.h
-  ast/void.cc
-  ast/void.h
   ast/while_statement.cc
   ast/while_statement.h
   ast/workgroup_attribute.cc
@@ -317,6 +287,8 @@ list(APPEND TINT_LIB_SRCS
   sem/break_if_statement.h
   sem/builtin.cc
   sem/builtin.h
+  sem/builtin_enum_expression.cc
+  sem/builtin_enum_expression.h
   sem/call_target.cc
   sem/call_target.h
   sem/call.cc
@@ -326,6 +298,8 @@ list(APPEND TINT_LIB_SRCS
   sem/expression.h
   sem/for_loop_statement.cc
   sem/for_loop_statement.h
+  sem/function_expression.cc
+  sem/function_expression.h
   sem/function.cc
   sem/if_statement.cc
   sem/if_statement.h
@@ -351,12 +325,16 @@ list(APPEND TINT_LIB_SRCS
   sem/struct.h
   sem/switch_statement.cc
   sem/switch_statement.h
+  sem/type_expression.cc
+  sem/type_expression.h
   sem/type_initializer.cc
   sem/type_initializer.h
   sem/type_conversion.cc
   sem/type_conversion.h
   sem/type_mappings.h
   sem/variable.cc
+  sem/value_expression.cc
+  sem/value_expression.h
   sem/while_statement.cc
   sem/while_statement.h
   symbol_table.cc
@@ -364,8 +342,6 @@ list(APPEND TINT_LIB_SRCS
   symbol.cc
   symbol.h
   tint.cc
-  text/unicode.cc
-  text/unicode.h
   traits.h
   transform/add_empty_entry_point.cc
   transform/add_empty_entry_point.h
@@ -581,7 +557,7 @@ tint_generated(sem/builtin_type)
 tint_generated(sem/parameter_usage)
 tint_generated(type/access BENCH TEST)
 tint_generated(type/address_space BENCH TEST)
-tint_generated(type/short_name BENCH TEST)
+tint_generated(type/builtin BENCH TEST)
 tint_generated(type/texel_format BENCH TEST)
 
 if(UNIX)
@@ -814,15 +790,12 @@ endif()
 if(TINT_BUILD_TESTS)
   list(APPEND TINT_TEST_SRCS
     ast/alias_test.cc
-    ast/array_test.cc
     ast/assignment_statement_test.cc
-    ast/atomic_test.cc
     ast/binary_expression_test.cc
     ast/binding_attribute_test.cc
     ast/bitcast_expression_test.cc
     ast/block_statement_test.cc
     ast/bool_literal_expression_test.cc
-    ast/bool_test.cc
     ast/break_if_statement_test.cc
     ast/break_statement_test.cc
     ast/builtin_attribute_test.cc
@@ -835,21 +808,17 @@ if(TINT_BUILD_TESTS)
     ast/compound_assignment_statement_test.cc
     ast/const_assert_test.cc
     ast/continue_statement_test.cc
-    ast/depth_multisampled_texture_test.cc
-    ast/depth_texture_test.cc
     ast/diagnostic_attribute_test.cc
     ast/diagnostic_control_test.cc
+    ast/diagnostic_directive_test.cc
     ast/discard_statement_test.cc
     ast/enable_test.cc
-    ast/external_texture_test.cc
-    ast/f16_test.cc
-    ast/f32_test.cc
     ast/float_literal_expression_test.cc
     ast/for_loop_statement_test.cc
     ast/function_test.cc
     ast/group_attribute_test.cc
-    ast/i32_test.cc
     ast/id_attribute_test.cc
+    ast/identifier_test.cc
     ast/identifier_expression_test.cc
     ast/if_statement_test.cc
     ast/increment_decrement_statement_test.cc
@@ -858,17 +827,11 @@ if(TINT_BUILD_TESTS)
     ast/invariant_attribute_test.cc
     ast/location_attribute_test.cc
     ast/loop_statement_test.cc
-    ast/matrix_test.cc
     ast/member_accessor_expression_test.cc
     ast/module_test.cc
-    ast/multisampled_texture_test.cc
     ast/phony_expression_test.cc
-    ast/pointer_test.cc
     ast/return_statement_test.cc
-    ast/sampled_texture_test.cc
-    ast/sampler_test.cc
     ast/stage_attribute_test.cc
-    ast/storage_texture_test.cc
     ast/stride_attribute_test.cc
     ast/struct_member_align_attribute_test.cc
     ast/struct_member_offset_attribute_test.cc
@@ -876,14 +839,13 @@ if(TINT_BUILD_TESTS)
     ast/struct_member_test.cc
     ast/struct_test.cc
     ast/switch_statement_test.cc
+    ast/templated_identifier_test.cc
     ast/test_helper.h
-    ast/texture_test.cc
+    ast/test_helper_test.cc
     ast/traverse_expressions_test.cc
-    ast/u32_test.cc
     ast/unary_op_expression_test.cc
     ast/variable_decl_statement_test.cc
     ast/variable_test.cc
-    ast/vector_test.cc
     ast/while_statement_test.cc
     ast/workgroup_attribute_test.cc
     castable_test.cc
@@ -922,6 +884,7 @@ if(TINT_BUILD_TESTS)
     resolver/const_eval_conversion_test.cc
     resolver/const_eval_indexing_test.cc
     resolver/const_eval_member_access_test.cc
+    resolver/const_eval_runtime_semantics_test.cc
     resolver/const_eval_test.h
     resolver/const_eval_unary_op_test.cc
     resolver/control_block_validation_test.cc
@@ -929,6 +892,7 @@ if(TINT_BUILD_TESTS)
     resolver/diagnostic_control_test.cc
     resolver/entry_point_validation_test.cc
     resolver/evaluation_stage_test.cc
+    resolver/expression_kind_test.cc
     resolver/f16_extension_test.cc
     resolver/function_validation_test.cc
     resolver/host_shareable_validation_test.cc
@@ -962,8 +926,8 @@ if(TINT_BUILD_TESTS)
     scope_stack_test.cc
     sem/builtin_test.cc
     sem/diagnostic_severity_test.cc
-    sem/expression_test.cc
     sem/struct_test.cc
+    sem/value_expression_test.cc
     source_test.cc
     symbol_table_test.cc
     symbol_test.cc
@@ -1058,6 +1022,7 @@ if(TINT_BUILD_TESTS)
       reader/spirv/function_var_test.cc
       reader/spirv/namer_test.cc
       reader/spirv/parser_impl_barrier_test.cc
+      reader/spirv/parser_impl_constant_test.cc
       reader/spirv/parser_impl_convert_member_decoration_test.cc
       reader/spirv/parser_impl_convert_type_test.cc
       reader/spirv/parser_impl_function_decl_test.cc

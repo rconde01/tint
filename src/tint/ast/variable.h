@@ -22,13 +22,14 @@
 #include "src/tint/ast/binding_attribute.h"
 #include "src/tint/ast/expression.h"
 #include "src/tint/ast/group_attribute.h"
+#include "src/tint/ast/type.h"
 #include "src/tint/type/access.h"
 #include "src/tint/type/address_space.h"
 
 // Forward declarations
 namespace tint::ast {
+class Identifier;
 class LocationAttribute;
-class Type;
 }  // namespace tint::ast
 
 namespace tint::ast {
@@ -44,16 +45,16 @@ class Variable : public Castable<Variable, Node> {
     /// Constructor
     /// @param pid the identifier of the program that owns this node
     /// @param nid the unique node identifier
-    /// @param source the variable source
-    /// @param sym the variable symbol
+    /// @param src the variable source
+    /// @param name The struct member name
     /// @param type the declared variable type
     /// @param initializer the initializer expression
     /// @param attributes the variable attributes
     Variable(ProgramID pid,
              NodeID nid,
-             const Source& source,
-             const Symbol& sym,
-             const ast::Type* type,
+             const Source& src,
+             const Identifier* name,
+             Type type,
              const Expression* initializer,
              utils::VectorRef<const Attribute*> attributes);
 
@@ -73,13 +74,13 @@ class Variable : public Castable<Variable, Node> {
     ///          e.g. "var", "let", "const", etc
     virtual const char* Kind() const = 0;
 
-    /// The variable symbol
-    const Symbol symbol;
+    /// The variable name
+    const Identifier* const name;
 
     /// The declared variable type. This is null if the type is inferred, e.g.:
     ///   let f = 1.0;
     ///   var i = 1;
-    const ast::Type* const type;
+    const Type type;
 
     /// The initializer expression or nullptr if none set
     const Expression* const initializer;

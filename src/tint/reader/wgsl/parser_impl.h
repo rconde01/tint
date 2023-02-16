@@ -220,12 +220,12 @@ class ParserImpl {
         /// @param type_in parsed type
         /// @param name_in parsed identifier
         /// @param source_in source to the identifier
-        TypedIdentifier(const ast::Type* type_in, std::string name_in, Source source_in);
+        TypedIdentifier(ast::Type type_in, std::string name_in, Source source_in);
         /// Destructor
         ~TypedIdentifier();
 
-        /// Parsed type. May be nullptr for inferred types.
-        const ast::Type* type = nullptr;
+        /// Parsed type. type.expr be nullptr for inferred types.
+        ast::Type type;
         /// Parsed identifier.
         std::string name;
         /// Source to the identifier.
@@ -248,7 +248,7 @@ class ParserImpl {
         FunctionHeader(Source src,
                        std::string n,
                        utils::VectorRef<const ast::Parameter*> p,
-                       const ast::Type* ret_ty,
+                       ast::Type ret_ty,
                        utils::VectorRef<const ast::Attribute*> ret_attrs);
         /// Destructor
         ~FunctionHeader();
@@ -264,7 +264,7 @@ class ParserImpl {
         /// Function parameters
         utils::Vector<const ast::Parameter*, 8> params;
         /// Function return type
-        const ast::Type* return_type = nullptr;
+        ast::Type return_type;
         /// Function return type attributes
         AttributeList return_type_attributes;
     };
@@ -286,7 +286,7 @@ class ParserImpl {
                     std::string name_in,
                     type::AddressSpace address_space_in,
                     type::Access access_in,
-                    const ast::Type* type_in);
+                    ast::Type type_in);
         /// Destructor
         ~VarDeclInfo();
 
@@ -299,7 +299,7 @@ class ParserImpl {
         /// Variable access control
         type::Access access = type::Access::kUndefined;
         /// Variable type
-        const ast::Type* type = nullptr;
+        ast::Type type;
     };
 
     /// VariableQualifier contains the parsed information for a variable qualifier
@@ -449,7 +449,7 @@ class ParserImpl {
     Maybe<const ast::Alias*> type_alias_decl();
     /// Parses a `callable` grammar element
     /// @returns the type or nullptr
-    Maybe<const ast::Type*> callable();
+    Maybe<const ast::IdentifierExpression*> callable();
     /// Parses a `vec_prefix` grammar element
     /// @returns the vector size or nullptr
     Maybe<uint32_t> vec_prefix();
@@ -458,10 +458,10 @@ class ParserImpl {
     Maybe<MatrixDimensions> mat_prefix();
     /// Parses a `type_specifier_without_ident` grammar element
     /// @returns the parsed Type or nullptr if none matched.
-    Maybe<const ast::Type*> type_specifier_without_ident();
+    Maybe<ast::Type> type_specifier_without_ident();
     /// Parses a `type_specifier` grammar element
     /// @returns the parsed Type or nullptr if none matched.
-    Maybe<const ast::Type*> type_specifier();
+    Maybe<ast::Type> type_specifier();
     /// Parses an `address_space` grammar element, erroring on parse failure.
     /// @param use a description of what was being parsed if an error was raised.
     /// @returns the address space or type::AddressSpace::kNone if none matched
@@ -474,7 +474,7 @@ class ParserImpl {
     Expect<StructMemberList> expect_struct_body_decl();
     /// Parses a `struct_member` grammar element, erroring on parse failure.
     /// @returns the struct member or nullptr
-    Expect<ast::StructMember*> expect_struct_member();
+    Expect<const ast::StructMember*> expect_struct_member();
     /// Parses a `function_decl` grammar element with the initial
     /// `function_attribute_decl*` provided as `attrs`.
     /// @param attrs the list of attributes for the function declaration. If attributes are consumed
@@ -483,10 +483,10 @@ class ParserImpl {
     Maybe<const ast::Function*> function_decl(AttributeList& attrs);
     /// Parses a `texture_and_sampler_types` grammar element
     /// @returns the parsed Type or nullptr if none matched.
-    Maybe<const ast::Type*> texture_and_sampler_types();
+    Maybe<ast::Type> texture_and_sampler_types();
     /// Parses a `sampler_type` grammar element
     /// @returns the parsed Type or nullptr if none matched.
-    Maybe<const ast::Type*> sampler_type();
+    Maybe<ast::Type> sampler_type();
     /// Parses a `multisampled_texture_type` grammar element
     /// @returns returns the multisample texture dimension or kNone if none
     /// matched.
@@ -500,10 +500,10 @@ class ParserImpl {
     Maybe<const type::TextureDimension> storage_texture_type();
     /// Parses a `depth_texture_type` grammar element
     /// @returns the parsed Type or nullptr if none matched.
-    Maybe<const ast::Type*> depth_texture_type();
+    Maybe<ast::Type> depth_texture_type();
     /// Parses a 'texture_external_type' grammar element
     /// @returns the parsed Type or nullptr if none matched
-    Maybe<const ast::Type*> external_texture();
+    Maybe<ast::Type> external_texture();
     /// Parses a `texel_format` grammar element
     /// @param use a description of what was being parsed if an error was raised
     /// @returns returns the texel format or kNone if none matched.
@@ -519,7 +519,7 @@ class ParserImpl {
     Expect<ParameterList> expect_param_list();
     /// Parses a `param` grammar element, erroring on parse failure.
     /// @returns the parsed variable
-    Expect<ast::Parameter*> expect_param();
+    Expect<const ast::Parameter*> expect_param();
     /// Parses a `pipeline_stage` grammar element, erroring if the next token does
     /// not match a stage name.
     /// @returns the pipeline stage.
@@ -542,8 +542,15 @@ class ParserImpl {
     /// @returns the parsed builtin.
     Expect<ast::BuiltinValue> expect_builtin();
     /// Parses a `compound_statement` grammar element, erroring on parse failure.
+    /// @param use a description of what was being parsed if an error was raised
     /// @returns the parsed statements
-    Expect<ast::BlockStatement*> expect_compound_statement();
+    Expect<ast::BlockStatement*> expect_compound_statement(std::string_view use);
+    /// Parses a `compound_statement` grammar element, with the attribute list provided as `attrs`.
+    /// @param attrs the list of attributes for the statement
+    /// @param use a description of what was being parsed if an error was raised
+    /// @returns the parsed statements
+    Expect<ast::BlockStatement*> expect_compound_statement(AttributeList& attrs,
+                                                           std::string_view use);
     /// Parses a `paren_expression` grammar element, erroring on parse failure.
     /// @returns the parsed element or nullptr
     Expect<const ast::Expression*> expect_paren_expression();
@@ -710,7 +717,7 @@ class ParserImpl {
     Expect<ast::DiagnosticSeverity> expect_severity_control_name();
     /// Parses a diagnostic_control grammar element.
     /// @return the parsed diagnostic control, or nullptr on error.
-    Expect<const ast::DiagnosticControl*> expect_diagnostic_control();
+    Expect<ast::DiagnosticControl> expect_diagnostic_control();
 
     /// Splits a peekable token into to parts filling in the peekable fields.
     /// @param lhs the token to set in the current position
@@ -884,12 +891,11 @@ class ParserImpl {
     /// Used to ensure that all attributes are consumed.
     bool expect_attributes_consumed(utils::VectorRef<const ast::Attribute*> list);
 
-    Expect<const ast::Type*> expect_type_specifier_pointer(const Source& s);
-    Expect<const ast::Type*> expect_type_specifier_atomic(const Source& s);
-    Expect<const ast::Type*> expect_type_specifier_vector(const Source& s, uint32_t count);
-    Expect<const ast::Type*> expect_type_specifier_array(const Source& s);
-    Expect<const ast::Type*> expect_type_specifier_matrix(const Source& s,
-                                                          const MatrixDimensions& dims);
+    Expect<ast::Type> expect_type_specifier_pointer(const Source& s);
+    Expect<ast::Type> expect_type_specifier_atomic(const Source& s);
+    Expect<ast::Type> expect_type_specifier_vector(const Source& s, uint32_t count);
+    Expect<ast::Type> expect_type_specifier_array(const Source& s);
+    Expect<ast::Type> expect_type_specifier_matrix(const Source& s, const MatrixDimensions& dims);
 
     /// Parses the given enum, providing sensible error messages if the next token does not match
     /// any of the enum values.
@@ -903,7 +909,7 @@ class ParserImpl {
                              const char* const (&strings)[N],
                              std::string_view use = "");
 
-    Expect<const ast::Type*> expect_type(std::string_view use);
+    Expect<ast::Type> expect_type(std::string_view use);
 
     Maybe<const ast::Statement*> non_block_statement();
     Maybe<const ast::Statement*> for_header_initializer();

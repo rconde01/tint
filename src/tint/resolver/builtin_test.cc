@@ -37,6 +37,7 @@
 #include "src/tint/type/sampled_texture.h"
 #include "src/tint/type/test_helper.h"
 #include "src/tint/type/texture_dimension.h"
+#include "src/tint/utils/string.h"
 
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
@@ -212,7 +213,7 @@ namespace array_builtin_tests {
 using ResolverBuiltinArrayTest = ResolverTest;
 
 TEST_F(ResolverBuiltinArrayTest, ArrayLength_Vector) {
-    auto* ary = ty.array<i32>();
+    auto ary = ty.array<i32>();
     auto* str = Structure("S", utils::Vector{Member("x", ary)});
     GlobalVar("a", ty.Of(str), type::AddressSpace::kStorage, type::Access::kRead, Binding(0_a),
               Group(0_a));
@@ -1044,29 +1045,6 @@ TEST_F(ResolverBuiltinFloatTest, FrexpVector_f16) {
 
     EXPECT_EQ(ty->Size(), 32u);
     EXPECT_EQ(ty->SizeNoPadding(), 28u);
-}
-
-// TODO(crbug.com/tint/1757): Remove once deprecation period for `frexp().sig` is over
-TEST_F(ResolverBuiltinFloatTest, FrexpVector_sig) {
-    Enable(ast::Extension::kF16);
-
-    auto* call = Call("frexp", vec3<f16>());
-    auto* expr = MemberAccessor(call, "sig");
-    WrapInFunction(expr);
-
-    EXPECT_TRUE(r()->Resolve()) << r()->error();
-
-    ASSERT_NE(TypeOf(call), nullptr);
-    auto* ty = TypeOf(call)->As<sem::Struct>();
-    ASSERT_NE(ty, nullptr);
-    ASSERT_EQ(ty->Members().Length(), 2u);
-
-    auto* sig = ty->Members()[0];
-    EXPECT_TYPE(sig->Type(), TypeOf(expr));
-
-    auto* access = Sem().Get<sem::StructMemberAccess>(expr);
-    ASSERT_NE(access, nullptr);
-    EXPECT_EQ(access->Member(), sig);
 }
 
 TEST_F(ResolverBuiltinFloatTest, Frexp_Error_FirstParamInt) {
@@ -2119,34 +2097,34 @@ class ResolverBuiltinTest_TextureOperation : public ResolverTestWithParam<Textur
     /// @param dim dimensionality of the texture being sampled
     /// @param scalar the scalar type
     /// @returns a pointer to a type appropriate for the coord param
-    const ast::Type* GetCoordsType(type::TextureDimension dim, const ast::Type* scalar) {
+    ast::Type GetCoordsType(type::TextureDimension dim, ast::Type scalar) {
         switch (dim) {
             case type::TextureDimension::k1d:
-                return scalar;
+                return ty(scalar);
             case type::TextureDimension::k2d:
             case type::TextureDimension::k2dArray:
-                return ty.vec(scalar, 2);
+                return ty.vec2(scalar);
             case type::TextureDimension::k3d:
             case type::TextureDimension::kCube:
             case type::TextureDimension::kCubeArray:
-                return ty.vec(scalar, 3);
+                return ty.vec3(scalar);
             default:
                 [=]() { FAIL() << "Unsupported texture dimension: " << dim; }();
         }
-        return nullptr;
+        return ast::Type{};
     }
 
-    void add_call_param(std::string name, const ast::Type* type, ExpressionList* call_params) {
-        if (type->IsAnyOf<ast::Texture, ast::Sampler>()) {
+    void add_call_param(std::string name, ast::Type type, ExpressionList* call_params) {
+        std::string type_name = Symbols().NameFor(type->identifier->symbol);
+        if (utils::HasPrefix(type_name, "texture") || utils::HasPrefix(type_name, "sampler")) {
             GlobalVar(name, type, Binding(0_a), Group(0_a));
-
         } else {
             GlobalVar(name, type, type::AddressSpace::kPrivate);
         }
 
         call_params->Push(Expr(name));
     }
-    const ast::Type* subtype(Texture type) {
+    ast::Type subtype(Texture type) {
         if (type == Texture::kF32) {
             return ty.f32();
         }
@@ -2162,9 +2140,9 @@ TEST_P(ResolverBuiltinTest_SampledTextureOperation, TextureLoadSampled) {
     auto dim = GetParam().dim;
     auto type = GetParam().type;
 
-    auto* s = subtype(type);
-    auto* coords_type = GetCoordsType(dim, ty.i32());
-    auto* texture_type = ty.sampled_texture(dim, s);
+    ast::Type s = subtype(type);
+    ast::Type coords_type = GetCoordsType(dim, ty.i32());
+    auto texture_type = ty.sampled_texture(dim, s);
 
     ExpressionList call_params;
 

@@ -22,7 +22,6 @@
 #include "src/tint/ast/function.h"
 #include "src/tint/ast/module.h"
 #include "src/tint/ast/struct.h"
-#include "src/tint/ast/type.h"
 #include "src/tint/program_builder.h"
 #include "src/tint/sem/function.h"
 #include "src/tint/sem/statement.h"
@@ -124,7 +123,7 @@ Transform::ApplyResult ClampFragDepth::Apply(const Program* src, const DataMap&,
                 utils::Vector{b.Member("min", b.ty.f32()), b.Member("max", b.ty.f32())});
 
     auto args_sym = b.Symbols().New("frag_depth_clamp_args");
-    b.GlobalVar(args_sym, b.ty.type_name("FragDepthClampArgs"), type::AddressSpace::kPushConstant);
+    b.GlobalVar(args_sym, b.ty("FragDepthClampArgs"), type::AddressSpace::kPushConstant);
 
     auto base_fn_sym = b.Symbols().New("clamp_frag_depth");
     b.Func(base_fn_sym, utils::Vector{b.Param("v", b.ty.f32())}, b.ty.f32(),
@@ -163,13 +162,14 @@ Transform::ApplyResult ClampFragDepth::Apply(const Program* src, const DataMap&,
             //   }
             auto* struct_ty = sem.Get(fn)->ReturnType()->As<sem::Struct>()->Declaration();
             auto helper = io_structs_clamp_helpers.GetOrCreate(struct_ty, [&] {
-                auto* return_ty = fn->return_type;
-                auto fn_sym = b.Symbols().New("clamp_frag_depth_" +
-                                              sym.NameFor(return_ty->As<ast::TypeName>()->name));
+                auto return_ty = fn->return_type;
+                auto fn_sym =
+                    b.Symbols().New("clamp_frag_depth_" + sym.NameFor(struct_ty->name->symbol));
 
                 utils::Vector<const ast::Expression*, 8u> initializer_args;
                 for (auto* member : struct_ty->members) {
-                    const ast::Expression* arg = b.MemberAccessor("s", ctx.Clone(member->symbol));
+                    const ast::Expression* arg =
+                        b.MemberAccessor("s", ctx.Clone(member->name->symbol));
                     if (ContainsFragDepth(member->attributes)) {
                         arg = b.Call(base_fn_sym, arg);
                     }
@@ -177,7 +177,7 @@ Transform::ApplyResult ClampFragDepth::Apply(const Program* src, const DataMap&,
                 }
                 utils::Vector params{b.Param("s", ctx.Clone(return_ty))};
                 utils::Vector body{
-                    b.Return(b.Construct(ctx.Clone(return_ty), std::move(initializer_args))),
+                    b.Return(b.Call(ctx.Clone(return_ty), std::move(initializer_args))),
                 };
                 b.Func(fn_sym, params, ctx.Clone(return_ty), body);
                 return fn_sym;

@@ -138,10 +138,10 @@ Transform::ApplyResult BindingRemapper::Apply(const Program* src,
                     return Program(std::move(b));
                 }
                 auto* ty = sem->Type()->UnwrapRef();
-                const ast::Type* inner_ty = CreateASTTypeFor(ctx, ty);
-                auto* new_var = b.Var(ctx.Clone(var->source), ctx.Clone(var->symbol), inner_ty,
-                                      var->declared_address_space, ac, ctx.Clone(var->initializer),
-                                      ctx.Clone(var->attributes));
+                auto inner_ty = CreateASTTypeFor(ctx, ty);
+                auto* new_var = b.Var(ctx.Clone(var->source), ctx.Clone(var->name->symbol),
+                                      inner_ty, var->declared_address_space, ac,
+                                      ctx.Clone(var->initializer), ctx.Clone(var->attributes));
                 ctx.Replace(var, new_var);
             }
 

@@ -9,7 +9,7 @@ gclient_gn_args = [
 vars = {
   'chromium_git': 'https://chromium.googlesource.com',
 
-  'tint_gn_revision': 'git_revision:281ba2c91861b10fec7407c4b6172ec3d4661243',
+  'tint_gn_revision': 'git_revision:bd99dbf98cbdefe18a4128189665c5761263bcfb',
 
   # We don't use location metadata in our test isolates.
   'generate_location_tags': False,
@@ -21,20 +21,20 @@ deps = {
   },
 
   'third_party/vulkan-deps': {
-    'url': '{chromium_git}/vulkan-deps@bd2c589d0d34612d9dd071396225d7de772c020c',
+    'url': '{chromium_git}/vulkan-deps@5b82cc4a7eaa9befcf893bd0528b9cf93aae740a',
   },
 
   # Dependencies required to use GN/Clang in standalone
   'build': {
-    'url': '{chromium_git}/chromium/src/build@01569374d46a14b225586c564146a8e1749520b6',
+    'url': '{chromium_git}/chromium/src/build@8cbb95464bb7f05b442f3ece4951efbe0825a131',
   },
 
   'buildtools': {
-    'url': '{chromium_git}/chromium/src/buildtools@cccaf48c82bcf4ddafa6f8aa9f06014a1ef434bf',
+    'url': '{chromium_git}/chromium/src/buildtools@70e9f44cbc8bc4c3dff18800ba5d962154a4f2a6',
   },
 
   'tools/clang': {
-    'url': '{chromium_git}/chromium/src/tools/clang@a5e0d72349d028a4023927d6d166a8478355fac3',
+    'url': '{chromium_git}/chromium/src/tools/clang@fff7f04d30a0687029ddc7e174d5548a525ddf0b',
   },
 
   'buildtools/clang_format/script': {
@@ -67,11 +67,11 @@ deps = {
   },
 
   'buildtools/third_party/libc++/trunk': {
-    'url': '{chromium_git}/external/github.com/llvm/llvm-project/libcxx.git@26d0ab4151fd10c523fdbb5bbdb59aa5a5774820',
+    'url': '{chromium_git}/external/github.com/llvm/llvm-project/libcxx.git@035440c7077237787869cb08ab99bcc8b5ddc97e',
   },
 
   'buildtools/third_party/libc++abi/trunk': {
-    'url': '{chromium_git}/external/github.com/llvm/llvm-project/libcxxabi.git@5c3e02e92ae8bbc1bf1001bd9ef0d76e044ddb86',
+    'url': '{chromium_git}/external/github.com/llvm/llvm-project/libcxxabi.git@b74d7716111d7eda5c03cb8f5dfc940e1c2c0030',
   },
 
   'third_party/ninja': {
@@ -79,7 +79,7 @@ deps = {
       # https://chrome-infra-packages.appspot.com/p/infra/3pp/tools/ninja
       {
         'package': 'infra/3pp/tools/ninja/${{platform}}',
-        'version': 'version:2@1.8.2.chromium.3',
+        'version': 'version:2@1.11.1.chromium.6',
       }
     ],
     'dep_type': 'cipd',
@@ -87,11 +87,11 @@ deps = {
 
   # Dependencies required for testing
   'testing': {
-    'url': '{chromium_git}/chromium/src/testing@e3e8c19554e8f47da85d35e4f990cdc30a061196',
+    'url': '{chromium_git}/chromium/src/testing@d5ea1bf4b64781cfe38f207f56f264eb080d06b2',
   },
 
   'third_party/catapult': {
-    'url': '{chromium_git}/catapult.git@4a0e6f034e9756605cfc837c8526588d6c13436b',
+    'url': '{chromium_git}/catapult.git@37e879a7d13cbaa4925e09fc02b0f9276e060f0a',
   },
 
   'third_party/benchmark': {
@@ -99,7 +99,7 @@ deps = {
   },
 
   'third_party/googletest': {
-    'url': '{chromium_git}/external/github.com/google/googletest.git@d1a0039b97291dd1dc14f123b906bb7622ffe07c',
+    'url': '{chromium_git}/external/github.com/google/googletest.git@b73f27fd164456fea9aba56163f5511355a03272',
   },
 
   'third_party/protobuf': {

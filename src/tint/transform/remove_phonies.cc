@@ -102,13 +102,13 @@ Transform::ApplyResult RemovePhonies::Apply(const Program* src, const DataMap&, 
                     ctx.Replace(stmt, [&, side_effects] {
                         SinkSignature sig;
                         for (auto* arg : side_effects) {
-                            sig.push_back(sem.Get(arg)->Type()->UnwrapRef());
+                            sig.push_back(sem.GetVal(arg)->Type()->UnwrapRef());
                         }
                         auto sink = sinks.GetOrCreate(sig, [&] {
                             auto name = b.Symbols().New("phony_sink");
                             utils::Vector<const ast::Parameter*, 8> params;
                             for (auto* ty : sig) {
-                                auto* ast_ty = CreateASTTypeFor(ctx, ty);
+                                auto ast_ty = CreateASTTypeFor(ctx, ty);
                                 params.Push(b.Param("p" + std::to_string(params.Length()), ast_ty));
                             }
                             b.Func(name, params, b.ty.void_(), {});

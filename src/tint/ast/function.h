@@ -29,6 +29,12 @@
 #include "src/tint/ast/parameter.h"
 #include "src/tint/ast/pipeline_stage.h"
 
+// Forward declarations
+namespace tint::ast {
+class Identifier;
+class IdentifierExpression;
+}  // namespace tint::ast
+
 namespace tint::ast {
 
 /// A Function statement.
@@ -38,7 +44,7 @@ class Function final : public Castable<Function, Node> {
     /// @param pid the identifier of the program that owns this node
     /// @param nid the unique node identifier
     /// @param source the variable source
-    /// @param symbol the function symbol
+    /// @param name the function name
     /// @param params the function parameters
     /// @param return_type the return type
     /// @param body the function body
@@ -47,9 +53,9 @@ class Function final : public Castable<Function, Node> {
     Function(ProgramID pid,
              NodeID nid,
              const Source& source,
-             Symbol symbol,
+             const Identifier* name,
              utils::VectorRef<const Parameter*> params,
-             const Type* return_type,
+             Type return_type,
              const BlockStatement* body,
              utils::VectorRef<const Attribute*> attributes,
              utils::VectorRef<const Attribute*> return_type_attributes);
@@ -70,14 +76,14 @@ class Function final : public Castable<Function, Node> {
     /// @return the newly cloned node
     const Function* Clone(CloneContext* ctx) const override;
 
-    /// The function symbol
-    const Symbol symbol;
+    /// The function name
+    const Identifier* const name;
 
     /// The function params
     const utils::Vector<const Parameter*, 8> params;
 
     /// The function return type
-    const Type* const return_type;
+    const Type return_type;
 
     /// The function body
     const BlockStatement* const body;

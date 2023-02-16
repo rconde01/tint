@@ -45,7 +45,7 @@ class Var final : public Castable<Var, Variable> {
     /// @param pid the identifier of the program that owns this node
     /// @param nid the unique node identifier
     /// @param source the variable source
-    /// @param sym the variable symbol
+    /// @param name the variable name
     /// @param type the declared variable type
     /// @param declared_address_space the declared address space
     /// @param declared_access the declared access control
@@ -54,8 +54,8 @@ class Var final : public Castable<Var, Variable> {
     Var(ProgramID pid,
         NodeID nid,
         const Source& source,
-        const Symbol& sym,
-        const ast::Type* type,
+        const Identifier* name,
+        Type type,
         type::AddressSpace declared_address_space,
         type::Access declared_access,
         const Expression* initializer,

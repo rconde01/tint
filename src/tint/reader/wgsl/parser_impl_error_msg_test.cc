@@ -489,7 +489,7 @@ fn f( {}
 }
 
 TEST_F(ParserImplErrorTest, FunctionDeclMissingArrow) {
-    EXPECT("fn f() f32 {}", R"(test.wgsl:1:8 error: expected '{'
+    EXPECT("fn f() f32 {}", R"(test.wgsl:1:8 error: expected '{' for function body
 fn f() f32 {}
        ^^^
 )");
@@ -526,14 +526,14 @@ fn f(x : i32, ,) {}
 }
 
 TEST_F(ParserImplErrorTest, FunctionDeclMissingLBrace) {
-    EXPECT("fn f() }", R"(test.wgsl:1:8 error: expected '{'
+    EXPECT("fn f() }", R"(test.wgsl:1:8 error: expected '{' for function body
 fn f() }
        ^
 )");
 }
 
 TEST_F(ParserImplErrorTest, FunctionDeclMissingRBrace) {
-    EXPECT("fn f() {", R"(test.wgsl:1:9 error: expected '}'
+    EXPECT("fn f() {", R"(test.wgsl:1:9 error: expected '}' for function body
 fn f() {
         ^
 )");
@@ -541,9 +541,9 @@ fn f() {
 
 TEST_F(ParserImplErrorTest, FunctionScopeUnusedDecl) {
     EXPECT("fn f(a:i32)->i32{return a;@size(1)}",
-           R"(test.wgsl:1:27 error: expected '}'
+           R"(test.wgsl:1:28 error: unexpected attributes
 fn f(a:i32)->i32{return a;@size(1)}
-                          ^
+                           ^^^^
 )");
 }
 
@@ -1110,7 +1110,8 @@ Possible values: 'frag_depth', 'front_facing', 'global_invocation_id', 'instance
 
 TEST_F(ParserImplErrorTest, GlobalDeclVarAttrBuiltinInvalidValue) {
     EXPECT("@builtin(frag_d3pth) var i : i32;",
-           R"(test.wgsl:1:10 error: expected builtin. Did you mean 'frag_depth'?
+           R"(test.wgsl:1:10 error: expected builtin
+Did you mean 'frag_depth'?
 Possible values: 'frag_depth', 'front_facing', 'global_invocation_id', 'instance_index', 'local_invocation_id', 'local_invocation_index', 'num_workgroups', 'position', 'sample_index', 'sample_mask', 'vertex_index', 'workgroup_id'
 @builtin(frag_d3pth) var i : i32;
          ^^^^^^^^^^

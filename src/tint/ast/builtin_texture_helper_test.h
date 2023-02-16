@@ -24,6 +24,12 @@
 
 namespace tint::ast::builtin::test {
 
+/// The name of the texture global variable used by the tests.
+static constexpr const char* kTextureName = "Texture";
+
+/// The name of the sampler global variable used by the tests.
+static constexpr const char* kSamplerName = "Sampler";
+
 enum class TextureKind { kRegular, kDepth, kDepthMultisampled, kMultisampled, kStorage };
 enum class TextureDataType { kF32, kU32, kI32 };
 
@@ -218,7 +224,7 @@ struct TextureOverloadCase {
 
     /// @param builder the AST builder used for the test
     /// @returns the vector component type of the texture function return value
-    const ast::Type* BuildResultVectorComponentType(ProgramBuilder* builder) const;
+    ast::Type BuildResultVectorComponentType(ProgramBuilder* builder) const;
     /// @param builder the AST builder used for the test
     /// @returns a variable holding the test texture, automatically registered as
     /// a global variable.

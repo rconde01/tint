@@ -48,7 +48,7 @@ struct PreservePadding::State {
             Switch(
                 node,  //
                 [&](const ast::AssignmentStatement* assign) {
-                    auto* ty = sem.Get(assign->lhs)->Type();
+                    auto* ty = sem.GetVal(assign->lhs)->Type();
                     if (assign->lhs->Is<ast::PhonyExpression>()) {
                         // Ignore phony assignment.
                         return;
@@ -80,7 +80,7 @@ struct PreservePadding::State {
             if (!assignments_to_transform.count(assign)) {
                 return nullptr;
             }
-            auto* ty = sem.Get(assign->lhs)->Type()->UnwrapRef();
+            auto* ty = sem.GetVal(assign->lhs)->Type()->UnwrapRef();
             return MakeAssignment(ty, ctx.Clone(assign->lhs), ctx.Clone(assign->rhs));
         });
 
@@ -112,8 +112,8 @@ struct PreservePadding::State {
         //
         // Since this requires passing pointers to the storage address space, this will also enable
         // the chromium_experimental_full_ptr_parameters extension.
-        constexpr const char* kDestParamName = "dest";
-        constexpr const char* kValueParamName = "value";
+        const char* kDestParamName = "dest";
+        const char* kValueParamName = "value";
         auto call_helper = [&](auto&& body) {
             EnableExtension();
             auto helper = helpers.GetOrCreate(ty, [&]() {
@@ -151,7 +151,7 @@ struct PreservePadding::State {
                 return call_helper([&]() {
                     utils::Vector<const ast::Statement*, 8> body;
                     for (auto member : str->Members()) {
-                        auto name = sym.NameFor(member->Declaration()->symbol);
+                        auto name = sym.NameFor(member->Declaration()->name->symbol);
                         body.Push(MakeAssignment(member->Type(),
                                                  b.MemberAccessor(b.Deref(kDestParamName), name),
                                                  b.MemberAccessor(kValueParamName, name)));

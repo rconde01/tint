@@ -44,8 +44,8 @@ exit /b 0
 
 set ORIGINAL_SRC_DIR= %~dp0\..\..
 set TEMP_DIR=%TEMP%\tint-temp
-set SRC_DIR="%TEMP_DIR%\tint-src"
-set BUILD_DIR="%TEMP_DIR%\tint-build"
+set SRC_DIR=%TEMP_DIR%\tint-src
+set BUILD_DIR=%TEMP_DIR%\tint-build
 
 cd /d %ORIGINAL_SRC_DIR%
 if not exist ".git\" (
@@ -87,11 +87,7 @@ set D3DCOMPILER_PATH=C:\Program Files (x86)\Windows Kits\10\bin\%WINSDK_VERSION%
 call :status "Installing depot_tools"
 @echo on
 pushd %TEMP_DIR%
-rem For Windows, we must download and extract a bundle.
-rem See https://chromium.googlesource.com/chromium/src/+/HEAD/docs/windows_build_instructions.md#install
-powershell -Command "(New-Object Net.WebClient).DownloadFile('https://storage.googleapis.com/chrome-infra/depot_tools.zip', 'depot_tools.zip')" || goto :error
-powershell -Command "Expand-Archive -Force 'depot_tools.zip' 'depot_tools'" || goto :error
-rem Run gclient once to install deps
+git clone https://chromium.googlesource.com/chromium/tools/depot_tools
 set PATH=%TEMP_DIR%\depot_tools;%PATH%
 set DEPOT_TOOLS_UPDATE=1
 set DEPOT_TOOLS_WIN_TOOLCHAIN=0
@@ -110,6 +106,11 @@ call :status "Fetching dependencies"
 @echo on
 copy standalone.gclient .gclient || goto :error
 call gclient sync || goto :error
+@echo off
+
+call :status "Adding the Ninja from DEPS to the PATH"
+@echo on
+set PATH=%SRC_DIR%\third_party\ninja;%PATH%
 @echo off
 
 call :status "Configuring build system"

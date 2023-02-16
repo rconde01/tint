@@ -185,13 +185,13 @@ class Validator {
     /// @param a the atomic ast node
     /// @param s the atomic sem node
     /// @returns true on success, false otherwise.
-    bool Atomic(const ast::Atomic* a, const type::Atomic* s) const;
+    bool Atomic(const ast::TemplatedIdentifier* a, const type::Atomic* s) const;
 
     /// Validates a pointer type
     /// @param a the pointer ast node
     /// @param s the pointer sem node
     /// @returns true on success, false otherwise.
-    bool Pointer(const ast::Pointer* a, const type::Pointer* s) const;
+    bool Pointer(const ast::TemplatedIdentifier* a, const type::Pointer* s) const;
 
     /// Validates an assignment
     /// @param a the assignment statement
@@ -245,7 +245,7 @@ class Validator {
     /// @param latest_stage the latest evaluation stage that the expression can be evaluated
     /// @param constraint the 'thing' that is imposing the contraint. e.g. "var declaration"
     /// @returns true if @p expr is evaluated in or before @p latest_stage, false otherwise
-    bool EvaluationStage(const sem::Expression* expr,
+    bool EvaluationStage(const sem::ValueExpression* expr,
                          sem::EvaluationStage latest_stage,
                          std::string_view constraint) const;
 
@@ -343,10 +343,10 @@ class Validator {
     bool Materialize(const type::Type* to, const type::Type* from, const Source& source) const;
 
     /// Validates a matrix
-    /// @param ty the matrix to validate
+    /// @param el_ty the matrix element type to validate
     /// @param source the source of the matrix
     /// @returns true on success, false otherwise
-    bool Matrix(const type::Matrix* ty, const Source& source) const;
+    bool Matrix(const type::Type* el_ty, const Source& source) const;
 
     /// Validates a function parameter
     /// @param func the function the variable is for
@@ -372,8 +372,9 @@ class Validator {
 
     /// Validates a storage texture
     /// @param t the texture to validate
+    /// @param source the source of the texture
     /// @returns true on success, false otherwise
-    bool StorageTexture(const ast::StorageTexture* t) const;
+    bool StorageTexture(const type::StorageTexture* t, const Source& source) const;
 
     /// Validates a sampled texture
     /// @param t the texture to validate
@@ -436,13 +437,13 @@ class Validator {
     bool VariableInitializer(const ast::Variable* v,
                              type::AddressSpace address_space,
                              const type::Type* storage_type,
-                             const sem::Expression* initializer) const;
+                             const sem::ValueExpression* initializer) const;
 
     /// Validates a vector
-    /// @param ty the vector to validate
+    /// @param el_ty the vector element type to validate
     /// @param source the source of the vector
     /// @returns true on success, false otherwise
-    bool Vector(const type::Vector* ty, const Source& source) const;
+    bool Vector(const type::Type* el_ty, const Source& source) const;
 
     /// Validates an array initializer
     /// @param ctor the call expresion to validate
@@ -474,6 +475,13 @@ class Validator {
     /// @param attributes the list of attributes to validate
     /// @returns true on success, false otherwise.
     bool NoDuplicateAttributes(utils::VectorRef<const ast::Attribute*> attributes) const;
+
+    /// Validates a set of diagnostic controls.
+    /// @param controls the diagnostic controls to validate
+    /// @param use the place where the controls are being used ("directive" or "attribute")
+    /// @returns true on success, false otherwise.
+    bool DiagnosticControls(utils::VectorRef<const ast::DiagnosticControl*> controls,
+                            const char* use) const;
 
     /// Validates a address space layout
     /// @param type the type to validate

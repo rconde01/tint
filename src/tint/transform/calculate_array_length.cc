@@ -104,9 +104,9 @@ Transform::ApplyResult CalculateArrayLength::Apply(const Program* src,
     auto get_buffer_size_intrinsic = [&](const type::Reference* buffer_type) {
         return utils::GetOrCreate(buffer_size_intrinsics, buffer_type, [&] {
             auto name = b.Sym();
-            auto* type = CreateASTTypeFor(ctx, buffer_type);
+            auto type = CreateASTTypeFor(ctx, buffer_type);
             auto* disable_validation = b.Disable(ast::DisabledValidation::kFunctionParameter);
-            b.AST().AddFunction(b.create<ast::Function>(
+            b.Func(
                 name,
                 utils::Vector{
                     b.Param("buffer",
@@ -117,8 +117,7 @@ Transform::ApplyResult CalculateArrayLength::Apply(const Program* src,
                 b.ty.void_(), nullptr,
                 utils::Vector{
                     b.ASTNodes().Create<BufferSizeIntrinsic>(b.ID(), b.AllocateNodeID()),
-                },
-                utils::Empty));
+                });
 
             return name;
         });
@@ -158,7 +157,7 @@ Transform::ApplyResult CalculateArrayLength::Apply(const Program* src,
                     }
                     auto* storage_buffer_expr = address_of->expr;
                     if (auto* accessor = storage_buffer_expr->As<ast::MemberAccessorExpression>()) {
-                        storage_buffer_expr = accessor->structure;
+                        storage_buffer_expr = accessor->object;
                     }
                     auto* storage_buffer_sem = sem.Get<sem::VariableUser>(storage_buffer_expr);
                     if (TINT_UNLIKELY(!storage_buffer_sem)) {
@@ -192,7 +191,7 @@ Transform::ApplyResult CalculateArrayLength::Apply(const Program* src,
                                 // translated to:
                                 //  X.GetDimensions(ARGS..) by the writer
                                 buffer_size, b.AddressOf(ctx.Clone(storage_buffer_expr)),
-                                b.AddressOf(b.Expr(buffer_size_result->variable->symbol))));
+                                b.AddressOf(b.Expr(buffer_size_result->variable->name->symbol))));
 
                             // Calculate actual array length
                             //                total_storage_buffer_size - array_offset

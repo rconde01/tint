@@ -41,8 +41,8 @@ inline std::ostream& operator<<(std::ostream& out, BuiltinData data) {
 
 // This tests that we do not push OpTypeSampledImage and float_0 type twice.
 TEST_F(BuiltinBuilderTest, Call_TextureSampleCompare_Twice) {
-    auto* s = ty.sampler(type::SamplerKind::kComparisonSampler);
-    auto* t = ty.depth_texture(type::TextureDimension::k2d);
+    auto s = ty.sampler(type::SamplerKind::kComparisonSampler);
+    auto t = ty.depth_texture(type::TextureDimension::k2d);
 
     auto* tex = GlobalVar("texture", t, Binding(0_a), Group(0_a));
     auto* sampler = GlobalVar("sampler", s, Binding(1_a), Group(0_a));
@@ -276,7 +276,7 @@ namespace array_builtin_tests {
 
 TEST_F(BuiltinBuilderTest, Call_ArrayLength) {
     auto* s = Structure("my_struct", utils::Vector{
-                                         Member("a", ty.array<f32>(4)),
+                                         Member("a", ty.array<f32>()),
                                      });
     GlobalVar("b", ty.Of(s), type::AddressSpace::kStorage, type::Access::kRead, Binding(1_a),
               Group(2_a));
@@ -320,7 +320,7 @@ OpReturn
 TEST_F(BuiltinBuilderTest, Call_ArrayLength_OtherMembersInStruct) {
     auto* s = Structure("my_struct", utils::Vector{
                                          Member("z", ty.f32()),
-                                         Member(4, "a", ty.array<f32>(4)),
+                                         Member(4, "a", ty.array<f32>()),
                                      });
     GlobalVar("b", ty.Of(s), type::AddressSpace::kStorage, type::Access::kRead, Binding(1_a),
               Group(2_a));
@@ -363,7 +363,7 @@ OpReturn
 
 TEST_F(BuiltinBuilderTest, Call_ArrayLength_ViaLets) {
     auto* s = Structure("my_struct", utils::Vector{
-                                         Member("a", ty.array<f32>(4)),
+                                         Member("a", ty.array<f32>()),
                                      });
     GlobalVar("b", ty.Of(s), type::AddressSpace::kStorage, type::Access::kRead, Binding(1_a),
               Group(2_a));
@@ -422,7 +422,7 @@ TEST_F(BuiltinBuilderTest, Call_ArrayLength_ViaLets_WithPtrNoise) {
     //   arrayLength(&*p3);
     // }
     auto* s = Structure("my_struct", utils::Vector{
-                                         Member("a", ty.array<f32>(4)),
+                                         Member("a", ty.array<f32>()),
                                      });
     GlobalVar("b", ty.Of(s), type::AddressSpace::kStorage, type::Access::kRead, Binding(1_a),
               Group(2_a));
@@ -2037,60 +2037,6 @@ OpMemberDecorate %6 1 Offset 8
 %3 = OpFunction %2 None %1
 %4 = OpLabel
 %5 = OpExtInst %6 %11 FrexpStruct %14
-OpReturn
-OpFunctionEnd
-)";
-    EXPECT_EQ(expect, got);
-
-    Validate(b);
-}
-
-// TODO(crbug.com/tint/1757): Remove once deprecation period for `frexp().sig` is over
-TEST_F(BuiltinBuilderTest, Frexp_Sig_Deprecation) {
-    Func("a_func", utils::Empty, ty.void_(),
-         utils::Vector{
-             Decl(Var("vec", vec2<f32>(1_f, 2_f))),
-             Decl(Let("s", MemberAccessor(Call("frexp", "vec"), "sig"))),
-         },
-         utils::Vector{
-             Stage(ast::PipelineStage::kFragment),
-         });
-
-    spirv::Builder& b = Build();
-
-    ASSERT_TRUE(b.Build()) << b.error();
-    auto got = DumpBuilder(b);
-    auto* expect = R"(OpCapability Shader
-%17 = OpExtInstImport "GLSL.std.450"
-OpMemoryModel Logical GLSL450
-OpEntryPoint Fragment %3 "a_func"
-OpExecutionMode %3 OriginUpperLeft
-OpName %3 "a_func"
-OpName %10 "vec"
-OpName %14 "__frexp_result_vec2_f32"
-OpMemberName %14 0 "fract"
-OpMemberName %14 1 "exp"
-OpMemberDecorate %14 0 Offset 0
-OpMemberDecorate %14 1 Offset 8
-%2 = OpTypeVoid
-%1 = OpTypeFunction %2
-%6 = OpTypeFloat 32
-%5 = OpTypeVector %6 2
-%7 = OpConstant %6 1
-%8 = OpConstant %6 2
-%9 = OpConstantComposite %5 %7 %8
-%11 = OpTypePointer Function %5
-%12 = OpConstantNull %5
-%16 = OpTypeInt 32 1
-%15 = OpTypeVector %16 2
-%14 = OpTypeStruct %5 %15
-%3 = OpFunction %2 None %1
-%4 = OpLabel
-%10 = OpVariable %11 Function %12
-OpStore %10 %9
-%18 = OpLoad %5 %10
-%13 = OpExtInst %14 %17 FrexpStruct %18
-%19 = OpCompositeExtract %5 %13 0
 OpReturn
 OpFunctionEnd
 )";

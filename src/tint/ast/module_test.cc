@@ -61,9 +61,9 @@ TEST_F(ModuleTest, Assert_DifferentProgramID_Function) {
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
-            b1.AST().AddFunction(b2.create<ast::Function>(b2.Symbols().Register("func"),
-                                                          utils::Empty, b2.ty.f32(), b2.Block(),
-                                                          utils::Empty, utils::Empty));
+            b1.AST().AddFunction(b2.create<ast::Function>(b2.Ident("func"), utils::Empty,
+                                                          b2.ty.f32(), b2.Block(), utils::Empty,
+                                                          utils::Empty));
         },
         "internal compiler error");
 }
@@ -126,16 +126,19 @@ TEST_F(ModuleTest, CloneOrder) {
     ASSERT_TRUE(decls[2]->Is<ast::Alias>());
     ASSERT_TRUE(decls[4]->Is<ast::Alias>());
 
-    ASSERT_EQ(cloned.Symbols().NameFor(decls[0]->As<ast::Alias>()->name), "inserted_before_F");
-    ASSERT_EQ(cloned.Symbols().NameFor(decls[2]->As<ast::Alias>()->name), "inserted_before_A");
-    ASSERT_EQ(cloned.Symbols().NameFor(decls[4]->As<ast::Alias>()->name), "inserted_before_V");
+    ASSERT_EQ(cloned.Symbols().NameFor(decls[0]->As<ast::Alias>()->name->symbol),
+              "inserted_before_F");
+    ASSERT_EQ(cloned.Symbols().NameFor(decls[2]->As<ast::Alias>()->name->symbol),
+              "inserted_before_A");
+    ASSERT_EQ(cloned.Symbols().NameFor(decls[4]->As<ast::Alias>()->name->symbol),
+              "inserted_before_V");
 }
 
 TEST_F(ModuleTest, Directives) {
     auto* enable_1 = Enable(ast::Extension::kF16);
-    auto* diagnostic_1 = DiagnosticDirective(DiagnosticSeverity::kWarning, Expr("foo"));
+    auto* diagnostic_1 = DiagnosticDirective(DiagnosticSeverity::kWarning, "foo");
     auto* enable_2 = Enable(ast::Extension::kChromiumExperimentalFullPtrParameters);
-    auto* diagnostic_2 = DiagnosticDirective(DiagnosticSeverity::kOff, Expr("bar"));
+    auto* diagnostic_2 = DiagnosticDirective(DiagnosticSeverity::kOff, "bar");
 
     this->SetResolveOnBuild(false);
     Program program(std::move(*this));
@@ -149,10 +152,10 @@ TEST_F(ModuleTest, Directives) {
                                              enable_1,
                                              enable_2,
                                          }));
-    EXPECT_THAT(program.AST().DiagnosticControls(), ::testing::ContainerEq(utils::Vector{
-                                                        diagnostic_1,
-                                                        diagnostic_2,
-                                                    }));
+    EXPECT_THAT(program.AST().DiagnosticDirectives(), ::testing::ContainerEq(utils::Vector{
+                                                          diagnostic_1,
+                                                          diagnostic_2,
+                                                      }));
 }
 
 }  // namespace
