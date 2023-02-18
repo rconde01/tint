@@ -277,6 +277,7 @@ libtint_source_set("libtint_program_src") {
   deps = [
     ":libtint_ast_hdrs",
     ":libtint_base_src",
+    ":libtint_builtins_src",
     ":libtint_constant_src",
     ":libtint_sem_src",
     ":libtint_text_src",
@@ -310,6 +311,7 @@ libtint_source_set("libtint_inspector_src") {
   deps = [
     ":libtint_ast_src",
     ":libtint_base_src",
+    ":libtint_builtins_src",
     ":libtint_program_src",
     ":libtint_sem_src",
     ":libtint_type_src",
@@ -431,6 +433,7 @@ libtint_source_set("libtint_transform_src") {
   deps = [
     ":libtint_ast_src",
     ":libtint_base_src",
+    ":libtint_builtins_src",
     ":libtint_program_src",
     ":libtint_sem_src",
     ":libtint_text_src",
@@ -452,7 +455,6 @@ libtint_source_set("libtint_ast_hdrs") {
     "ast/break_if_statement.h",
     "ast/break_statement.h",
     "ast/builtin_attribute.h",
-    "ast/builtin_value.h",
     "ast/call_expression.h",
     "ast/call_statement.h",
     "ast/case_selector.h",
@@ -468,7 +470,6 @@ libtint_source_set("libtint_ast_hdrs") {
     "ast/discard_statement.h",
     "ast/enable.h",
     "ast/expression.h",
-    "ast/extension.h",
     "ast/float_literal_expression.h",
     "ast/for_loop_statement.h",
     "ast/function.h",
@@ -519,6 +520,7 @@ libtint_source_set("libtint_ast_hdrs") {
   ]
   deps = [
     ":libtint_base_src",
+    ":libtint_builtins_src",
     ":libtint_clone_context_hdrs",
     ":libtint_type_src",
   ]
@@ -538,7 +540,6 @@ libtint_source_set("libtint_ast_src") {
     "ast/break_if_statement.cc",
     "ast/break_statement.cc",
     "ast/builtin_attribute.cc",
-    "ast/builtin_value.cc",
     "ast/call_expression.cc",
     "ast/call_statement.cc",
     "ast/case_selector.cc",
@@ -554,7 +555,6 @@ libtint_source_set("libtint_ast_src") {
     "ast/discard_statement.cc",
     "ast/enable.cc",
     "ast/expression.cc",
-    "ast/extension.cc",
     "ast/float_literal_expression.cc",
     "ast/for_loop_statement.cc",
     "ast/function.cc",
@@ -685,9 +685,20 @@ libtint_source_set("libtint_sem_src") {
   deps = [
     ":libtint_ast_hdrs",
     ":libtint_base_src",
+    ":libtint_builtins_src",
     ":libtint_constant_src",
     ":libtint_type_src",
   ]
+}
+
+libtint_source_set("libtint_builtins_src") {
+  sources = [
+    "builtin/builtin_value.cc",
+    "builtin/builtin_value.h",
+    "builtin/extension.cc",
+    "builtin/extension.h",
+  ]
+  deps = [ ":libtint_base_src" ]
 }
 
 libtint_source_set("libtint_type_src") {
@@ -826,6 +837,7 @@ libtint_source_set("libtint_spv_reader_src") {
   deps = [
     ":libtint_ast_src",
     ":libtint_base_src",
+    ":libtint_builtins_src",
     ":libtint_program_src",
     ":libtint_reader_src",
     ":libtint_sem_src",
@@ -861,6 +873,7 @@ libtint_source_set("libtint_writer_src") {
   deps = [
     ":libtint_ast_src",
     ":libtint_base_src",
+    ":libtint_builtins_src",
     ":libtint_inspector_src",
     ":libtint_program_src",
     ":libtint_sem_src",
@@ -1212,7 +1225,6 @@ if (tint_build_unittests) {
       "ast/builtin_attribute_test.cc",
       "ast/builtin_texture_helper_test.cc",
       "ast/builtin_texture_helper_test.h",
-      "ast/builtin_value_test.cc",
       "ast/call_expression_test.cc",
       "ast/call_statement_test.cc",
       "ast/case_selector_test.cc",
@@ -1225,7 +1237,6 @@ if (tint_build_unittests) {
       "ast/diagnostic_directive_test.cc",
       "ast/discard_statement_test.cc",
       "ast/enable_test.cc",
-      "ast/extension_test.cc",
       "ast/float_literal_expression_test.cc",
       "ast/for_loop_statement_test.cc",
       "ast/function_test.cc",
@@ -1272,6 +1283,14 @@ if (tint_build_unittests) {
       # This AST test relies on the WGSL reader and writer
       sources += [ "ast/module_clone_test.cc" ]
     }
+  }
+
+  tint_unittests_source_set("tint_unittests_builtins_src") {
+    sources = [
+      "builtin/builtin_value_test.cc",
+      "builtin/extension_test.cc",
+    ]
+    deps = [ ":libtint_builtins_src" ]
   }
 
   tint_unittests_source_set("tint_unittests_diagnostic_src") {
@@ -1361,6 +1380,7 @@ if (tint_build_unittests) {
     ]
     deps = [
       ":libtint_base_src",
+      ":libtint_builtins_src",
       ":libtint_transform_src",
       ":tint_unittests_ast_src",
     ]
@@ -1614,6 +1634,7 @@ if (tint_build_unittests) {
 
     deps = [
       ":libtint_base_src",
+      ":libtint_builtins_src",
       ":libtint_spv_writer_src",
       ":tint_unittests_ast_src",
       "${tint_spirv_tools_dir}/:spvtools",
@@ -1632,14 +1653,12 @@ if (tint_build_unittests) {
       "reader/wgsl/parser_impl_break_stmt_test.cc",
       "reader/wgsl/parser_impl_bug_cases_test.cc",
       "reader/wgsl/parser_impl_call_stmt_test.cc",
-      "reader/wgsl/parser_impl_callable_test.cc",
       "reader/wgsl/parser_impl_case_body_test.cc",
       "reader/wgsl/parser_impl_compound_stmt_test.cc",
       "reader/wgsl/parser_impl_const_literal_test.cc",
       "reader/wgsl/parser_impl_continue_stmt_test.cc",
       "reader/wgsl/parser_impl_continuing_stmt_test.cc",
       "reader/wgsl/parser_impl_core_lhs_expression_test.cc",
-      "reader/wgsl/parser_impl_depth_texture_test.cc",
       "reader/wgsl/parser_impl_diagnostic_attribute_test.cc",
       "reader/wgsl/parser_impl_diagnostic_control_test.cc",
       "reader/wgsl/parser_impl_diagnostic_directive_test.cc",
@@ -1648,7 +1667,6 @@ if (tint_build_unittests) {
       "reader/wgsl/parser_impl_error_msg_test.cc",
       "reader/wgsl/parser_impl_error_resync_test.cc",
       "reader/wgsl/parser_impl_expression_test.cc",
-      "reader/wgsl/parser_impl_external_texture_test.cc",
       "reader/wgsl/parser_impl_for_stmt_test.cc",
       "reader/wgsl/parser_impl_function_attribute_list_test.cc",
       "reader/wgsl/parser_impl_function_attribute_test.cc",
@@ -1668,13 +1686,10 @@ if (tint_build_unittests) {
       "reader/wgsl/parser_impl_primary_expression_test.cc",
       "reader/wgsl/parser_impl_relational_expression_test.cc",
       "reader/wgsl/parser_impl_reserved_keyword_test.cc",
-      "reader/wgsl/parser_impl_sampled_texture_test.cc",
-      "reader/wgsl/parser_impl_sampler_test.cc",
       "reader/wgsl/parser_impl_shift_expression_test.cc",
       "reader/wgsl/parser_impl_singular_expression_test.cc",
       "reader/wgsl/parser_impl_statement_test.cc",
       "reader/wgsl/parser_impl_statements_test.cc",
-      "reader/wgsl/parser_impl_storage_texture_test.cc",
       "reader/wgsl/parser_impl_struct_attribute_decl_test.cc",
       "reader/wgsl/parser_impl_struct_body_decl_test.cc",
       "reader/wgsl/parser_impl_struct_decl_test.cc",
@@ -1686,11 +1701,8 @@ if (tint_build_unittests) {
       "reader/wgsl/parser_impl_test.cc",
       "reader/wgsl/parser_impl_test_helper.cc",
       "reader/wgsl/parser_impl_test_helper.h",
-      "reader/wgsl/parser_impl_texel_format_test.cc",
-      "reader/wgsl/parser_impl_texture_sampler_test.cc",
       "reader/wgsl/parser_impl_type_alias_test.cc",
       "reader/wgsl/parser_impl_type_decl_test.cc",
-      "reader/wgsl/parser_impl_type_decl_without_ident_test.cc",
       "reader/wgsl/parser_impl_unary_expression_test.cc",
       "reader/wgsl/parser_impl_variable_attribute_list_test.cc",
       "reader/wgsl/parser_impl_variable_attribute_test.cc",
@@ -1698,7 +1710,6 @@ if (tint_build_unittests) {
       "reader/wgsl/parser_impl_variable_ident_decl_test.cc",
       "reader/wgsl/parser_impl_variable_qualifier_test.cc",
       "reader/wgsl/parser_impl_variable_stmt_test.cc",
-      "reader/wgsl/parser_impl_vec_mat_prefix_test.cc",
       "reader/wgsl/parser_impl_while_stmt_test.cc",
       "reader/wgsl/parser_test.cc",
       "reader/wgsl/token_test.cc",
@@ -1931,6 +1942,7 @@ if (tint_build_unittests) {
       ":libtint_wgsl_writer_src",
       ":tint_unittests_ast_src",
       ":tint_unittests_base_src",
+      ":tint_unittests_builtins_src",
       ":tint_unittests_constant_src",
       ":tint_unittests_core_src",
       ":tint_unittests_demangler_src",
