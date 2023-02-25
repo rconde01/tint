@@ -16,6 +16,7 @@
 #include "src/tint/ast/location_attribute.h"
 #include "src/tint/ast/return_statement.h"
 #include "src/tint/ast/stage_attribute.h"
+#include "src/tint/builtin/builtin_value.h"
 #include "src/tint/resolver/resolver.h"
 #include "src/tint/resolver/resolver_test_helper.h"
 
@@ -94,7 +95,7 @@ TEST_F(ResolverEntryPointValidationTest, ReturnTypeAttribute_Missing) {
          });
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), "12:34 error: missing entry point IO attribute on return type");
+    EXPECT_EQ(r()->error(), R"(12:34 error: missing entry point IO attribute on return type)");
 }
 
 TEST_F(ResolverEntryPointValidationTest, ReturnTypeAttribute_Multiple) {
@@ -116,7 +117,7 @@ TEST_F(ResolverEntryPointValidationTest, ReturnTypeAttribute_Multiple) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(), R"(14:52 error: multiple entry point IO attributes
-13:43 note: previously consumed location(0))");
+13:43 note: previously consumed @location)");
 }
 
 TEST_F(ResolverEntryPointValidationTest, ReturnType_Struct_Valid) {
@@ -170,7 +171,7 @@ TEST_F(ResolverEntryPointValidationTest, ReturnType_Struct_MemberMultipleAttribu
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(), R"(14:52 error: multiple entry point IO attributes
-13:43 note: previously consumed location(0)
+13:43 note: previously consumed @location
 12:34 note: while analyzing entry point 'main')");
 }
 
@@ -226,9 +227,8 @@ TEST_F(ResolverEntryPointValidationTest, ReturnType_Struct_DuplicateBuiltins) {
          });
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(
-        r()->error(),
-        R"(12:34 error: builtin(frag_depth) attribute appears multiple times as pipeline output
+    EXPECT_EQ(r()->error(),
+              R"(12:34 error: @builtin(frag_depth) appears multiple times as pipeline output
 12:34 note: while analyzing entry point 'main')");
 }
 
@@ -265,7 +265,7 @@ TEST_F(ResolverEntryPointValidationTest, ParameterAttribute_Missing) {
          });
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), "13:43 error: missing entry point IO attribute on parameter");
+    EXPECT_EQ(r()->error(), R"(13:43 error: missing entry point IO attribute on parameter)");
 }
 
 TEST_F(ResolverEntryPointValidationTest, ParameterAttribute_Multiple) {
@@ -287,7 +287,7 @@ TEST_F(ResolverEntryPointValidationTest, ParameterAttribute_Multiple) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(), R"(14:52 error: multiple entry point IO attributes
-13:43 note: previously consumed location(0))");
+13:43 note: previously consumed @location)");
 }
 
 TEST_F(ResolverEntryPointValidationTest, Parameter_Struct_Valid) {
@@ -341,7 +341,7 @@ TEST_F(ResolverEntryPointValidationTest, Parameter_Struct_MemberMultipleAttribut
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(), R"(14:52 error: multiple entry point IO attributes
-13:43 note: previously consumed location(0)
+13:43 note: previously consumed @location
 12:34 note: while analyzing entry point 'main')");
 }
 
@@ -396,8 +396,7 @@ TEST_F(ResolverEntryPointValidationTest, Parameter_DuplicateBuiltins) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: builtin(sample_index) attribute appears multiple times as "
-              "pipeline input");
+              "12:34 error: @builtin(sample_index) appears multiple times as pipeline input");
 }
 
 TEST_F(ResolverEntryPointValidationTest, Parameter_Struct_DuplicateBuiltins) {
@@ -432,9 +431,8 @@ TEST_F(ResolverEntryPointValidationTest, Parameter_Struct_DuplicateBuiltins) {
          });
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(
-        r()->error(),
-        R"(12:34 error: builtin(sample_index) attribute appears multiple times as pipeline input
+    EXPECT_EQ(r()->error(),
+              R"(12:34 error: @builtin(sample_index) appears multiple times as pipeline input
 12:34 note: while analyzing entry point 'main')");
 }
 
@@ -456,14 +454,14 @@ TEST_F(ResolverEntryPointValidationTest, PushConstantAllowedWithEnable) {
     // enable chromium_experimental_push_constant;
     // var<push_constant> a : u32;
     Enable(builtin::Extension::kChromiumExperimentalPushConstant);
-    GlobalVar("a", ty.u32(), type::AddressSpace::kPushConstant);
+    GlobalVar("a", ty.u32(), builtin::AddressSpace::kPushConstant);
 
     EXPECT_TRUE(r()->Resolve());
 }
 
 TEST_F(ResolverEntryPointValidationTest, PushConstantDisallowedWithoutEnable) {
     // var<push_constant> a : u32;
-    GlobalVar(Source{{1, 2}}, "a", ty.u32(), type::AddressSpace::kPushConstant);
+    GlobalVar(Source{{1, 2}}, "a", ty.u32(), builtin::AddressSpace::kPushConstant);
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
@@ -473,7 +471,7 @@ TEST_F(ResolverEntryPointValidationTest, PushConstantDisallowedWithoutEnable) {
 
 TEST_F(ResolverEntryPointValidationTest, PushConstantAllowedWithIgnoreAddressSpaceAttribute) {
     // var<push_constant> a : u32; // With ast::DisabledValidation::kIgnoreAddressSpace
-    GlobalVar("a", ty.u32(), type::AddressSpace::kPushConstant,
+    GlobalVar("a", ty.u32(), builtin::AddressSpace::kPushConstant,
               utils::Vector{Disable(ast::DisabledValidation::kIgnoreAddressSpace)});
 
     EXPECT_TRUE(r()->Resolve());
@@ -486,7 +484,7 @@ TEST_F(ResolverEntryPointValidationTest, PushConstantOneVariableUsedInEntryPoint
     //   _ = a;
     // }
     Enable(builtin::Extension::kChromiumExperimentalPushConstant);
-    GlobalVar("a", ty.u32(), type::AddressSpace::kPushConstant);
+    GlobalVar("a", ty.u32(), builtin::AddressSpace::kPushConstant);
 
     Func("main", {}, ty.void_(), utils::Vector{Assign(Phony(), "a")},
          utils::Vector{Stage(ast::PipelineStage::kCompute),
@@ -504,8 +502,8 @@ TEST_F(ResolverEntryPointValidationTest, PushConstantTwoVariablesUsedInEntryPoin
     //   _ = b;
     // }
     Enable(builtin::Extension::kChromiumExperimentalPushConstant);
-    GlobalVar(Source{{1, 2}}, "a", ty.u32(), type::AddressSpace::kPushConstant);
-    GlobalVar(Source{{3, 4}}, "b", ty.u32(), type::AddressSpace::kPushConstant);
+    GlobalVar(Source{{1, 2}}, "a", ty.u32(), builtin::AddressSpace::kPushConstant);
+    GlobalVar(Source{{3, 4}}, "b", ty.u32(), builtin::AddressSpace::kPushConstant);
 
     Func(Source{{5, 6}}, "main", {}, ty.void_(),
          utils::Vector{Assign(Phony(), "a"), Assign(Phony(), "b")},
@@ -535,8 +533,8 @@ TEST_F(ResolverEntryPointValidationTest,
     //   uses_b();
     // }
     Enable(builtin::Extension::kChromiumExperimentalPushConstant);
-    GlobalVar(Source{{1, 2}}, "a", ty.u32(), type::AddressSpace::kPushConstant);
-    GlobalVar(Source{{3, 4}}, "b", ty.u32(), type::AddressSpace::kPushConstant);
+    GlobalVar(Source{{1, 2}}, "a", ty.u32(), builtin::AddressSpace::kPushConstant);
+    GlobalVar(Source{{3, 4}}, "b", ty.u32(), builtin::AddressSpace::kPushConstant);
 
     Func(Source{{5, 6}}, "uses_a", {}, ty.void_(), utils::Vector{Assign(Phony(), "a")});
     Func(Source{{7, 8}}, "uses_b", {}, ty.void_(), utils::Vector{Assign(Phony(), "b")});
@@ -568,8 +566,8 @@ TEST_F(ResolverEntryPointValidationTest, PushConstantTwoVariablesUsedInDifferent
     //   _ = a;
     // }
     Enable(builtin::Extension::kChromiumExperimentalPushConstant);
-    GlobalVar("a", ty.u32(), type::AddressSpace::kPushConstant);
-    GlobalVar("b", ty.u32(), type::AddressSpace::kPushConstant);
+    GlobalVar("a", ty.u32(), builtin::AddressSpace::kPushConstant);
+    GlobalVar("b", ty.u32(), builtin::AddressSpace::kPushConstant);
 
     Func("uses_a", {}, ty.void_(), utils::Vector{Assign(Phony(), "a")},
          utils::Vector{Stage(ast::PipelineStage::kCompute),
@@ -785,10 +783,8 @@ TEST_F(LocationAttributeTests, BadType_Input_bool) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: cannot apply 'location' attribute to declaration of "
-              "type 'bool'\n"
-              "34:56 note: 'location' attribute must only be applied to "
-              "declarations of numeric scalar or numeric vector type");
+              R"(12:34 error: cannot apply @location to declaration of type 'bool'
+34:56 note: @location must only be applied to declarations of numeric scalar or numeric vector type)");
 }
 
 TEST_F(LocationAttributeTests, BadType_Output_Array) {
@@ -808,10 +804,8 @@ TEST_F(LocationAttributeTests, BadType_Output_Array) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: cannot apply 'location' attribute to declaration of "
-              "type 'array<f32, 2>'\n"
-              "34:56 note: 'location' attribute must only be applied to "
-              "declarations of numeric scalar or numeric vector type");
+              R"(12:34 error: cannot apply @location to declaration of type 'array<f32, 2>'
+34:56 note: @location must only be applied to declarations of numeric scalar or numeric vector type)");
 }
 
 TEST_F(LocationAttributeTests, BadType_Input_Struct) {
@@ -838,10 +832,8 @@ TEST_F(LocationAttributeTests, BadType_Input_Struct) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: cannot apply 'location' attribute to declaration of "
-              "type 'Input'\n"
-              "13:43 note: 'location' attribute must only be applied to "
-              "declarations of numeric scalar or numeric vector type");
+              R"(12:34 error: cannot apply @location to declaration of type 'Input'
+13:43 note: @location must only be applied to declarations of numeric scalar or numeric vector type)");
 }
 
 TEST_F(LocationAttributeTests, BadType_Input_Struct_NestedStruct) {
@@ -872,8 +864,8 @@ TEST_F(LocationAttributeTests, BadType_Input_Struct_NestedStruct) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "14:52 error: nested structures cannot be used for entry point IO\n"
-              "12:34 note: while analyzing entry point 'main'");
+              R"(14:52 error: nested structures cannot be used for entry point IO
+12:34 note: while analyzing entry point 'main')");
 }
 
 TEST_F(LocationAttributeTests, BadType_Input_Struct_RuntimeArray) {
@@ -898,10 +890,8 @@ TEST_F(LocationAttributeTests, BadType_Input_Struct_RuntimeArray) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "13:43 error: cannot apply 'location' attribute to declaration of "
-              "type 'array<f32>'\n"
-              "note: 'location' attribute must only be applied to declarations "
-              "of numeric scalar or numeric vector type");
+              R"(13:43 error: cannot apply @location to declaration of type 'array<f32>'
+note: @location must only be applied to declarations of numeric scalar or numeric vector type)");
 }
 
 TEST_F(LocationAttributeTests, BadMemberType_Input) {
@@ -927,10 +917,8 @@ TEST_F(LocationAttributeTests, BadMemberType_Input) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "34:56 error: cannot apply 'location' attribute to declaration of "
-              "type 'array<i32>'\n"
-              "12:34 note: 'location' attribute must only be applied to "
-              "declarations of numeric scalar or numeric vector type");
+              R"(34:56 error: cannot apply @location to declaration of type 'array<i32>'
+12:34 note: @location must only be applied to declarations of numeric scalar or numeric vector type)");
 }
 
 TEST_F(LocationAttributeTests, BadMemberType_Output) {
@@ -954,10 +942,8 @@ TEST_F(LocationAttributeTests, BadMemberType_Output) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "34:56 error: cannot apply 'location' attribute to declaration of "
-              "type 'atomic<i32>'\n"
-              "12:34 note: 'location' attribute must only be applied to "
-              "declarations of numeric scalar or numeric vector type");
+              R"(34:56 error: cannot apply @location to declaration of type 'atomic<i32>'
+12:34 note: @location must only be applied to declarations of numeric scalar or numeric vector type)");
 }
 
 TEST_F(LocationAttributeTests, BadMemberType_Unused) {
@@ -971,10 +957,8 @@ TEST_F(LocationAttributeTests, BadMemberType_Unused) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "34:56 error: cannot apply 'location' attribute to declaration of "
-              "type 'mat3x2<f32>'\n"
-              "12:34 note: 'location' attribute must only be applied to "
-              "declarations of numeric scalar or numeric vector type");
+              R"(34:56 error: cannot apply @location to declaration of type 'mat3x2<f32>'
+12:34 note: @location must only be applied to declarations of numeric scalar or numeric vector type)");
 }
 
 TEST_F(LocationAttributeTests, ReturnType_Struct_Valid) {
@@ -1026,11 +1010,8 @@ TEST_F(LocationAttributeTests, ReturnType_Struct) {
          });
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              "12:34 error: cannot apply 'location' attribute to declaration of "
-              "type 'Output'\n"
-              "13:43 note: 'location' attribute must only be applied to "
-              "declarations of numeric scalar or numeric vector type");
+    EXPECT_EQ(r()->error(), R"(12:34 error: cannot apply @location to declaration of type 'Output'
+13:43 note: @location must only be applied to declarations of numeric scalar or numeric vector type)");
 }
 
 TEST_F(LocationAttributeTests, ReturnType_Struct_NestedStruct) {
@@ -1059,8 +1040,8 @@ TEST_F(LocationAttributeTests, ReturnType_Struct_NestedStruct) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "14:52 error: nested structures cannot be used for entry point IO\n"
-              "12:34 note: while analyzing entry point 'main'");
+              R"(14:52 error: nested structures cannot be used for entry point IO
+12:34 note: while analyzing entry point 'main')");
 }
 
 TEST_F(LocationAttributeTests, ReturnType_Struct_RuntimeArray) {
@@ -1085,10 +1066,8 @@ TEST_F(LocationAttributeTests, ReturnType_Struct_RuntimeArray) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "13:43 error: cannot apply 'location' attribute to declaration of "
-              "type 'array<f32>'\n"
-              "12:34 note: 'location' attribute must only be applied to "
-              "declarations of numeric scalar or numeric vector type");
+              R"(13:43 error: cannot apply @location to declaration of type 'array<f32>'
+12:34 note: @location must only be applied to declarations of numeric scalar or numeric vector type)");
 }
 
 TEST_F(LocationAttributeTests, ComputeShaderLocation_Input) {
@@ -1105,7 +1084,7 @@ TEST_F(LocationAttributeTests, ComputeShaderLocation_Input) {
          });
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), "12:34 error: attribute is not valid for compute shader output");
+    EXPECT_EQ(r()->error(), R"(12:34 error: attribute is not valid for compute shader output)");
 }
 
 TEST_F(LocationAttributeTests, ComputeShaderLocation_Output) {
@@ -1120,7 +1099,7 @@ TEST_F(LocationAttributeTests, ComputeShaderLocation_Output) {
          });
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), "12:34 error: attribute is not valid for compute shader inputs");
+    EXPECT_EQ(r()->error(), R"(12:34 error: attribute is not valid for compute shader inputs)");
 }
 
 TEST_F(LocationAttributeTests, ComputeShaderLocationStructMember_Output) {
@@ -1186,7 +1165,7 @@ TEST_F(LocationAttributeTests, Duplicate_input) {
          });
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), "12:34 error: location(1) attribute appears multiple times");
+    EXPECT_EQ(r()->error(), R"(12:34 error: @location(1) appears multiple times)");
 }
 
 TEST_F(LocationAttributeTests, Duplicate_struct) {
@@ -1219,8 +1198,8 @@ TEST_F(LocationAttributeTests, Duplicate_struct) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "34:56 error: location(1) attribute appears multiple times\n"
-              "12:34 note: while analyzing entry point 'main'");
+              R"(34:56 error: @location(1) appears multiple times
+12:34 note: while analyzing entry point 'main')");
 }
 
 }  // namespace

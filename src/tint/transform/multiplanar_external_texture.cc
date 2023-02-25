@@ -144,7 +144,7 @@ struct MultiplanarExternalTexture::State {
             b.GlobalVar(syms.plane_1, b.ty.sampled_texture(type::TextureDimension::k2d, b.ty.f32()),
                         b.Group(AInt(bps.plane_1.group)), b.Binding(AInt(bps.plane_1.binding)));
             syms.params = b.Symbols().New("ext_tex_params");
-            b.GlobalVar(syms.params, b.ty("ExternalTextureParams"), type::AddressSpace::kUniform,
+            b.GlobalVar(syms.params, b.ty("ExternalTextureParams"), builtin::AddressSpace::kUniform,
                         b.Group(AInt(bps.params.group)), b.Binding(AInt(bps.params.binding)));
 
             // Replace the original texture_external binding with a texture_2d<f32> binding.
@@ -351,8 +351,10 @@ struct MultiplanarExternalTexture::State {
                 single_plane_call = b.Call("textureLoad", "plane0", "coord", 0_a);
                 // textureLoad(plane0, coord, 0);
                 plane_0_call = b.Call("textureLoad", "plane0", "coord", 0_a);
-                // textureLoad(plane1, coord, 0);
-                plane_1_call = b.Call("textureLoad", "plane1", "coord", 0_a);
+                // let coord1 = coord >> 1;
+                stmts.Push(b.Decl(b.Let("coord1", b.Shr("coord", b.vec2<u32>(1_a)))));
+                // textureLoad(plane1, coord1, 0);
+                plane_1_call = b.Call("textureLoad", "plane1", "coord1", 0_a);
                 break;
             default:
                 TINT_ICE(Transform, b.Diagnostics()) << "unhandled builtin: " << call_type;

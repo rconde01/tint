@@ -67,7 +67,6 @@ class LoopStatement;
 class Statement;
 class StructMember;
 class SwitchStatement;
-class TypeInitializer;
 class WhileStatement;
 }  // namespace tint::sem
 namespace tint::type {
@@ -138,22 +137,44 @@ class Resolver {
     /// @returns the resolved type from an expression, or nullptr on error
     type::Type* Type(const ast::Expression* ast);
 
-    /// @returns the call of Expression() cast to a sem::BuiltinEnumExpression<type::AddressSpace>.
-    /// If the sem::Expression is not a sem::BuiltinEnumExpression<type::AddressSpace>, then an
-    /// error diagnostic is raised and nullptr is returned.
-    sem::BuiltinEnumExpression<type::AddressSpace>* AddressSpaceExpression(
+    /// @returns the call of Expression() cast to a
+    /// sem::BuiltinEnumExpression<builtin::AddressSpace>. If the sem::Expression is not a
+    /// sem::BuiltinEnumExpression<builtin::AddressSpace>, then an error diagnostic is raised and
+    /// nullptr is returned.
+    sem::BuiltinEnumExpression<builtin::AddressSpace>* AddressSpaceExpression(
+        const ast::Expression* expr);
+
+    /// @returns the call of Expression() cast to a
+    /// sem::BuiltinEnumExpression<builtin::BuiltinValue>. If the sem::Expression is not a
+    /// sem::BuiltinEnumExpression<builtin::BuiltinValue>, then an error diagnostic is raised and
+    /// nullptr is returned.
+    sem::BuiltinEnumExpression<builtin::BuiltinValue>* BuiltinValueExpression(
         const ast::Expression* expr);
 
     /// @returns the call of Expression() cast to a sem::BuiltinEnumExpression<type::TexelFormat>.
     /// If the sem::Expression is not a sem::BuiltinEnumExpression<type::TexelFormat>, then an error
     /// diagnostic is raised and nullptr is returned.
-    sem::BuiltinEnumExpression<type::TexelFormat>* TexelFormatExpression(
+    sem::BuiltinEnumExpression<builtin::TexelFormat>* TexelFormatExpression(
         const ast::Expression* expr);
 
-    /// @returns the call of Expression() cast to a sem::BuiltinEnumExpression<type::Access>*.
-    /// If the sem::Expression is not a sem::BuiltinEnumExpression<type::Access>*, then an error
+    /// @returns the call of Expression() cast to a sem::BuiltinEnumExpression<builtin::Access>*.
+    /// If the sem::Expression is not a sem::BuiltinEnumExpression<builtin::Access>*, then an error
     /// diagnostic is raised and nullptr is returned.
-    sem::BuiltinEnumExpression<type::Access>* AccessExpression(const ast::Expression* expr);
+    sem::BuiltinEnumExpression<builtin::Access>* AccessExpression(const ast::Expression* expr);
+
+    /// @returns the call of Expression() cast to a
+    /// sem::BuiltinEnumExpression<builtin::InterpolationSampling>*. If the sem::Expression is not a
+    /// sem::BuiltinEnumExpression<builtin::InterpolationSampling>*, then an error diagnostic is
+    /// raised and nullptr is returned.
+    sem::BuiltinEnumExpression<builtin::InterpolationSampling>* InterpolationSampling(
+        const ast::Expression* expr);
+
+    /// @returns the call of Expression() cast to a
+    /// sem::BuiltinEnumExpression<builtin::InterpolationType>*. If the sem::Expression is not a
+    /// sem::BuiltinEnumExpression<builtin::InterpolationType>*, then an error diagnostic is raised
+    /// and nullptr is returned.
+    sem::BuiltinEnumExpression<builtin::InterpolationType>* InterpolationType(
+        const ast::Expression* expr);
 
     /// Expression traverses the graph of expressions starting at `expr`, building a post-ordered
     /// list (leaf-first) of all the expression nodes. Each of the expressions are then resolved by
@@ -288,6 +309,18 @@ class Resolver {
     /// current_function_
     bool WorkgroupSize(const ast::Function*);
 
+    /// Resolves the attribute @p attr
+    /// @returns true on success, false on failure
+    bool Attribute(const ast::Attribute* attr);
+
+    /// Resolves the `@builtin` attribute @p attr
+    /// @returns true on success, false on failure
+    bool BuiltinAttribute(const ast::BuiltinAttribute* attr);
+
+    /// Resolves the `@interpolate` attribute @p attr
+    /// @returns true on success, false on failure
+    bool InterpolateAttribute(const ast::InterpolateAttribute* attr);
+
     /// @param control the diagnostic control
     /// @returns true on success, false on failure
     bool DiagnosticControl(const ast::DiagnosticControl& control);
@@ -401,11 +434,13 @@ class Resolver {
     /// given type and address space. Used for generating sensible error
     /// messages.
     /// @returns true on success, false on error
-    bool ApplyAddressSpaceUsageToType(type::AddressSpace sc, type::Type* ty, const Source& usage);
+    bool ApplyAddressSpaceUsageToType(builtin::AddressSpace sc,
+                                      type::Type* ty,
+                                      const Source& usage);
 
     /// @param address_space the address space
     /// @returns the default access control for the given address space
-    type::Access DefaultAccessForAddressSpace(type::AddressSpace address_space);
+    builtin::Access DefaultAccessForAddressSpace(builtin::AddressSpace address_space);
 
     /// Allocate constant IDs for pipeline-overridable constants.
     /// @returns true on success, false on error
@@ -459,17 +494,17 @@ class Resolver {
 
     /// @returns the type::Type for the builtin type @p builtin_ty with the identifier @p ident
     /// @note: Will raise an ICE if @p symbol is not a builtin type.
-    type::Type* BuiltinType(type::Builtin builtin_ty, const ast::Identifier* ident);
+    type::Type* BuiltinType(builtin::Builtin builtin_ty, const ast::Identifier* ident);
 
-    // ArrayInitializerSig represents a unique array initializer signature.
+    // ArrayConstructorSig represents a unique array constructor signature.
     // It is a tuple of the array type, number of arguments provided and earliest evaluation stage.
-    using ArrayInitializerSig =
+    using ArrayConstructorSig =
         utils::UnorderedKeyWrapper<std::tuple<const type::Array*, size_t, sem::EvaluationStage>>;
 
-    // StructInitializerSig represents a unique structure initializer signature.
+    // StructConstructorSig represents a unique structure constructor signature.
     // It is a tuple of the structure type, number of arguments provided and earliest evaluation
     // stage.
-    using StructInitializerSig =
+    using StructConstructorSig =
         utils::UnorderedKeyWrapper<std::tuple<const sem::Struct*, size_t, sem::EvaluationStage>>;
 
     /// ExprEvalStageConstraint describes a constraint on when expressions can be evaluated.
@@ -494,6 +529,17 @@ class Resolver {
         std::unordered_set<const sem::Variable*> parameter_reads;
     };
 
+    /// A hint for the usage of an identifier expression.
+    /// Used to provide more informative error diagnostics on resolution failure.
+    struct IdentifierResolveHint {
+        /// The expression this hint applies to
+        const ast::Expression* expression = nullptr;
+        /// The usage of the identifier.
+        const char* usage = "identifier";
+        /// Suggested strings if the identifier failed to resolve
+        utils::Slice<char const* const> suggestions = utils::Empty;
+    };
+
     ProgramBuilder* const builder_;
     diag::List& diagnostics_;
     ConstEval const_eval_;
@@ -508,8 +554,8 @@ class Resolver {
     ExprEvalStageConstraint expr_eval_stage_constraint_;
     std::unordered_map<const sem::Function*, AliasAnalysisInfo> alias_analysis_infos_;
     utils::Hashmap<OverrideId, const sem::Variable*, 8> override_ids_;
-    utils::Hashmap<ArrayInitializerSig, sem::CallTarget*, 8> array_inits_;
-    utils::Hashmap<StructInitializerSig, sem::CallTarget*, 8> struct_inits_;
+    utils::Hashmap<ArrayConstructorSig, sem::CallTarget*, 8> array_ctors_;
+    utils::Hashmap<StructConstructorSig, sem::CallTarget*, 8> struct_ctors_;
     sem::Function* current_function_ = nullptr;
     sem::Statement* current_statement_ = nullptr;
     sem::CompoundStatement* current_compound_statement_ = nullptr;
@@ -519,6 +565,7 @@ class Resolver {
     utils::Hashmap<const ast::Expression*, const ast::BinaryExpression*, 8>
         logical_binary_lhs_to_parent_;
     utils::Hashset<const ast::Expression*, 8> skip_const_eval_;
+    IdentifierResolveHint identifier_resolve_hint_;
 };
 
 }  // namespace tint::resolver

@@ -34,8 +34,6 @@
 #include "src/tint/ast/workgroup_attribute.h"
 #include "src/tint/sem/struct.h"
 #include "src/tint/sem/switch_statement.h"
-#include "src/tint/type/access.h"
-#include "src/tint/type/texture_dimension.h"
 #include "src/tint/utils/math.h"
 #include "src/tint/utils/scoped_assignment.h"
 #include "src/tint/writer/float_to_string.h"
@@ -365,33 +363,15 @@ bool GeneratorImpl::EmitFunction(const ast::Function* func) {
     return true;
 }
 
-bool GeneratorImpl::EmitImageFormat(std::ostream& out, const type::TexelFormat fmt) {
+bool GeneratorImpl::EmitImageFormat(std::ostream& out, const builtin::TexelFormat fmt) {
     switch (fmt) {
-        case type::TexelFormat::kUndefined:
+        case builtin::TexelFormat::kUndefined:
             diagnostics_.add_error(diag::System::Writer, "unknown image format");
             return false;
         default:
             out << fmt;
     }
     return true;
-}
-
-bool GeneratorImpl::EmitAccess(std::ostream& out, const type::Access access) {
-    switch (access) {
-        case type::Access::kRead:
-            out << "read";
-            return true;
-        case type::Access::kWrite:
-            out << "write";
-            return true;
-        case type::Access::kReadWrite:
-            out << "read_write";
-            return true;
-        default:
-            break;
-    }
-    diagnostics_.add_error(diag::System::Writer, "unknown access");
-    return false;
 }
 
 bool GeneratorImpl::EmitStructType(const ast::Struct* str) {
@@ -473,17 +453,18 @@ bool GeneratorImpl::EmitVariable(std::ostream& out, const ast::Variable* v) {
         v,  //
         [&](const ast::Var* var) {
             out << "var";
-            auto address_space = var->declared_address_space;
-            auto ac = var->declared_access;
-            if (address_space != type::AddressSpace::kNone || ac != type::Access::kUndefined) {
-                out << "<" << address_space;
-                if (ac != type::Access::kUndefined) {
+            if (var->declared_address_space || var->declared_access) {
+                out << "<";
+                TINT_DEFER(out << ">");
+                if (!EmitExpression(out, var->declared_address_space)) {
+                    return false;
+                }
+                if (var->declared_access) {
                     out << ", ";
-                    if (!EmitAccess(out, ac)) {
+                    if (!EmitExpression(out, var->declared_access)) {
                         return false;
                     }
                 }
-                out << ">";
             }
             return true;
         },
@@ -583,16 +564,26 @@ bool GeneratorImpl::EmitAttributes(std::ostream& out,
                 return true;
             },
             [&](const ast::BuiltinAttribute* builtin) {
-                out << "builtin(" << builtin->builtin << ")";
+                out << "builtin(";
+                if (!EmitExpression(out, builtin->builtin)) {
+                    return false;
+                }
+                out << ")";
                 return true;
             },
             [&](const ast::DiagnosticAttribute* diagnostic) {
                 return EmitDiagnosticControl(out, diagnostic->control);
             },
             [&](const ast::InterpolateAttribute* interpolate) {
-                out << "interpolate(" << interpolate->type;
-                if (interpolate->sampling != ast::InterpolationSampling::kUndefined) {
-                    out << ", " << interpolate->sampling;
+                out << "interpolate(";
+                if (!EmitExpression(out, interpolate->type)) {
+                    return false;
+                }
+                if (interpolate->sampling) {
+                    out << ", ";
+                    if (!EmitExpression(out, interpolate->sampling)) {
+                        return false;
+                    }
                 }
                 out << ")";
                 return true;
@@ -607,6 +598,10 @@ bool GeneratorImpl::EmitAttributes(std::ostream& out,
                     return false;
                 }
                 out << ")";
+                return true;
+            },
+            [&](const ast::MustUseAttribute*) {
+                out << "must_use";
                 return true;
             },
             [&](const ast::StructMemberOffsetAttribute* offset) {

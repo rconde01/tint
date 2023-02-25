@@ -39,7 +39,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, StorageBuffer_UnalignedMember) 
                   Member(Source{{34, 56}}, "b", ty.f32(), utils::Vector{MemberAlign(1_i)}),
               });
 
-    GlobalVar(Source{{78, 90}}, "a", ty("S"), type::AddressSpace::kStorage, Group(0_a),
+    GlobalVar(Source{{78, 90}}, "a", ty("S"), builtin::AddressSpace::kStorage, Group(0_a),
               Binding(0_a));
 
     ASSERT_FALSE(r()->Resolve());
@@ -69,7 +69,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, StorageBuffer_UnalignedMember_S
                   Member(Source{{34, 56}}, "b", ty.f32(), utils::Vector{MemberAlign(4_i)}),
               });
 
-    GlobalVar(Source{{78, 90}}, "a", ty("S"), type::AddressSpace::kStorage, Group(0_a),
+    GlobalVar(Source{{78, 90}}, "a", ty("S"), builtin::AddressSpace::kStorage, Group(0_a),
               Binding(0_a));
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -100,7 +100,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, UniformBuffer_UnalignedMember_S
                   Member(Source{{56, 78}}, "inner", ty("Inner")),
               });
 
-    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), type::AddressSpace::kUniform, Group(0_a),
+    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), builtin::AddressSpace::kUniform, Group(0_a),
               Binding(0_a));
 
     ASSERT_FALSE(r()->Resolve());
@@ -144,7 +144,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest,
                   Member(Source{{56, 78}}, "inner", ty("Inner"), utils::Vector{MemberAlign(16_i)}),
               });
 
-    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), type::AddressSpace::kUniform, Group(0_a),
+    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), builtin::AddressSpace::kUniform, Group(0_a),
               Binding(0_a));
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -169,7 +169,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, UniformBuffer_UnalignedMember_A
                   Member(Source{{56, 78}}, "inner", ty("Inner")),
               });
 
-    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), type::AddressSpace::kUniform, Group(0_a),
+    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), builtin::AddressSpace::kUniform, Group(0_a),
               Binding(0_a));
 
     ASSERT_FALSE(r()->Resolve());
@@ -202,7 +202,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, UniformBuffer_UnalignedMember_A
                   Member(Source{{34, 56}}, "inner", ty("Inner"), utils::Vector{MemberAlign(16_i)}),
               });
 
-    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), type::AddressSpace::kUniform, Group(0_a),
+    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), builtin::AddressSpace::kUniform, Group(0_a),
               Binding(0_a));
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -234,7 +234,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, UniformBuffer_MembersOffsetNotM
                   Member(Source{{78, 90}}, "scalar", ty.i32()),
               });
 
-    GlobalVar(Source{{22, 24}}, "a", ty("Outer"), type::AddressSpace::kUniform, Group(0_a),
+    GlobalVar(Source{{22, 24}}, "a", ty("Outer"), builtin::AddressSpace::kUniform, Group(0_a),
               Binding(0_a));
 
     ASSERT_FALSE(r()->Resolve());
@@ -286,7 +286,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest,
                   Member(Source{{78, 90}}, "scalar", ty.i32()),
               });
 
-    GlobalVar(Source{{22, 24}}, "a", ty("Outer"), type::AddressSpace::kUniform, Group(0_a),
+    GlobalVar(Source{{22, 24}}, "a", ty("Outer"), builtin::AddressSpace::kUniform, Group(0_a),
               Binding(0_a));
 
     ASSERT_FALSE(r()->Resolve());
@@ -334,7 +334,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest,
                   Member(Source{{78, 90}}, "scalar", ty.i32(), utils::Vector{MemberAlign(16_i)}),
               });
 
-    GlobalVar(Source{{22, 34}}, "a", ty("Outer"), type::AddressSpace::kUniform, Group(0_a),
+    GlobalVar(Source{{22, 34}}, "a", ty("Outer"), builtin::AddressSpace::kUniform, Group(0_a),
               Binding(0_a));
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -355,7 +355,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, UniformBuffer_Vec3MemberOffset_
                                              Member("s", ty.f32()),
                                          });
 
-    GlobalVar(Source{{78, 90}}, "a", ty("ScalarPackedAtEndOfVec3"), type::AddressSpace::kUniform,
+    GlobalVar(Source{{78, 90}}, "a", ty("ScalarPackedAtEndOfVec3"), builtin::AddressSpace::kUniform,
               Group(0_a), Binding(0_a));
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -378,7 +378,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, UniformBuffer_Vec3F16MemberOffs
                                              Member("s", ty.f16()),
                                          });
 
-    GlobalVar(Source{{78, 90}}, "a", ty("ScalarPackedAtEndOfVec3"), type::AddressSpace::kUniform,
+    GlobalVar(Source{{78, 90}}, "a", ty("ScalarPackedAtEndOfVec3"), builtin::AddressSpace::kUniform,
               Group(0_a), Binding(0_a));
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -404,13 +404,13 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, UniformBuffer_InvalidArrayStrid
                   Member("scalar", ty.i32()),
               });
 
-    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), type::AddressSpace::kUniform, Group(0_a),
+    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), builtin::AddressSpace::kUniform, Group(0_a),
               Binding(0_a));
 
     ASSERT_FALSE(r()->Resolve());
     EXPECT_EQ(
         r()->error(),
-        R"(34:56 error: uniform storage requires that array elements be aligned to 16 bytes, but array element alignment is currently 4. Consider using a vector or struct as the element type instead.
+        R"(34:56 error: uniform storage requires that array elements are aligned to 16 bytes, but array element of type 'f32' has a stride of 4 bytes. Consider using a vector or struct as the element type instead.
 12:34 note: see layout of struct:
 /*            align(4) size(44) */ struct Outer {
 /* offset( 0) align(4) size(40) */   inner : array<f32, 10>;
@@ -438,13 +438,13 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, UniformBuffer_InvalidArrayStrid
                   Member("scalar", ty.i32()),
               });
 
-    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), type::AddressSpace::kUniform, Group(0_a),
+    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), builtin::AddressSpace::kUniform, Group(0_a),
               Binding(0_a));
 
     ASSERT_FALSE(r()->Resolve());
     EXPECT_EQ(
         r()->error(),
-        R"(34:56 error: uniform storage requires that array elements be aligned to 16 bytes, but array element alignment is currently 8. Consider using a vec4 instead.
+        R"(34:56 error: uniform storage requires that array elements are aligned to 16 bytes, but array element of type 'vec2<f32>' has a stride of 8 bytes. Consider using a vec4 instead.
 12:34 note: see layout of struct:
 /*            align(8) size(88) */ struct Outer {
 /* offset( 0) align(8) size(80) */   inner : array<vec2<f32>, 10>;
@@ -481,13 +481,13 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, UniformBuffer_InvalidArrayStrid
                   Member("scalar", ty.i32()),
               });
 
-    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), type::AddressSpace::kUniform, Group(0_a),
+    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), builtin::AddressSpace::kUniform, Group(0_a),
               Binding(0_a));
 
     ASSERT_FALSE(r()->Resolve());
     EXPECT_EQ(
         r()->error(),
-        R"(34:56 error: uniform storage requires that array elements be aligned to 16 bytes, but array element alignment is currently 8. Consider using the @size attribute on the last struct member.
+        R"(34:56 error: uniform storage requires that array elements are aligned to 16 bytes, but array element of type 'ArrayElem' has a stride of 8 bytes. Consider using the @size attribute on the last struct member.
 12:34 note: see layout of struct:
 /*            align(4) size(84) */ struct Outer {
 /* offset( 0) align(4) size(80) */   inner : array<ArrayElem, 10>;
@@ -500,12 +500,12 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, UniformBuffer_InvalidArrayStrid
     // @group(0) @binding(0)
     // var<uniform> a : array<f32, 4u>;
     GlobalVar(Source{{78, 90}}, "a", ty.array(Source{{34, 56}}, ty.f32(), 4_u),
-              type::AddressSpace::kUniform, Group(0_a), Binding(0_a));
+              builtin::AddressSpace::kUniform, Group(0_a), Binding(0_a));
 
     ASSERT_FALSE(r()->Resolve());
     EXPECT_EQ(
         r()->error(),
-        R"(78:90 error: uniform storage requires that array elements be aligned to 16 bytes, but array element alignment is currently 4. Consider using a vector or struct as the element type instead.)");
+        R"(78:90 error: uniform storage requires that array elements are aligned to 16 bytes, but array element of type 'f32' has a stride of 4 bytes. Consider using a vector or struct as the element type instead.)");
 }
 
 TEST_F(ResolverAddressSpaceLayoutValidationTest, UniformBuffer_InvalidArrayStride_NestedArray) {
@@ -521,13 +521,13 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, UniformBuffer_InvalidArrayStrid
                   Member("inner", ty.array(Source{{34, 56}}, ty.array<f32, 4>(), 4_u)),
               });
 
-    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), type::AddressSpace::kUniform, Group(0_a),
+    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), builtin::AddressSpace::kUniform, Group(0_a),
               Binding(0_a));
 
     ASSERT_FALSE(r()->Resolve());
     EXPECT_EQ(
         r()->error(),
-        R"(34:56 error: uniform storage requires that array elements be aligned to 16 bytes, but array element alignment is currently 4. Consider using a vector or struct as the element type instead.
+        R"(34:56 error: uniform storage requires that array elements are aligned to 16 bytes, but array element of type 'f32' has a stride of 4 bytes. Consider using a vector or struct as the element type instead.
 12:34 note: see layout of struct:
 /*            align(4) size(64) */ struct Outer {
 /* offset( 0) align(4) size(64) */   inner : array<array<f32, 4>, 4>;
@@ -554,7 +554,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, UniformBuffer_InvalidArrayStrid
                   Member("scalar", ty.i32()),
               });
 
-    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), type::AddressSpace::kUniform, Group(0_a),
+    GlobalVar(Source{{78, 90}}, "a", ty("Outer"), builtin::AddressSpace::kUniform, Group(0_a),
               Binding(0_a));
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -573,7 +573,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, PushConstant_UnalignedMember) {
         Source{{12, 34}}, "S",
         utils::Vector{Member("a", ty.f32(), utils::Vector{MemberSize(5_a)}),
                       Member(Source{{34, 56}}, "b", ty.f32(), utils::Vector{MemberAlign(1_i)})});
-    GlobalVar(Source{{78, 90}}, "a", ty("S"), type::AddressSpace::kPushConstant);
+    GlobalVar(Source{{78, 90}}, "a", ty("S"), builtin::AddressSpace::kPushConstant);
 
     ASSERT_FALSE(r()->Resolve());
     EXPECT_EQ(
@@ -598,7 +598,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, PushConstant_Aligned) {
     Enable(builtin::Extension::kChromiumExperimentalPushConstant);
     Structure("S", utils::Vector{Member("a", ty.f32(), utils::Vector{MemberSize(5_a)}),
                                  Member("b", ty.f32(), utils::Vector{MemberAlign(4_i)})});
-    GlobalVar("a", ty("S"), type::AddressSpace::kPushConstant);
+    GlobalVar("a", ty("S"), builtin::AddressSpace::kPushConstant);
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
 }

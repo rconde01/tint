@@ -198,25 +198,25 @@ TEST_P(GlslBuiltinTest, Emit) {
     if (param.type == CallParamType::kF16) {
         Enable(builtin::Extension::kF16);
 
-        GlobalVar("h2", ty.vec2<f16>(), type::AddressSpace::kPrivate);
-        GlobalVar("h3", ty.vec3<f16>(), type::AddressSpace::kPrivate);
-        GlobalVar("hm2x2", ty.mat2x2<f16>(), type::AddressSpace::kPrivate);
-        GlobalVar("hm3x2", ty.mat3x2<f16>(), type::AddressSpace::kPrivate);
+        GlobalVar("h2", ty.vec2<f16>(), builtin::AddressSpace::kPrivate);
+        GlobalVar("h3", ty.vec3<f16>(), builtin::AddressSpace::kPrivate);
+        GlobalVar("hm2x2", ty.mat2x2<f16>(), builtin::AddressSpace::kPrivate);
+        GlobalVar("hm3x2", ty.mat3x2<f16>(), builtin::AddressSpace::kPrivate);
     }
 
-    GlobalVar("f2", ty.vec2<f32>(), type::AddressSpace::kPrivate);
-    GlobalVar("f3", ty.vec3<f32>(), type::AddressSpace::kPrivate);
-    GlobalVar("u2", ty.vec2<u32>(), type::AddressSpace::kPrivate);
-    GlobalVar("i2", ty.vec2<i32>(), type::AddressSpace::kPrivate);
-    GlobalVar("b2", ty.vec2<bool>(), type::AddressSpace::kPrivate);
-    GlobalVar("m2x2", ty.mat2x2<f32>(), type::AddressSpace::kPrivate);
-    GlobalVar("m3x2", ty.mat3x2<f32>(), type::AddressSpace::kPrivate);
+    GlobalVar("f2", ty.vec2<f32>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("f3", ty.vec3<f32>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("u2", ty.vec2<u32>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("i2", ty.vec2<i32>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("b2", ty.vec2<bool>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("m2x2", ty.mat2x2<f32>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("m3x2", ty.mat3x2<f32>(), builtin::AddressSpace::kPrivate);
 
     auto* call = GenerateCall(param.builtin, param.type, this);
     ASSERT_NE(nullptr, call) << "Unhandled builtin";
     Func("func", utils::Empty, ty.void_(),
          utils::Vector{
-             CallStmt(call),
+             Assign(Phony(), call),
          },
          utils::Vector{create<ast::StageAttribute>(ast::PipelineStage::kFragment)});
 
@@ -342,10 +342,10 @@ INSTANTIATE_TEST_SUITE_P(
 TEST_F(GlslGeneratorImplTest_Builtin, Builtin_Call) {
     auto* call = Call("dot", "param1", "param2");
 
-    GlobalVar("param1", ty.vec3<f32>(), type::AddressSpace::kPrivate);
-    GlobalVar("param2", ty.vec3<f32>(), type::AddressSpace::kPrivate);
+    GlobalVar("param1", ty.vec3<f32>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("param2", ty.vec3<f32>(), builtin::AddressSpace::kPrivate);
 
-    WrapInFunction(CallStmt(call));
+    WrapInFunction(Decl(Var("r", call)));
 
     GeneratorImpl& gen = Build();
 
@@ -356,10 +356,10 @@ TEST_F(GlslGeneratorImplTest_Builtin, Builtin_Call) {
 }
 
 TEST_F(GlslGeneratorImplTest_Builtin, Select_Scalar) {
-    GlobalVar("a", Expr(1_f), type::AddressSpace::kPrivate);
-    GlobalVar("b", Expr(2_f), type::AddressSpace::kPrivate);
+    GlobalVar("a", Expr(1_f), builtin::AddressSpace::kPrivate);
+    GlobalVar("b", Expr(2_f), builtin::AddressSpace::kPrivate);
     auto* call = Call("select", "a", "b", true);
-    WrapInFunction(CallStmt(call));
+    WrapInFunction(Decl(Var("r", call)));
     GeneratorImpl& gen = Build();
 
     gen.increment_indent();
@@ -369,10 +369,10 @@ TEST_F(GlslGeneratorImplTest_Builtin, Select_Scalar) {
 }
 
 TEST_F(GlslGeneratorImplTest_Builtin, Select_Vector) {
-    GlobalVar("a", vec2<i32>(1_i, 2_i), type::AddressSpace::kPrivate);
-    GlobalVar("b", vec2<i32>(3_i, 4_i), type::AddressSpace::kPrivate);
+    GlobalVar("a", vec2<i32>(1_i, 2_i), builtin::AddressSpace::kPrivate);
+    GlobalVar("b", vec2<i32>(3_i, 4_i), builtin::AddressSpace::kPrivate);
     auto* call = Call("select", "a", "b", vec2<bool>(true, false));
-    WrapInFunction(CallStmt(call));
+    WrapInFunction(Decl(Var("r", call)));
     GeneratorImpl& gen = Build();
 
     gen.increment_indent();
@@ -384,11 +384,11 @@ TEST_F(GlslGeneratorImplTest_Builtin, Select_Vector) {
 TEST_F(GlslGeneratorImplTest_Builtin, FMA_f32) {
     auto* call = Call("fma", "a", "b", "c");
 
-    GlobalVar("a", ty.vec3<f32>(), type::AddressSpace::kPrivate);
-    GlobalVar("b", ty.vec3<f32>(), type::AddressSpace::kPrivate);
-    GlobalVar("c", ty.vec3<f32>(), type::AddressSpace::kPrivate);
+    GlobalVar("a", ty.vec3<f32>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("b", ty.vec3<f32>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("c", ty.vec3<f32>(), builtin::AddressSpace::kPrivate);
 
-    WrapInFunction(CallStmt(call));
+    WrapInFunction(Decl(Var("r", call)));
 
     GeneratorImpl& gen = Build();
 
@@ -401,12 +401,12 @@ TEST_F(GlslGeneratorImplTest_Builtin, FMA_f32) {
 TEST_F(GlslGeneratorImplTest_Builtin, FMA_f16) {
     Enable(builtin::Extension::kF16);
 
-    GlobalVar("a", ty.vec3<f16>(), type::AddressSpace::kPrivate);
-    GlobalVar("b", ty.vec3<f16>(), type::AddressSpace::kPrivate);
-    GlobalVar("c", ty.vec3<f16>(), type::AddressSpace::kPrivate);
+    GlobalVar("a", ty.vec3<f16>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("b", ty.vec3<f16>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("c", ty.vec3<f16>(), builtin::AddressSpace::kPrivate);
 
     auto* call = Call("fma", "a", "b", "c");
-    WrapInFunction(CallStmt(call));
+    WrapInFunction(Decl(Var("r", call)));
 
     GeneratorImpl& gen = Build();
 
@@ -1226,8 +1226,8 @@ void main() {
 
 TEST_F(GlslGeneratorImplTest_Builtin, Pack4x8Snorm) {
     auto* call = Call("pack4x8snorm", "p1");
-    GlobalVar("p1", ty.vec4<f32>(), type::AddressSpace::kPrivate);
-    WrapInFunction(CallStmt(call));
+    GlobalVar("p1", ty.vec4<f32>(), builtin::AddressSpace::kPrivate);
+    WrapInFunction(Decl(Var("r", call)));
     GeneratorImpl& gen = Build();
 
     ASSERT_TRUE(gen.Generate()) << gen.error();
@@ -1236,7 +1236,7 @@ TEST_F(GlslGeneratorImplTest_Builtin, Pack4x8Snorm) {
 vec4 p1 = vec4(0.0f, 0.0f, 0.0f, 0.0f);
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 void test_function() {
-  packSnorm4x8(p1);
+  uint r = packSnorm4x8(p1);
   return;
 }
 )");
@@ -1244,8 +1244,8 @@ void test_function() {
 
 TEST_F(GlslGeneratorImplTest_Builtin, Pack4x8Unorm) {
     auto* call = Call("pack4x8unorm", "p1");
-    GlobalVar("p1", ty.vec4<f32>(), type::AddressSpace::kPrivate);
-    WrapInFunction(CallStmt(call));
+    GlobalVar("p1", ty.vec4<f32>(), builtin::AddressSpace::kPrivate);
+    WrapInFunction(Decl(Var("r", call)));
     GeneratorImpl& gen = Build();
 
     ASSERT_TRUE(gen.Generate()) << gen.error();
@@ -1254,7 +1254,7 @@ TEST_F(GlslGeneratorImplTest_Builtin, Pack4x8Unorm) {
 vec4 p1 = vec4(0.0f, 0.0f, 0.0f, 0.0f);
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 void test_function() {
-  packUnorm4x8(p1);
+  uint r = packUnorm4x8(p1);
   return;
 }
 )");
@@ -1262,8 +1262,8 @@ void test_function() {
 
 TEST_F(GlslGeneratorImplTest_Builtin, Pack2x16Snorm) {
     auto* call = Call("pack2x16snorm", "p1");
-    GlobalVar("p1", ty.vec2<f32>(), type::AddressSpace::kPrivate);
-    WrapInFunction(CallStmt(call));
+    GlobalVar("p1", ty.vec2<f32>(), builtin::AddressSpace::kPrivate);
+    WrapInFunction(Decl(Var("r", call)));
     GeneratorImpl& gen = Build();
 
     ASSERT_TRUE(gen.Generate()) << gen.error();
@@ -1272,7 +1272,7 @@ TEST_F(GlslGeneratorImplTest_Builtin, Pack2x16Snorm) {
 vec2 p1 = vec2(0.0f, 0.0f);
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 void test_function() {
-  packSnorm2x16(p1);
+  uint r = packSnorm2x16(p1);
   return;
 }
 )");
@@ -1280,8 +1280,8 @@ void test_function() {
 
 TEST_F(GlslGeneratorImplTest_Builtin, Pack2x16Unorm) {
     auto* call = Call("pack2x16unorm", "p1");
-    GlobalVar("p1", ty.vec2<f32>(), type::AddressSpace::kPrivate);
-    WrapInFunction(CallStmt(call));
+    GlobalVar("p1", ty.vec2<f32>(), builtin::AddressSpace::kPrivate);
+    WrapInFunction(Decl(Var("r", call)));
     GeneratorImpl& gen = Build();
 
     ASSERT_TRUE(gen.Generate()) << gen.error();
@@ -1290,7 +1290,7 @@ TEST_F(GlslGeneratorImplTest_Builtin, Pack2x16Unorm) {
 vec2 p1 = vec2(0.0f, 0.0f);
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 void test_function() {
-  packUnorm2x16(p1);
+  uint r = packUnorm2x16(p1);
   return;
 }
 )");
@@ -1298,8 +1298,8 @@ void test_function() {
 
 TEST_F(GlslGeneratorImplTest_Builtin, Pack2x16Float) {
     auto* call = Call("pack2x16float", "p1");
-    GlobalVar("p1", ty.vec2<f32>(), type::AddressSpace::kPrivate);
-    WrapInFunction(CallStmt(call));
+    GlobalVar("p1", ty.vec2<f32>(), builtin::AddressSpace::kPrivate);
+    WrapInFunction(Decl(Var("r", call)));
     GeneratorImpl& gen = Build();
 
     ASSERT_TRUE(gen.Generate()) << gen.error();
@@ -1308,7 +1308,7 @@ TEST_F(GlslGeneratorImplTest_Builtin, Pack2x16Float) {
 vec2 p1 = vec2(0.0f, 0.0f);
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 void test_function() {
-  packHalf2x16(p1);
+  uint r = packHalf2x16(p1);
   return;
 }
 )");
@@ -1316,8 +1316,8 @@ void test_function() {
 
 TEST_F(GlslGeneratorImplTest_Builtin, Unpack4x8Snorm) {
     auto* call = Call("unpack4x8snorm", "p1");
-    GlobalVar("p1", ty.u32(), type::AddressSpace::kPrivate);
-    WrapInFunction(CallStmt(call));
+    GlobalVar("p1", ty.u32(), builtin::AddressSpace::kPrivate);
+    WrapInFunction(Decl(Var("r", call)));
     GeneratorImpl& gen = Build();
 
     ASSERT_TRUE(gen.Generate()) << gen.error();
@@ -1326,7 +1326,7 @@ TEST_F(GlslGeneratorImplTest_Builtin, Unpack4x8Snorm) {
 uint p1 = 0u;
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 void test_function() {
-  unpackSnorm4x8(p1);
+  vec4 r = unpackSnorm4x8(p1);
   return;
 }
 )");
@@ -1334,8 +1334,8 @@ void test_function() {
 
 TEST_F(GlslGeneratorImplTest_Builtin, Unpack4x8Unorm) {
     auto* call = Call("unpack4x8unorm", "p1");
-    GlobalVar("p1", ty.u32(), type::AddressSpace::kPrivate);
-    WrapInFunction(CallStmt(call));
+    GlobalVar("p1", ty.u32(), builtin::AddressSpace::kPrivate);
+    WrapInFunction(Decl(Var("r", call)));
     GeneratorImpl& gen = Build();
 
     ASSERT_TRUE(gen.Generate()) << gen.error();
@@ -1344,7 +1344,7 @@ TEST_F(GlslGeneratorImplTest_Builtin, Unpack4x8Unorm) {
 uint p1 = 0u;
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 void test_function() {
-  unpackUnorm4x8(p1);
+  vec4 r = unpackUnorm4x8(p1);
   return;
 }
 )");
@@ -1352,8 +1352,8 @@ void test_function() {
 
 TEST_F(GlslGeneratorImplTest_Builtin, Unpack2x16Snorm) {
     auto* call = Call("unpack2x16snorm", "p1");
-    GlobalVar("p1", ty.u32(), type::AddressSpace::kPrivate);
-    WrapInFunction(CallStmt(call));
+    GlobalVar("p1", ty.u32(), builtin::AddressSpace::kPrivate);
+    WrapInFunction(Decl(Var("r", call)));
     GeneratorImpl& gen = Build();
 
     ASSERT_TRUE(gen.Generate()) << gen.error();
@@ -1362,7 +1362,7 @@ TEST_F(GlslGeneratorImplTest_Builtin, Unpack2x16Snorm) {
 uint p1 = 0u;
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 void test_function() {
-  unpackSnorm2x16(p1);
+  vec2 r = unpackSnorm2x16(p1);
   return;
 }
 )");
@@ -1370,8 +1370,8 @@ void test_function() {
 
 TEST_F(GlslGeneratorImplTest_Builtin, Unpack2x16Unorm) {
     auto* call = Call("unpack2x16unorm", "p1");
-    GlobalVar("p1", ty.u32(), type::AddressSpace::kPrivate);
-    WrapInFunction(CallStmt(call));
+    GlobalVar("p1", ty.u32(), builtin::AddressSpace::kPrivate);
+    WrapInFunction(Decl(Var("r", call)));
     GeneratorImpl& gen = Build();
 
     ASSERT_TRUE(gen.Generate()) << gen.error();
@@ -1380,7 +1380,7 @@ TEST_F(GlslGeneratorImplTest_Builtin, Unpack2x16Unorm) {
 uint p1 = 0u;
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 void test_function() {
-  unpackUnorm2x16(p1);
+  vec2 r = unpackUnorm2x16(p1);
   return;
 }
 )");
@@ -1388,8 +1388,8 @@ void test_function() {
 
 TEST_F(GlslGeneratorImplTest_Builtin, Unpack2x16Float) {
     auto* call = Call("unpack2x16float", "p1");
-    GlobalVar("p1", ty.u32(), type::AddressSpace::kPrivate);
-    WrapInFunction(CallStmt(call));
+    GlobalVar("p1", ty.u32(), builtin::AddressSpace::kPrivate);
+    WrapInFunction(Decl(Var("r", call)));
     GeneratorImpl& gen = Build();
 
     ASSERT_TRUE(gen.Generate()) << gen.error();
@@ -1398,7 +1398,7 @@ TEST_F(GlslGeneratorImplTest_Builtin, Unpack2x16Float) {
 uint p1 = 0u;
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 void test_function() {
-  unpackHalf2x16(p1);
+  vec2 r = unpackHalf2x16(p1);
   return;
 }
 )");
@@ -1451,8 +1451,8 @@ void main() {
 }
 
 TEST_F(GlslGeneratorImplTest_Builtin, DotI32) {
-    GlobalVar("v", ty.vec3<i32>(), type::AddressSpace::kPrivate);
-    WrapInFunction(CallStmt(Call("dot", "v", "v")));
+    GlobalVar("v", ty.vec3<i32>(), builtin::AddressSpace::kPrivate);
+    WrapInFunction(Decl(Var("r", Call("dot", "v", "v"))));
 
     GeneratorImpl& gen = SanitizeAndBuild();
 
@@ -1465,7 +1465,7 @@ int tint_int_dot(ivec3 a, ivec3 b) {
 
 ivec3 v = ivec3(0, 0, 0);
 void test_function() {
-  tint_int_dot(v, v);
+  int r = tint_int_dot(v, v);
 }
 
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
@@ -1477,8 +1477,8 @@ void main() {
 }
 
 TEST_F(GlslGeneratorImplTest_Builtin, DotU32) {
-    GlobalVar("v", ty.vec3<u32>(), type::AddressSpace::kPrivate);
-    WrapInFunction(CallStmt(Call("dot", "v", "v")));
+    GlobalVar("v", ty.vec3<u32>(), builtin::AddressSpace::kPrivate);
+    WrapInFunction(Decl(Var("r", Call("dot", "v", "v"))));
 
     GeneratorImpl& gen = SanitizeAndBuild();
 
@@ -1491,7 +1491,7 @@ uint tint_int_dot(uvec3 a, uvec3 b) {
 
 uvec3 v = uvec3(0u, 0u, 0u);
 void test_function() {
-  tint_int_dot(v, v);
+  uint r = tint_int_dot(v, v);
 }
 
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
@@ -1503,7 +1503,7 @@ void main() {
 }
 
 TEST_F(GlslGeneratorImplTest_Builtin, QuantizeToF16_Scalar) {
-    GlobalVar("v", Expr(2_f), type::AddressSpace::kPrivate);
+    GlobalVar("v", Expr(2_f), builtin::AddressSpace::kPrivate);
     WrapInFunction(Call("quantizeToF16", "v"));
 
     GeneratorImpl& gen = SanitizeAndBuild();
@@ -1530,7 +1530,7 @@ void main() {
 }
 
 TEST_F(GlslGeneratorImplTest_Builtin, QuantizeToF16_Vec2) {
-    GlobalVar("v", vec2<f32>(2_f), type::AddressSpace::kPrivate);
+    GlobalVar("v", vec2<f32>(2_f), builtin::AddressSpace::kPrivate);
     WrapInFunction(Call("quantizeToF16", "v"));
 
     GeneratorImpl& gen = SanitizeAndBuild();
@@ -1557,7 +1557,7 @@ void main() {
 }
 
 TEST_F(GlslGeneratorImplTest_Builtin, QuantizeToF16_Vec3) {
-    GlobalVar("v", vec3<f32>(2_f), type::AddressSpace::kPrivate);
+    GlobalVar("v", vec3<f32>(2_f), builtin::AddressSpace::kPrivate);
     WrapInFunction(Call("quantizeToF16", "v"));
 
     GeneratorImpl& gen = SanitizeAndBuild();
@@ -1586,7 +1586,7 @@ void main() {
 }
 
 TEST_F(GlslGeneratorImplTest_Builtin, QuantizeToF16_Vec4) {
-    GlobalVar("v", vec4<f32>(2_f), type::AddressSpace::kPrivate);
+    GlobalVar("v", vec4<f32>(2_f), builtin::AddressSpace::kPrivate);
     WrapInFunction(Call("quantizeToF16", "v"));
 
     GeneratorImpl& gen = SanitizeAndBuild();

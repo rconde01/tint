@@ -340,7 +340,7 @@ TEST_P(MaterializeAbstractNumericToConcreteType, Test) {
             WrapInFunction(CallStmt(Call("F", abstract_expr)));
             break;
         case Method::kBuiltinArg:
-            WrapInFunction(CallStmt(Call("min", target_expr(), abstract_expr)));
+            WrapInFunction(Assign(Phony(), Call("min", target_expr(), abstract_expr)));
             break;
         case Method::kReturn:
             Func("F", utils::Empty, target_ty(), utils::Vector{Return(abstract_expr)});
@@ -929,7 +929,7 @@ TEST_P(MaterializeAbstractNumericToDefaultType, Test) {
             break;
         }
         case Method::kIndex: {
-            GlobalVar("arr", ty.array<i32, 4>(), type::AddressSpace::kPrivate);
+            GlobalVar("arr", ty.array<i32, 4>(), builtin::AddressSpace::kPrivate);
             WrapInFunction(IndexAccessor("arr", abstract_expr()));
             break;
         }

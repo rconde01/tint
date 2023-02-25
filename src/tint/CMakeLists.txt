@@ -158,6 +158,8 @@ list(APPEND TINT_LIB_SRCS
   ast/int_literal_expression.h
   ast/internal_attribute.cc
   ast/internal_attribute.h
+  ast/interpolate_attribute.cc
+  ast/interpolate_attribute.h
   ast/invariant_attribute.cc
   ast/invariant_attribute.h
   ast/let.cc
@@ -172,6 +174,8 @@ list(APPEND TINT_LIB_SRCS
   ast/member_accessor_expression.h
   ast/module.cc
   ast/module.h
+  ast/must_use_attribute.cc
+  ast/must_use_attribute.h
   ast/node_id.h
   ast/node.cc
   ast/node.h
@@ -327,12 +331,12 @@ list(APPEND TINT_LIB_SRCS
   sem/switch_statement.h
   sem/type_expression.cc
   sem/type_expression.h
-  sem/type_initializer.cc
-  sem/type_initializer.h
-  sem/type_conversion.cc
-  sem/type_conversion.h
   sem/type_mappings.h
   sem/variable.cc
+  sem/value_constructor.cc
+  sem/value_constructor.h
+  sem/value_conversion.cc
+  sem/value_conversion.h
   sem/value_expression.cc
   sem/value_expression.h
   sem/while_statement.cc
@@ -523,6 +527,7 @@ list(APPEND TINT_LIB_SRCS
   utils/map.h
   utils/math.h
   utils/scoped_assignment.h
+  utils/slice.h
   utils/string.cc
   utils/string.h
   utils/unique_allocator.h
@@ -548,17 +553,21 @@ list(APPEND TINT_LIB_SRCS
   writer/writer.h
 )
 
+tint_generated(builtin/access BENCH TEST)
+tint_generated(builtin/address_space BENCH TEST)
+tint_generated(builtin/attribute BENCH TEST)
+tint_generated(builtin/builtin BENCH TEST)
 tint_generated(builtin/builtin_value BENCH TEST)
+tint_generated(builtin/diagnostic_rule BENCH TEST)
+tint_generated(builtin/diagnostic_severity BENCH TEST)
 tint_generated(builtin/extension BENCH TEST)
-tint_generated(ast/diagnostic_control BENCH TEST)
-tint_generated(ast/interpolate_attribute BENCH TEST)
-tint_generated(resolver/init_conv_intrinsic)
+tint_generated(builtin/interpolation_sampling BENCH TEST)
+tint_generated(builtin/interpolation_type BENCH TEST)
+tint_generated(builtin/texel_format BENCH TEST)
+
+tint_generated(resolver/ctor_conv_intrinsic)
 tint_generated(sem/builtin_type)
 tint_generated(sem/parameter_usage)
-tint_generated(type/access BENCH TEST)
-tint_generated(type/address_space BENCH TEST)
-tint_generated(type/builtin BENCH TEST)
-tint_generated(type/texel_format BENCH TEST)
 
 if(UNIX)
   list(APPEND TINT_LIB_SRCS diagnostic/printer_posix.cc)
@@ -570,6 +579,7 @@ endif()
 
 if(${TINT_BUILD_SPV_READER})
   list(APPEND TINT_LIB_SRCS
+    reader/spirv/attributes.h
     reader/spirv/construct.h
     reader/spirv/construct.cc
     reader/spirv/entry_point_info.h
@@ -824,7 +834,7 @@ if(TINT_BUILD_TESTS)
     ast/increment_decrement_statement_test.cc
     ast/index_accessor_expression_test.cc
     ast/int_literal_expression_test.cc
-    ast/invariant_attribute_test.cc
+    ast/interpolate_attribute_test.cc
     ast/location_attribute_test.cc
     ast/loop_statement_test.cc
     ast/member_accessor_expression_test.cc
@@ -917,10 +927,11 @@ if(TINT_BUILD_TESTS)
     resolver/struct_layout_test.cc
     resolver/struct_pipeline_stage_use_test.cc
     resolver/struct_address_space_use_test.cc
-    resolver/type_initializer_validation_test.cc
     resolver/type_validation_test.cc
+    resolver/unresolved_identifier_test.cc
     resolver/validation_test.cc
     resolver/validator_is_storeable_test.cc
+    resolver/value_constructor_validation_test.cc
     resolver/variable_test.cc
     resolver/variable_validation_test.cc
     scope_stack_test.cc
@@ -973,6 +984,7 @@ if(TINT_BUILD_TESTS)
     utils/result_test.cc
     utils/reverse_test.cc
     utils/scoped_assignment_test.cc
+    utils/slice_test.cc
     utils/string_test.cc
     utils/transform_test.cc
     utils/unique_allocator_test.cc
@@ -1064,7 +1076,6 @@ if(TINT_BUILD_TESTS)
       reader/wgsl/parser_impl_diagnostic_attribute_test.cc
       reader/wgsl/parser_impl_diagnostic_control_test.cc
       reader/wgsl/parser_impl_diagnostic_directive_test.cc
-      reader/wgsl/parser_impl_element_count_expression_test.cc
       reader/wgsl/parser_impl_enable_directive_test.cc
       reader/wgsl/parser_impl_error_msg_test.cc
       reader/wgsl/parser_impl_error_resync_test.cc
@@ -1088,11 +1099,11 @@ if(TINT_BUILD_TESTS)
       reader/wgsl/parser_impl_primary_expression_test.cc
       reader/wgsl/parser_impl_relational_expression_test.cc
       reader/wgsl/parser_impl_reserved_keyword_test.cc
+      reader/wgsl/parser_impl_require_directive_test.cc
       reader/wgsl/parser_impl_shift_expression_test.cc
       reader/wgsl/parser_impl_singular_expression_test.cc
       reader/wgsl/parser_impl_statement_test.cc
       reader/wgsl/parser_impl_statements_test.cc
-      reader/wgsl/parser_impl_address_space_test.cc
       reader/wgsl/parser_impl_struct_body_decl_test.cc
       reader/wgsl/parser_impl_struct_decl_test.cc
       reader/wgsl/parser_impl_struct_attribute_decl_test.cc
@@ -1130,6 +1141,7 @@ if(TINT_BUILD_TESTS)
       writer/spirv/builder_builtin_texture_test.cc
       writer/spirv/builder_call_test.cc
       writer/spirv/builder_const_assert_test.cc
+      writer/spirv/builder_constructor_expression_test.cc
       writer/spirv/builder_discard_test.cc
       writer/spirv/builder_entry_point_test.cc
       writer/spirv/builder_format_conversion_test.cc
@@ -1139,7 +1151,6 @@ if(TINT_BUILD_TESTS)
       writer/spirv/builder_global_variable_test.cc
       writer/spirv/builder_ident_expression_test.cc
       writer/spirv/builder_if_test.cc
-      writer/spirv/builder_initializer_expression_test.cc
       writer/spirv/builder_literal_test.cc
       writer/spirv/builder_loop_test.cc
       writer/spirv/builder_return_test.cc
@@ -1170,6 +1181,7 @@ if(TINT_BUILD_TESTS)
       writer/wgsl/generator_impl_case_test.cc
       writer/wgsl/generator_impl_cast_test.cc
       writer/wgsl/generator_impl_const_assert_test.cc
+      writer/wgsl/generator_impl_constructor_test.cc
       writer/wgsl/generator_impl_continue_test.cc
       writer/wgsl/generator_impl_diagnostic_test.cc
       writer/wgsl/generator_impl_discard_test.cc
@@ -1178,7 +1190,6 @@ if(TINT_BUILD_TESTS)
       writer/wgsl/generator_impl_global_decl_test.cc
       writer/wgsl/generator_impl_identifier_test.cc
       writer/wgsl/generator_impl_if_test.cc
-      writer/wgsl/generator_impl_initializer_test.cc
       writer/wgsl/generator_impl_loop_test.cc
       writer/wgsl/generator_impl_literal_test.cc
       writer/wgsl/generator_impl_member_accessor_test.cc
@@ -1266,12 +1277,12 @@ if(TINT_BUILD_TESTS)
       writer/msl/generator_impl_case_test.cc
       writer/msl/generator_impl_cast_test.cc
       writer/msl/generator_impl_const_assert_test.cc
+      writer/msl/generator_impl_constructor_test.cc
       writer/msl/generator_impl_continue_test.cc
       writer/msl/generator_impl_discard_test.cc
       writer/msl/generator_impl_function_test.cc
       writer/msl/generator_impl_identifier_test.cc
       writer/msl/generator_impl_if_test.cc
-      writer/msl/generator_impl_initializer_test.cc
       writer/msl/generator_impl_import_test.cc
       writer/msl/generator_impl_loop_test.cc
       writer/msl/generator_impl_member_accessor_test.cc
@@ -1300,7 +1311,7 @@ if(TINT_BUILD_TESTS)
       writer/glsl/generator_impl_call_test.cc
       writer/glsl/generator_impl_case_test.cc
       writer/glsl/generator_impl_cast_test.cc
-      writer/glsl/generator_impl_initializer_test.cc
+      writer/glsl/generator_impl_constructor_test.cc
       writer/glsl/generator_impl_continue_test.cc
       writer/glsl/generator_impl_discard_test.cc
       writer/glsl/generator_impl_function_test.cc
@@ -1338,12 +1349,12 @@ if(TINT_BUILD_TESTS)
       writer/hlsl/generator_impl_case_test.cc
       writer/hlsl/generator_impl_cast_test.cc
       writer/hlsl/generator_impl_const_assert_test.cc
+      writer/hlsl/generator_impl_constructor_test.cc
       writer/hlsl/generator_impl_continue_test.cc
       writer/hlsl/generator_impl_discard_test.cc
       writer/hlsl/generator_impl_function_test.cc
       writer/hlsl/generator_impl_identifier_test.cc
       writer/hlsl/generator_impl_if_test.cc
-      writer/hlsl/generator_impl_initializer_test.cc
       writer/hlsl/generator_impl_import_test.cc
       writer/hlsl/generator_impl_loop_test.cc
       writer/hlsl/generator_impl_member_accessor_test.cc

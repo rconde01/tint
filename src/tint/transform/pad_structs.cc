@@ -18,11 +18,12 @@
 #include <unordered_map>
 #include <utility>
 
+#include "src/tint/ast/disable_validation_attribute.h"
 #include "src/tint/ast/parameter.h"
 #include "src/tint/program_builder.h"
 #include "src/tint/sem/call.h"
 #include "src/tint/sem/module.h"
-#include "src/tint/sem/type_initializer.h"
+#include "src/tint/sem/value_constructor.h"
 
 using namespace tint::number_suffixes;  // NOLINT
 
@@ -36,7 +37,10 @@ void CreatePadding(utils::Vector<const ast::StructMember*, 8>* new_members,
                    utils::Hashset<const ast::StructMember*, 8>* padding_members,
                    ProgramBuilder* b,
                    uint32_t bytes) {
-    for (uint32_t i = 0; i < bytes / 4u; ++i) {
+    const size_t count = bytes / 4u;
+    padding_members->Reserve(count);
+    new_members->Reserve(count);
+    for (uint32_t i = 0; i < count; ++i) {
         auto name = b->Symbols().New("pad");
         auto* member = b->Member(name, b->ty.u32());
         padding_members->Add(member);
@@ -80,7 +84,7 @@ Transform::ApplyResult PadStructs::Apply(const Program* src, const DataMap&, Dat
             new_members.Push(b.Member(name, type));
 
             uint32_t size = ty->Size();
-            if (ty->Is<sem::Struct>() && str->UsedAs(type::AddressSpace::kUniform)) {
+            if (ty->Is<sem::Struct>() && str->UsedAs(builtin::AddressSpace::kUniform)) {
                 // std140 structs should be padded out to 16 bytes.
                 size = utils::RoundUp(16u, size);
             } else if (auto* array_ty = ty->As<type::Array>()) {
@@ -93,14 +97,21 @@ Transform::ApplyResult PadStructs::Apply(const Program* src, const DataMap&, Dat
 
         // Add any required padding after the last member, if it's not a runtime-sized array.
         uint32_t struct_size = str->Size();
-        if (str->UsedAs(type::AddressSpace::kUniform)) {
+        if (str->UsedAs(builtin::AddressSpace::kUniform)) {
             struct_size = utils::RoundUp(16u, struct_size);
         }
         if (offset < struct_size && !has_runtime_sized_array) {
             CreatePadding(&new_members, &padding_members, ctx.dst, struct_size - offset);
         }
-        auto* new_struct =
-            b.create<ast::Struct>(ctx.Clone(ast_str->name), std::move(new_members), utils::Empty);
+
+        utils::Vector<const ast::Attribute*, 1> struct_attribs;
+        if (!padding_members.IsEmpty()) {
+            struct_attribs =
+                utils::Vector{b.Disable(ast::DisabledValidation::kIgnoreStructMemberLimit)};
+        }
+
+        auto* new_struct = b.create<ast::Struct>(ctx.Clone(ast_str->name), std::move(new_members),
+                                                 std::move(struct_attribs));
         replaced_structs[ast_str] = new_struct;
         return new_struct;
     });
@@ -114,7 +125,7 @@ Transform::ApplyResult PadStructs::Apply(const Program* src, const DataMap&, Dat
         if (!call) {
             return nullptr;
         }
-        auto* cons = call->Target()->As<sem::TypeInitializer>();
+        auto* cons = call->Target()->As<sem::ValueConstructor>();
         if (!cons) {
             return nullptr;
         }

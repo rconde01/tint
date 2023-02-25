@@ -61,7 +61,6 @@ class LoopStatement;
 class Materialize;
 class Statement;
 class SwitchStatement;
-class TypeInitializer;
 class WhileStatement;
 }  // namespace tint::sem
 namespace tint::type {
@@ -75,7 +74,7 @@ struct TypeAndAddressSpace {
     /// The type
     const type::Type* type;
     /// The address space
-    type::AddressSpace address_space;
+    builtin::AddressSpace address_space;
 
     /// Equality operator
     /// @param other the other TypeAndAddressSpace to compare this TypeAndAddressSpace to
@@ -86,7 +85,7 @@ struct TypeAndAddressSpace {
 };
 
 /// DiagnosticFilterStack is a scoped stack of diagnostic filters.
-using DiagnosticFilterStack = ScopeStack<ast::DiagnosticRule, ast::DiagnosticSeverity>;
+using DiagnosticFilterStack = ScopeStack<builtin::DiagnosticRule, builtin::DiagnosticSeverity>;
 
 /// Validation logic for various ast nodes. The validations in general should
 /// be shallow and depend on the resolver to call on children. The validations
@@ -127,7 +126,7 @@ class Validator {
     /// @param msg the diagnostic message
     /// @param source the diagnostic source
     /// @returns false if the diagnostic is an error for the given trigger rule
-    bool AddDiagnostic(ast::DiagnosticRule rule,
+    bool AddDiagnostic(builtin::DiagnosticRule rule,
                        const std::string& msg,
                        const Source& source) const;
 
@@ -435,7 +434,7 @@ class Validator {
     /// @param initializer the RHS initializer expression
     /// @returns true on succes, false otherwise
     bool VariableInitializer(const ast::Variable* v,
-                             type::AddressSpace address_space,
+                             builtin::AddressSpace address_space,
                              const type::Type* storage_type,
                              const sem::ValueExpression* initializer) const;
 
@@ -445,11 +444,11 @@ class Validator {
     /// @returns true on success, false otherwise
     bool Vector(const type::Type* el_ty, const Source& source) const;
 
-    /// Validates an array initializer
+    /// Validates an array constructor
     /// @param ctor the call expresion to validate
     /// @param arr_type the type of the array
     /// @returns true on success, false otherwise
-    bool ArrayInitializer(const ast::CallExpression* ctor, const type::Array* arr_type) const;
+    bool ArrayConstructor(const ast::CallExpression* ctor, const type::Array* arr_type) const;
 
     /// Validates a texture builtin function
     /// @param call the builtin call to validate
@@ -488,7 +487,7 @@ class Validator {
     /// @param sc the address space
     /// @param source the source of the type
     /// @returns true on success, false otherwise
-    bool AddressSpaceLayout(const type::Type* type, type::AddressSpace sc, Source source) const;
+    bool AddressSpaceLayout(const type::Type* type, builtin::AddressSpace sc, Source source) const;
 
     /// @returns true if the attribute list contains a
     /// ast::DisableValidationAttribute with the validation mode equal to
@@ -542,8 +541,8 @@ class Validator {
     /// @param source the source for the error
     /// @returns true on success, false if an error was raised.
     bool CheckTypeAccessAddressSpace(const type::Type* store_ty,
-                                     type::Access access,
-                                     type::AddressSpace address_space,
+                                     builtin::Access access,
+                                     builtin::AddressSpace address_space,
                                      utils::VectorRef<const tint::ast::Attribute*> attributes,
                                      const Source& source) const;
     SymbolTable& symbols_;

@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "src/tint/builtin/access.h"
 #include "src/tint/program_builder.h"
 #include "src/tint/reader/wgsl/parser_impl_detail.h"
 #include "src/tint/reader/wgsl/token.h"
@@ -148,10 +149,9 @@ class ParserImpl {
 
         /// Constructor for a successful parse.
         /// @param val the result value of the parse
-        /// @param s the optional source of the value
         template <typename U>
-        inline Maybe(U&& val, const Source& s = {})  // NOLINT
-            : value(std::forward<U>(val)), source(s), matched(true) {}
+        inline Maybe(U&& val)  // NOLINT
+            : value(std::forward<U>(val)), matched(true) {}
 
         /// Constructor for parse error state.
         inline Maybe(Failure::Errored) : errored(true) {}  // NOLINT
@@ -163,16 +163,13 @@ class ParserImpl {
         /// @param e the Expect to copy this Maybe from
         template <typename U>
         inline Maybe(const Expect<U>& e)  // NOLINT
-            : value(e.value), source(e.value), errored(e.errored), matched(!e.errored) {}
+            : value(e.value), errored(e.errored), matched(!e.errored) {}
 
         /// Move from an Expect.
         /// @param e the Expect to move this Maybe from
         template <typename U>
         inline Maybe(Expect<U>&& e)  // NOLINT
-            : value(std::move(e.value)),
-              source(std::move(e.source)),
-              errored(e.errored),
-              matched(!e.errored) {}
+            : value(std::move(e.value)), errored(e.errored), matched(!e.errored) {}
 
         /// Copy constructor
         inline Maybe(const Maybe&) = default;
@@ -197,8 +194,6 @@ class ParserImpl {
         /// The value of a successful parse.
         /// Zero-initialized when there was a parse error.
         T value{};
-        /// Optional source of the value.
-        Source source;
         /// True if there was a error parsing.
         bool errored = false;
         /// True if there was a error parsing.
@@ -268,33 +263,14 @@ class ParserImpl {
 
     /// VarDeclInfo contains the parsed information for variable declaration.
     struct VarDeclInfo {
-        /// Constructor
-        VarDeclInfo();
-        /// Copy constructor
-        /// @param other the VarDeclInfo to copy
-        VarDeclInfo(const VarDeclInfo& other);
-        /// Constructor
-        /// @param source_in variable declaration source
-        /// @param name_in variable name
-        /// @param address_space_in variable address space
-        /// @param access_in variable access control
-        /// @param type_in variable type
-        VarDeclInfo(Source source_in,
-                    std::string name_in,
-                    type::AddressSpace address_space_in,
-                    type::Access access_in,
-                    ast::Type type_in);
-        /// Destructor
-        ~VarDeclInfo();
-
         /// Variable declaration source
         Source source;
         /// Variable name
         std::string name;
         /// Variable address space
-        type::AddressSpace address_space = type::AddressSpace::kNone;
+        const ast::Expression* address_space = nullptr;
         /// Variable access control
-        type::Access access = type::Access::kUndefined;
+        const ast::Expression* access = nullptr;
         /// Variable type
         ast::Type type;
     };
@@ -302,9 +278,9 @@ class ParserImpl {
     /// VariableQualifier contains the parsed information for a variable qualifier
     struct VariableQualifier {
         /// The variable's address space
-        type::AddressSpace address_space = type::AddressSpace::kNone;
+        const ast::Expression* address_space = nullptr;
         /// The variable's access control
-        type::Access access = type::Access::kUndefined;
+        const ast::Expression* access = nullptr;
     };
 
     /// MatrixDimensions contains the column and row information for a matrix
@@ -405,6 +381,9 @@ class ParserImpl {
     /// Parses the `enable_directive` grammar element, erroring on parse failure.
     /// @return true on parse success, otherwise an error or no-match.
     Maybe<Void> enable_directive();
+    /// Parses the `requires_directive` grammar element, erroring on parse failure.
+    /// @return true on parse success, otherwise an error or no-match.
+    Maybe<Void> requires_directive();
     /// Parses the `global_decl` grammar element, erroring on parse failure.
     /// @return true on parse success, otherwise an error or no-match.
     Maybe<Void> global_decl();
@@ -447,10 +426,6 @@ class ParserImpl {
     /// Parses a `type_specifier` grammar element
     /// @returns the parsed Type or nullptr if none matched.
     Maybe<ast::Type> type_specifier();
-    /// Parses an `address_space` grammar element, erroring on parse failure.
-    /// @param use a description of what was being parsed if an error was raised.
-    /// @returns the address space or type::AddressSpace::kNone if none matched
-    Expect<type::AddressSpace> expect_address_space(std::string_view use);
     /// Parses a `struct_decl` grammar element.
     /// @returns the struct type or nullptr on error
     Maybe<const ast::Struct*> struct_decl();
@@ -482,23 +457,6 @@ class ParserImpl {
     /// not match a stage name.
     /// @returns the pipeline stage.
     Expect<ast::PipelineStage> expect_pipeline_stage();
-    /// Parses an access control identifier, erroring if the next token does not
-    /// match a valid access control.
-    /// @param use a description of what was being parsed if an error was raised
-    /// @returns the parsed access control.
-    Expect<type::Access> expect_access_mode(std::string_view use);
-    /// Parses an interpolation sample name identifier, erroring if the next token does not match a
-    /// valid sample name.
-    /// @returns the parsed sample name.
-    Expect<ast::InterpolationSampling> expect_interpolation_sample_name();
-    /// Parses an interpolation type name identifier, erroring if the next token does not match a
-    /// value type name.
-    /// @returns the parsed type name
-    Expect<ast::InterpolationType> expect_interpolation_type_name();
-    /// Parses a builtin identifier, erroring if the next token does not match a
-    /// valid builtin name.
-    /// @returns the parsed builtin.
-    Expect<builtin::BuiltinValue> expect_builtin();
     /// Parses a `compound_statement` grammar element, erroring on parse failure.
     /// @param use a description of what was being parsed if an error was raised
     /// @returns the parsed statements
@@ -597,8 +555,9 @@ class ParserImpl {
     /// @returns the parsed expression or nullptr
     Maybe<const ast::Expression*> expression();
     /// Parses the `expression` grammar rule
+    /// @param use the use of the expression
     /// @returns the parsed expression or error
-    Expect<const ast::Expression*> expect_expression();
+    Expect<const ast::Expression*> expect_expression(std::string_view use);
     /// Parses a comma separated expression list
     /// @param use the use of the expression list
     /// @param terminator the terminating token for the list
@@ -628,9 +587,6 @@ class ParserImpl {
     /// @returns the parsed expression or `lhs` if no match
     Expect<const ast::Expression*> expect_math_expression_post_unary_expression(
         const ast::Expression* lhs);
-    /// Parses an `element_count_expression` grammar element
-    /// @returns the parsed expression or nullptr
-    Maybe<const ast::Expression*> element_count_expression();
     /// Parses a `unary_expression shift.post.unary_expression`
     /// @returns the parsed expression or nullptr
     Maybe<const ast::Expression*> shift_expression();
@@ -681,7 +637,7 @@ class ParserImpl {
     Expect<const ast::Attribute*> expect_attribute();
     /// Parses a severity_control_name grammar element.
     /// @return the parsed severity control name, or nullptr on error.
-    Expect<ast::DiagnosticSeverity> expect_severity_control_name();
+    Expect<builtin::DiagnosticSeverity> expect_severity_control_name();
     /// Parses a diagnostic_control grammar element.
     /// @return the parsed diagnostic control, or nullptr on error.
     Expect<ast::DiagnosticControl> expect_diagnostic_control();
@@ -882,7 +838,7 @@ class ParserImpl {
 
     /// Creates a new `ast::Node` owned by the Module. When the Module is
     /// destructed, the `ast::Node` will also be destructed.
-    /// @param args the arguments to pass to the type constructor
+    /// @param args the arguments to pass to the constructor
     /// @returns the node pointer
     template <typename T, typename... ARGS>
     T* create(ARGS&&... args) {

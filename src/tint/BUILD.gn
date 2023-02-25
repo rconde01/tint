@@ -218,6 +218,7 @@ libtint_source_set("libtint_base_src") {
     "utils/map.h",
     "utils/math.h",
     "utils/scoped_assignment.h",
+    "utils/slice.h",
     "utils/string.cc",
     "utils/string.h",
     "utils/unique_allocator.h",
@@ -248,10 +249,10 @@ libtint_source_set("libtint_program_src") {
     "program_builder.cc",
     "resolver/const_eval.cc",
     "resolver/const_eval.h",
+    "resolver/ctor_conv_intrinsic.cc",
+    "resolver/ctor_conv_intrinsic.h",
     "resolver/dependency_graph.cc",
     "resolver/dependency_graph.h",
-    "resolver/init_conv_intrinsic.cc",
-    "resolver/init_conv_intrinsic.h",
     "resolver/intrinsic_table.cc",
     "resolver/intrinsic_table.h",
     "resolver/intrinsic_table.inl",
@@ -490,6 +491,7 @@ libtint_source_set("libtint_ast_hdrs") {
     "ast/loop_statement.h",
     "ast/member_accessor_expression.h",
     "ast/module.h",
+    "ast/must_use_attribute.h",
     "ast/node.h",
     "ast/node_id.h",
     "ast/override.h",
@@ -575,6 +577,7 @@ libtint_source_set("libtint_ast_src") {
     "ast/loop_statement.cc",
     "ast/member_accessor_expression.cc",
     "ast/module.cc",
+    "ast/must_use_attribute.cc",
     "ast/node.cc",
     "ast/override.cc",
     "ast/parameter.cc",
@@ -604,6 +607,7 @@ libtint_source_set("libtint_ast_src") {
   public_deps = [ ":libtint_ast_hdrs" ]
   deps = [
     ":libtint_base_src",
+    ":libtint_builtins_src",
     ":libtint_program_src",
     ":libtint_type_src",
   ]
@@ -667,13 +671,13 @@ libtint_source_set("libtint_sem_src") {
     "sem/struct.h",
     "sem/switch_statement.cc",
     "sem/switch_statement.h",
-    "sem/type_conversion.cc",
-    "sem/type_conversion.h",
     "sem/type_expression.cc",
     "sem/type_expression.h",
-    "sem/type_initializer.cc",
-    "sem/type_initializer.h",
     "sem/type_mappings.h",
+    "sem/value_constructor.cc",
+    "sem/value_constructor.h",
+    "sem/value_conversion.cc",
+    "sem/value_conversion.h",
     "sem/value_expression.cc",
     "sem/value_expression.h",
     "sem/variable.cc",
@@ -693,10 +697,28 @@ libtint_source_set("libtint_sem_src") {
 
 libtint_source_set("libtint_builtins_src") {
   sources = [
+    "builtin/access.cc",
+    "builtin/access.h",
+    "builtin/address_space.cc",
+    "builtin/address_space.h",
+    "builtin/attribute.cc",
+    "builtin/attribute.h",
+    "builtin/builtin.cc",
+    "builtin/builtin.h",
     "builtin/builtin_value.cc",
     "builtin/builtin_value.h",
+    "builtin/diagnostic_rule.cc",
+    "builtin/diagnostic_rule.h",
+    "builtin/diagnostic_severity.cc",
+    "builtin/diagnostic_severity.h",
     "builtin/extension.cc",
     "builtin/extension.h",
+    "builtin/interpolation_sampling.cc",
+    "builtin/interpolation_sampling.h",
+    "builtin/interpolation_type.cc",
+    "builtin/interpolation_type.h",
+    "builtin/texel_format.cc",
+    "builtin/texel_format.h",
   ]
   deps = [ ":libtint_base_src" ]
 }
@@ -709,10 +731,6 @@ libtint_source_set("libtint_type_src") {
     "type/abstract_int.h",
     "type/abstract_numeric.cc",
     "type/abstract_numeric.h",
-    "type/access.cc",
-    "type/access.h",
-    "type/address_space.cc",
-    "type/address_space.h",
     "type/array.cc",
     "type/array.h",
     "type/array_count.cc",
@@ -721,8 +739,6 @@ libtint_source_set("libtint_type_src") {
     "type/atomic.h",
     "type/bool.cc",
     "type/bool.h",
-    "type/builtin.cc",
-    "type/builtin.h",
     "type/clone_context.h",
     "type/depth_multisampled_texture.cc",
     "type/depth_multisampled_texture.h",
@@ -758,8 +774,6 @@ libtint_source_set("libtint_type_src") {
     "type/storage_texture.h",
     "type/struct.cc",
     "type/struct.h",
-    "type/texel_format.cc",
-    "type/texel_format.h",
     "type/texture.cc",
     "type/texture.h",
     "type/texture_dimension.cc",
@@ -776,7 +790,10 @@ libtint_source_set("libtint_type_src") {
     "type/void.h",
   ]
 
-  deps = [ ":libtint_base_src" ]
+  deps = [
+    ":libtint_base_src",
+    ":libtint_builtins_src",
+  ]
 }
 
 libtint_source_set("libtint_constant_src") {
@@ -813,6 +830,7 @@ libtint_source_set("libtint_reader_src") {
 
 libtint_source_set("libtint_spv_reader_src") {
   sources = [
+    "reader/spirv/attributes.h",
     "reader/spirv/construct.cc",
     "reader/spirv/construct.h",
     "reader/spirv/entry_point_info.cc",
@@ -904,6 +922,7 @@ libtint_source_set("libtint_spv_writer_src") {
   deps = [
     ":libtint_ast_src",
     ":libtint_base_src",
+    ":libtint_builtins_src",
     ":libtint_constant_src",
     ":libtint_program_src",
     ":libtint_sem_src",
@@ -931,6 +950,7 @@ libtint_source_set("libtint_wgsl_reader_src") {
   deps = [
     ":libtint_ast_src",
     ":libtint_base_src",
+    ":libtint_builtins_src",
     ":libtint_program_src",
     ":libtint_reader_src",
     ":libtint_text_src",
@@ -949,6 +969,7 @@ libtint_source_set("libtint_wgsl_writer_src") {
   deps = [
     ":libtint_ast_src",
     ":libtint_base_src",
+    ":libtint_builtins_src",
     ":libtint_program_src",
     ":libtint_sem_src",
     ":libtint_type_src",
@@ -967,6 +988,7 @@ libtint_source_set("libtint_msl_writer_src") {
   deps = [
     ":libtint_ast_src",
     ":libtint_base_src",
+    ":libtint_builtins_src",
     ":libtint_constant_src",
     ":libtint_program_src",
     ":libtint_sem_src",
@@ -987,6 +1009,7 @@ libtint_source_set("libtint_hlsl_writer_src") {
   deps = [
     ":libtint_ast_src",
     ":libtint_base_src",
+    ":libtint_builtins_src",
     ":libtint_constant_src",
     ":libtint_program_src",
     ":libtint_sem_src",
@@ -1007,6 +1030,7 @@ libtint_source_set("libtint_glsl_writer_src") {
   deps = [
     ":libtint_ast_src",
     ":libtint_base_src",
+    ":libtint_builtins_src",
     ":libtint_constant_src",
     ":libtint_program_src",
     ":libtint_sem_src",
@@ -1249,7 +1273,6 @@ if (tint_build_unittests) {
       "ast/index_accessor_expression_test.cc",
       "ast/int_literal_expression_test.cc",
       "ast/interpolate_attribute_test.cc",
-      "ast/invariant_attribute_test.cc",
       "ast/location_attribute_test.cc",
       "ast/loop_statement_test.cc",
       "ast/member_accessor_expression_test.cc",
@@ -1275,6 +1298,7 @@ if (tint_build_unittests) {
     deps = [
       ":libtint_ast_src",
       ":libtint_base_src",
+      ":libtint_builtins_src",
       ":libtint_transform_src",
       ":libtint_unittests_ast_helper",
     ]
@@ -1287,8 +1311,17 @@ if (tint_build_unittests) {
 
   tint_unittests_source_set("tint_unittests_builtins_src") {
     sources = [
+      "builtin/access_test.cc",
+      "builtin/address_space_test.cc",
+      "builtin/attribute_test.cc",
+      "builtin/builtin_test.cc",
       "builtin/builtin_value_test.cc",
+      "builtin/diagnostic_rule_test.cc",
+      "builtin/diagnostic_severity_test.cc",
       "builtin/extension_test.cc",
+      "builtin/interpolation_sampling_test.cc",
+      "builtin/interpolation_type_test.cc",
+      "builtin/texel_format_test.cc",
     ]
     deps = [ ":libtint_builtins_src" ]
   }
@@ -1370,11 +1403,12 @@ if (tint_build_unittests) {
       "resolver/struct_address_space_use_test.cc",
       "resolver/struct_layout_test.cc",
       "resolver/struct_pipeline_stage_use_test.cc",
-      "resolver/type_initializer_validation_test.cc",
       "resolver/type_validation_test.cc",
       "resolver/uniformity_test.cc",
+      "resolver/unresolved_identifier_test.cc",
       "resolver/validation_test.cc",
       "resolver/validator_is_storeable_test.cc",
+      "resolver/value_constructor_validation_test.cc",
       "resolver/variable_test.cc",
       "resolver/variable_validation_test.cc",
     ]
@@ -1405,11 +1439,8 @@ if (tint_build_unittests) {
 
   tint_unittests_source_set("tint_unittests_type_src") {
     sources = [
-      "type/access_test.cc",
-      "type/address_space_test.cc",
       "type/atomic_test.cc",
       "type/bool_test.cc",
-      "type/builtin_test.cc",
       "type/depth_multisampled_texture_test.cc",
       "type/depth_texture_test.cc",
       "type/external_texture_test.cc",
@@ -1425,13 +1456,15 @@ if (tint_build_unittests) {
       "type/sampler_test.cc",
       "type/storage_texture_test.cc",
       "type/struct_test.cc",
-      "type/texel_format_test.cc",
       "type/texture_test.cc",
       "type/type_test.cc",
       "type/u32_test.cc",
       "type/vector_test.cc",
     ]
-    deps = [ ":libtint_base_src" ]
+    deps = [
+      ":libtint_base_src",
+      ":libtint_builtins_src",
+    ]
   }
 
   tint_unittests_source_set("tint_unittests_text_src") {
@@ -1499,6 +1532,7 @@ if (tint_build_unittests) {
 
     deps = [
       ":libtint_base_src",
+      ":libtint_builtins_src",
       ":libtint_transform_src",
       ":libtint_unittests_ast_helper",
       ":libtint_wgsl_reader_src",
@@ -1524,6 +1558,7 @@ if (tint_build_unittests) {
       "utils/result_test.cc",
       "utils/reverse_test.cc",
       "utils/scoped_assignment_test.cc",
+      "utils/slice_test.cc",
       "utils/string_test.cc",
       "utils/transform_test.cc",
       "utils/unique_allocator_test.cc",
@@ -1607,6 +1642,7 @@ if (tint_build_unittests) {
       "writer/spirv/builder_builtin_texture_test.cc",
       "writer/spirv/builder_call_test.cc",
       "writer/spirv/builder_const_assert_test.cc",
+      "writer/spirv/builder_constructor_expression_test.cc",
       "writer/spirv/builder_discard_test.cc",
       "writer/spirv/builder_entry_point_test.cc",
       "writer/spirv/builder_format_conversion_test.cc",
@@ -1616,7 +1652,6 @@ if (tint_build_unittests) {
       "writer/spirv/builder_global_variable_test.cc",
       "writer/spirv/builder_ident_expression_test.cc",
       "writer/spirv/builder_if_test.cc",
-      "writer/spirv/builder_initializer_expression_test.cc",
       "writer/spirv/builder_literal_test.cc",
       "writer/spirv/builder_loop_test.cc",
       "writer/spirv/builder_return_test.cc",
@@ -1646,7 +1681,6 @@ if (tint_build_unittests) {
       "reader/wgsl/classify_template_args_test.cc",
       "reader/wgsl/lexer_test.cc",
       "reader/wgsl/parser_impl_additive_expression_test.cc",
-      "reader/wgsl/parser_impl_address_space_test.cc",
       "reader/wgsl/parser_impl_argument_expression_list_test.cc",
       "reader/wgsl/parser_impl_assignment_stmt_test.cc",
       "reader/wgsl/parser_impl_bitwise_expression_test.cc",
@@ -1662,7 +1696,6 @@ if (tint_build_unittests) {
       "reader/wgsl/parser_impl_diagnostic_attribute_test.cc",
       "reader/wgsl/parser_impl_diagnostic_control_test.cc",
       "reader/wgsl/parser_impl_diagnostic_directive_test.cc",
-      "reader/wgsl/parser_impl_element_count_expression_test.cc",
       "reader/wgsl/parser_impl_enable_directive_test.cc",
       "reader/wgsl/parser_impl_error_msg_test.cc",
       "reader/wgsl/parser_impl_error_resync_test.cc",
@@ -1685,6 +1718,7 @@ if (tint_build_unittests) {
       "reader/wgsl/parser_impl_paren_expression_test.cc",
       "reader/wgsl/parser_impl_primary_expression_test.cc",
       "reader/wgsl/parser_impl_relational_expression_test.cc",
+      "reader/wgsl/parser_impl_require_directive_test.cc",
       "reader/wgsl/parser_impl_reserved_keyword_test.cc",
       "reader/wgsl/parser_impl_shift_expression_test.cc",
       "reader/wgsl/parser_impl_singular_expression_test.cc",
@@ -1717,6 +1751,7 @@ if (tint_build_unittests) {
 
     deps = [
       ":libtint_base_src",
+      ":libtint_builtins_src",
       ":libtint_unittests_ast_helper",
       ":libtint_wgsl_reader_src",
     ]
@@ -1735,6 +1770,7 @@ if (tint_build_unittests) {
       "writer/wgsl/generator_impl_case_test.cc",
       "writer/wgsl/generator_impl_cast_test.cc",
       "writer/wgsl/generator_impl_const_assert_test.cc",
+      "writer/wgsl/generator_impl_constructor_test.cc",
       "writer/wgsl/generator_impl_continue_test.cc",
       "writer/wgsl/generator_impl_diagnostic_test.cc",
       "writer/wgsl/generator_impl_discard_test.cc",
@@ -1743,7 +1779,6 @@ if (tint_build_unittests) {
       "writer/wgsl/generator_impl_global_decl_test.cc",
       "writer/wgsl/generator_impl_identifier_test.cc",
       "writer/wgsl/generator_impl_if_test.cc",
-      "writer/wgsl/generator_impl_initializer_test.cc",
       "writer/wgsl/generator_impl_literal_test.cc",
       "writer/wgsl/generator_impl_loop_test.cc",
       "writer/wgsl/generator_impl_member_accessor_test.cc",
@@ -1758,6 +1793,7 @@ if (tint_build_unittests) {
     ]
 
     deps = [
+      ":libtint_builtins_src",
       ":libtint_wgsl_writer_src",
       ":tint_unittests_ast_src",
     ]
@@ -1777,13 +1813,13 @@ if (tint_build_unittests) {
       "writer/msl/generator_impl_case_test.cc",
       "writer/msl/generator_impl_cast_test.cc",
       "writer/msl/generator_impl_const_assert_test.cc",
+      "writer/msl/generator_impl_constructor_test.cc",
       "writer/msl/generator_impl_continue_test.cc",
       "writer/msl/generator_impl_discard_test.cc",
       "writer/msl/generator_impl_function_test.cc",
       "writer/msl/generator_impl_identifier_test.cc",
       "writer/msl/generator_impl_if_test.cc",
       "writer/msl/generator_impl_import_test.cc",
-      "writer/msl/generator_impl_initializer_test.cc",
       "writer/msl/generator_impl_loop_test.cc",
       "writer/msl/generator_impl_member_accessor_test.cc",
       "writer/msl/generator_impl_module_constant_test.cc",
@@ -1817,13 +1853,13 @@ if (tint_build_unittests) {
       "writer/hlsl/generator_impl_case_test.cc",
       "writer/hlsl/generator_impl_cast_test.cc",
       "writer/hlsl/generator_impl_const_assert_test.cc",
+      "writer/hlsl/generator_impl_constructor_test.cc",
       "writer/hlsl/generator_impl_continue_test.cc",
       "writer/hlsl/generator_impl_discard_test.cc",
       "writer/hlsl/generator_impl_function_test.cc",
       "writer/hlsl/generator_impl_identifier_test.cc",
       "writer/hlsl/generator_impl_if_test.cc",
       "writer/hlsl/generator_impl_import_test.cc",
-      "writer/hlsl/generator_impl_initializer_test.cc",
       "writer/hlsl/generator_impl_loop_test.cc",
       "writer/hlsl/generator_impl_member_accessor_test.cc",
       "writer/hlsl/generator_impl_module_constant_test.cc",
@@ -1858,13 +1894,13 @@ if (tint_build_unittests) {
       "writer/glsl/generator_impl_call_test.cc",
       "writer/glsl/generator_impl_case_test.cc",
       "writer/glsl/generator_impl_cast_test.cc",
+      "writer/glsl/generator_impl_constructor_test.cc",
       "writer/glsl/generator_impl_continue_test.cc",
       "writer/glsl/generator_impl_discard_test.cc",
       "writer/glsl/generator_impl_function_test.cc",
       "writer/glsl/generator_impl_identifier_test.cc",
       "writer/glsl/generator_impl_if_test.cc",
       "writer/glsl/generator_impl_import_test.cc",
-      "writer/glsl/generator_impl_initializer_test.cc",
       "writer/glsl/generator_impl_loop_test.cc",
       "writer/glsl/generator_impl_member_accessor_test.cc",
       "writer/glsl/generator_impl_module_constant_test.cc",

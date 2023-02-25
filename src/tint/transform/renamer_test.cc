@@ -19,9 +19,9 @@
 #include <vector>
 
 #include "gmock/gmock.h"
+#include "src/tint/builtin/builtin.h"
+#include "src/tint/builtin/texel_format.h"
 #include "src/tint/transform/test_helper.h"
-#include "src/tint/type/builtin.h"
-#include "src/tint/type/texel_format.h"
 
 namespace tint::transform {
 namespace {
@@ -1711,7 +1711,7 @@ std::string ExpandBuiltinType(std::string_view name) {
 
 std::vector<const char*> ConstructableTypes() {
     std::vector<const char*> out;
-    for (auto* ty : type::kBuiltinStrings) {
+    for (auto* ty : builtin::kBuiltinStrings) {
         std::string_view type(ty);
         if (type != "ptr" && type != "atomic" && !utils::HasPrefix(type, "sampler") &&
             !utils::HasPrefix(type, "texture")) {
@@ -1792,7 +1792,7 @@ fn tint_symbol() {
 
 TEST_P(RenamerBuiltinTypeTest, PreserveTypeConversion) {
     if (std::string_view(GetParam()) == "array") {
-        return;  // Cannot type convert arrays.
+        return;  // Cannot value convert arrays.
     }
 
     auto expand = [&](const char* source) {
@@ -1856,7 +1856,7 @@ TEST_P(RenamerBuiltinTypeTest, RenameShadowedByAlias) {
     };
 
     auto src = expand(R"(
-type $name = $other_type;
+alias $name = $other_type;
 
 @fragment
 fn f() {
@@ -1923,16 +1923,18 @@ INSTANTIATE_TEST_SUITE_P(RenamerBuiltinTypeTest,
 /// @return WGSL builtin identifier keywords
 std::vector<const char*> Identifiers() {
     std::vector<const char*> out;
-    for (auto* ident : type::kBuiltinStrings) {
+    for (auto* ident : builtin::kBuiltinStrings) {
         out.push_back(ident);
     }
-    for (auto* ident : type::kAddressSpaceStrings) {
+    for (auto* ident : builtin::kAddressSpaceStrings) {
+        if (!utils::HasPrefix(ident, "_")) {
+            out.push_back(ident);
+        }
+    }
+    for (auto* ident : builtin::kTexelFormatStrings) {
         out.push_back(ident);
     }
-    for (auto* ident : type::kTexelFormatStrings) {
-        out.push_back(ident);
-    }
-    for (auto* ident : type::kAccessStrings) {
+    for (auto* ident : builtin::kAccessStrings) {
         out.push_back(ident);
     }
     return out;
@@ -1940,24 +1942,24 @@ std::vector<const char*> Identifiers() {
 
 using RenamerBuiltinIdentifierTest = TransformTestWithParam<const char*>;
 
-TEST_P(RenamerBuiltinIdentifierTest, GlobalVarName) {
+TEST_P(RenamerBuiltinIdentifierTest, GlobalConstName) {
     auto expand = [&](const char* source) {
         return utils::ReplaceAll(source, "$name", GetParam());
     };
 
     auto src = expand(R"(
-var<private> $name = 42;
+const $name = 42;
 
 fn f() {
-  var v = $name;
+  const v = $name;
 }
 )");
 
     auto expect = expand(R"(
-var<private> tint_symbol = 42;
+const tint_symbol = 42;
 
 fn tint_symbol_1() {
-  var tint_symbol_2 = tint_symbol;
+  const tint_symbol_2 = tint_symbol;
 }
 )");
 

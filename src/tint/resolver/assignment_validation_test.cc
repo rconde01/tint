@@ -33,8 +33,8 @@ TEST_F(ResolverAssignmentValidationTest, ReadOnlyBuffer) {
     auto* s = Structure("S", utils::Vector{
                                  Member("m", ty.i32()),
                              });
-    GlobalVar(Source{{12, 34}}, "a", ty.Of(s), type::AddressSpace::kStorage, type::Access::kRead,
-              Binding(0_a), Group(0_a));
+    GlobalVar(Source{{12, 34}}, "a", ty.Of(s), builtin::AddressSpace::kStorage,
+              builtin::Access::kRead, Binding(0_a), Group(0_a));
 
     WrapInFunction(Assign(Source{{56, 78}}, MemberAccessor("a", "m"), 1_i));
 
@@ -143,17 +143,6 @@ TEST_F(ResolverAssignmentValidationTest, AssignIncompatibleTypesInNestedBlockSta
     EXPECT_EQ(r()->error(), "12:34 error: cannot assign 'f32' to 'i32'");
 }
 
-TEST_F(ResolverAssignmentValidationTest, AssignToScalar_Fail) {
-    // var my_var : i32 = 2i;
-    // 1 = my_var;
-
-    WrapInFunction(Var("my_var", ty.i32(), Expr(2_i)),  //
-                   Assign(Expr(Source{{12, 34}}, 1_i), "my_var"));
-
-    EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), "12:34 error: cannot assign to value of type 'i32'");
-}
-
 TEST_F(ResolverAssignmentValidationTest, AssignCompatibleTypes_Pass) {
     // var a : i32 = 1i;
     // a = 2i;
@@ -193,7 +182,7 @@ TEST_F(ResolverAssignmentValidationTest, AssignThroughPointer_Pass) {
     // var a : i32;
     // let b : ptr<function,i32> = &a;
     // *b = 2i;
-    const auto func = type::AddressSpace::kFunction;
+    const auto func = builtin::AddressSpace::kFunction;
     WrapInFunction(Var("a", ty.i32(), func, Expr(2_i)),                    //
                    Let("b", ty.pointer<i32>(func), AddressOf(Expr("a"))),  //
                    Assign(Deref("b"), 2_i));
@@ -205,7 +194,7 @@ TEST_F(ResolverAssignmentValidationTest, AssignMaterializedThroughPointer_Pass) 
     // var a : i32;
     // let b : ptr<function,i32> = &a;
     // *b = 2;
-    const auto func = type::AddressSpace::kFunction;
+    const auto func = builtin::AddressSpace::kFunction;
     auto* var_a = Var("a", ty.i32(), func, Expr(2_i));
     auto* var_b = Let("b", ty.pointer<i32>(func), AddressOf(Expr("a")));
     WrapInFunction(var_a, var_b, Assign(Deref("b"), 2_a));
@@ -213,16 +202,87 @@ TEST_F(ResolverAssignmentValidationTest, AssignMaterializedThroughPointer_Pass) 
     EXPECT_TRUE(r()->Resolve()) << r()->error();
 }
 
+TEST_F(ResolverAssignmentValidationTest, AssignToScalar_Fail) {
+    // var my_var : i32 = 2i;
+    // 1 = my_var;
+
+    WrapInFunction(Var("my_var", ty.i32(), Expr(2_i)),  //
+                   Assign(Expr(Source{{12, 34}}, 1_i), "my_var"));
+
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(), R"(12:34 error: cannot assign to value expression of type 'i32')");
+}
+
+TEST_F(ResolverAssignmentValidationTest, AssignToOverride_Fail) {
+    // override a : i32 = 2i;
+    // {
+    //  a = 2i
+    // }
+    Override(Source{{56, 78}}, "a", ty.i32(), Expr(2_i));
+    WrapInFunction(Assign(Expr(Source{{12, 34}}, "a"), 2_i));
+
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(), R"(12:34 error: cannot assign to override 'a'
+12:34 note: 'override' variables are immutable
+56:78 note: override 'a' declared here)");
+}
+
 TEST_F(ResolverAssignmentValidationTest, AssignToLet_Fail) {
     // {
     //  let a : i32 = 2i;
     //  a = 2i
     // }
-    auto* var = Let("a", ty.i32(), Expr(2_i));
-    WrapInFunction(var, Assign(Expr(Source{{12, 34}}, "a"), 2_i));
+    WrapInFunction(Let(Source{{56, 78}}, "a", ty.i32(), Expr(2_i)),  //
+                   Assign(Expr(Source{{12, 34}}, "a"), 2_i));
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), "12:34 error: cannot assign to 'let'\nnote: 'a' is declared here:");
+    EXPECT_EQ(r()->error(), R"(12:34 error: cannot assign to let 'a'
+12:34 note: 'let' variables are immutable
+56:78 note: let 'a' declared here)");
+}
+
+TEST_F(ResolverAssignmentValidationTest, AssignToConst_Fail) {
+    // {
+    //  const a : i32 = 2i;
+    //  a = 2i
+    // }
+    WrapInFunction(Const(Source{{56, 78}}, "a", ty.i32(), Expr(2_i)),  //
+                   Assign(Expr(Source{{12, 34}}, "a"), 2_i));
+
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(), R"(12:34 error: cannot assign to const 'a'
+12:34 note: 'const' variables are immutable
+56:78 note: const 'a' declared here)");
+}
+
+TEST_F(ResolverAssignmentValidationTest, AssignToParam_Fail) {
+    Func("foo", utils::Vector{Param(Source{{56, 78}}, "arg", ty.i32())}, ty.void_(),
+         utils::Vector{
+             Assign(Expr(Source{{12, 34}}, "arg"), Expr(1_i)),
+             Return(),
+         });
+
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(),
+              R"(12:34 error: cannot assign to parameter 'arg'
+12:34 note: parameters are immutable
+56:78 note: parameter 'arg' declared here)");
+}
+
+TEST_F(ResolverAssignmentValidationTest, AssignToLetMember_Fail) {
+    // struct S { i : i32 }
+    // {
+    //  let a : S;
+    //  a.i = 2i
+    // }
+    Structure("S", utils::Vector{Member("i", ty.i32())});
+    WrapInFunction(Let(Source{{98, 76}}, "a", ty("S"), Call("S")),  //
+                   Assign(MemberAccessor(Source{{12, 34}}, Expr(Source{{56, 78}}, "a"), "i"), 2_i));
+
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(), R"(12:34 error: cannot assign to value expression of type 'i32'
+56:78 note: 'let' variables are immutable
+98:76 note: let 'a' declared here)");
 }
 
 TEST_F(ResolverAssignmentValidationTest, AssignNonConstructible_Handle) {
@@ -231,8 +291,8 @@ TEST_F(ResolverAssignmentValidationTest, AssignNonConstructible_Handle) {
     // a = b;
 
     auto make_type = [&] {
-        return ty.storage_texture(type::TextureDimension::k1d, type::TexelFormat::kRgba8Unorm,
-                                  type::Access::kWrite);
+        return ty.storage_texture(type::TextureDimension::k1d, builtin::TexelFormat::kRgba8Unorm,
+                                  builtin::Access::kWrite);
     };
 
     GlobalVar("a", make_type(), Binding(0_a), Group(0_a));
@@ -252,8 +312,8 @@ TEST_F(ResolverAssignmentValidationTest, AssignNonConstructible_Atomic) {
     auto* s = Structure("S", utils::Vector{
                                  Member("a", ty.atomic(ty.i32())),
                              });
-    GlobalVar(Source{{12, 34}}, "v", ty.Of(s), type::AddressSpace::kStorage,
-              type::Access::kReadWrite, Binding(0_a), Group(0_a));
+    GlobalVar(Source{{12, 34}}, "v", ty.Of(s), builtin::AddressSpace::kStorage,
+              builtin::Access::kReadWrite, Binding(0_a), Group(0_a));
 
     WrapInFunction(Assign(Source{{56, 78}}, MemberAccessor("v", "a"), MemberAccessor("v", "a")));
 
@@ -269,8 +329,8 @@ TEST_F(ResolverAssignmentValidationTest, AssignNonConstructible_RuntimeArray) {
     auto* s = Structure("S", utils::Vector{
                                  Member("a", ty.array(ty.f32())),
                              });
-    GlobalVar(Source{{12, 34}}, "v", ty.Of(s), type::AddressSpace::kStorage,
-              type::Access::kReadWrite, Binding(0_a), Group(0_a));
+    GlobalVar(Source{{12, 34}}, "v", ty.Of(s), builtin::AddressSpace::kStorage,
+              builtin::Access::kReadWrite, Binding(0_a), Group(0_a));
 
     WrapInFunction(Assign(Source{{56, 78}}, MemberAccessor("v", "a"), MemberAccessor("v", "a")));
 
@@ -289,7 +349,7 @@ TEST_F(ResolverAssignmentValidationTest, AssignToPhony_NonConstructibleStruct_Fa
     auto* s = Structure("S", utils::Vector{
                                  Member("arr", ty.array<i32>()),
                              });
-    GlobalVar("s", ty.Of(s), type::AddressSpace::kStorage, Group(0_a), Binding(0_a));
+    GlobalVar("s", ty.Of(s), builtin::AddressSpace::kStorage, Group(0_a), Binding(0_a));
 
     WrapInFunction(Assign(Phony(), Expr(Source{{12, 34}}, "s")));
 
@@ -311,7 +371,7 @@ TEST_F(ResolverAssignmentValidationTest, AssignToPhony_DynamicArray_Fail) {
     auto* s = Structure("S", utils::Vector{
                                  Member("arr", ty.array<i32>()),
                              });
-    GlobalVar("s", ty.Of(s), type::AddressSpace::kStorage, Group(0_a), Binding(0_a));
+    GlobalVar("s", ty.Of(s), builtin::AddressSpace::kStorage, Group(0_a), Binding(0_a));
 
     WrapInFunction(Assign(Phony(), MemberAccessor(Source{{12, 34}}, "s", "arr")));
 
@@ -364,9 +424,9 @@ TEST_F(ResolverAssignmentValidationTest, AssignToPhony_Pass) {
     GlobalVar("tex", ty.sampled_texture(type::TextureDimension::k2d, ty.f32()), Group(0_a),
               Binding(0_a));
     GlobalVar("smp", ty.sampler(type::SamplerKind::kSampler), Group(0_a), Binding(1_a));
-    GlobalVar("u", ty.Of(U), type::AddressSpace::kUniform, Group(0_a), Binding(2_a));
-    GlobalVar("s", ty.Of(S), type::AddressSpace::kStorage, Group(0_a), Binding(3_a));
-    GlobalVar("wg", ty.array<f32, 10>(), type::AddressSpace::kWorkgroup);
+    GlobalVar("u", ty.Of(U), builtin::AddressSpace::kUniform, Group(0_a), Binding(2_a));
+    GlobalVar("s", ty.Of(S), builtin::AddressSpace::kStorage, Group(0_a), Binding(3_a));
+    GlobalVar("wg", ty.array<f32, 10>(), builtin::AddressSpace::kWorkgroup);
 
     WrapInFunction(Assign(Phony(), 1_i),                                    //
                    Assign(Phony(), 2_u),                                    //

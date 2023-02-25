@@ -20,12 +20,12 @@
 #include <vector>
 
 #include "src/tint/ast/type.h"
+#include "src/tint/builtin/access.h"
+#include "src/tint/builtin/address_space.h"
+#include "src/tint/builtin/texel_format.h"
 #include "src/tint/castable.h"
 #include "src/tint/symbol.h"
-#include "src/tint/type/access.h"
-#include "src/tint/type/address_space.h"
 #include "src/tint/type/sampler_kind.h"
-#include "src/tint/type/texel_format.h"
 #include "src/tint/type/texture_dimension.h"
 #include "src/tint/utils/block_allocator.h"
 
@@ -162,7 +162,7 @@ struct Pointer final : public Castable<Pointer, Type> {
     /// @param ty the store type
     /// @param sc the pointer address space
     /// @param access the declared access mode
-    Pointer(const Type* ty, type::AddressSpace sc, type::Access access);
+    Pointer(const Type* ty, builtin::AddressSpace sc, builtin::Access access);
 
     /// Copy constructor
     /// @param other the other type to copy
@@ -180,9 +180,9 @@ struct Pointer final : public Castable<Pointer, Type> {
     /// the store type
     Type const* const type;
     /// the pointer address space
-    type::AddressSpace const address_space;
+    builtin::AddressSpace const address_space;
     /// the pointer declared access mode
-    type::Access const access;
+    builtin::Access const access;
 };
 
 /// `ref<SC, T, AM>` type
@@ -193,7 +193,7 @@ struct Reference final : public Castable<Reference, Type> {
     /// @param ty the referenced type
     /// @param sc the reference address space
     /// @param access the reference declared access mode
-    Reference(const Type* ty, type::AddressSpace sc, type::Access access);
+    Reference(const Type* ty, builtin::AddressSpace sc, builtin::Access access);
 
     /// Copy constructor
     /// @param other the other type to copy
@@ -211,9 +211,9 @@ struct Reference final : public Castable<Reference, Type> {
     /// the store type
     Type const* const type;
     /// the pointer address space
-    type::AddressSpace const address_space;
+    builtin::AddressSpace const address_space;
     /// the pointer declared access mode
-    type::Access const access;
+    builtin::Access const access;
 };
 
 /// `vecN<T>` type
@@ -434,7 +434,7 @@ struct StorageTexture final : public Castable<StorageTexture, Texture> {
     /// @param d the texture dimensions
     /// @param f the storage image format
     /// @param a the access control
-    StorageTexture(type::TextureDimension d, type::TexelFormat f, type::Access a);
+    StorageTexture(type::TextureDimension d, builtin::TexelFormat f, builtin::Access a);
 
     /// Copy constructor
     /// @param other the other type to copy
@@ -450,10 +450,10 @@ struct StorageTexture final : public Castable<StorageTexture, Texture> {
 #endif  // NDEBUG
 
     /// the storage image format
-    type::TexelFormat const format;
+    builtin::TexelFormat const format;
 
     /// the access control
-    type::Access const access;
+    builtin::Access const access;
 };
 
 /// Base class for named types
@@ -549,16 +549,16 @@ class TypeManager {
     /// @return a Pointer type. Repeated calls with the same arguments will return
     /// the same pointer.
     const spirv::Pointer* Pointer(const Type* ty,
-                                  type::AddressSpace address_space,
-                                  type::Access access = type::Access::kUndefined);
+                                  builtin::AddressSpace address_space,
+                                  builtin::Access access = builtin::Access::kUndefined);
     /// @param ty the referenced type
     /// @param address_space the reference address space
     /// @param access the declared access mode
     /// @return a Reference type. Repeated calls with the same arguments will
     /// return the same pointer.
     const spirv::Reference* Reference(const Type* ty,
-                                      type::AddressSpace address_space,
-                                      type::Access access = type::Access::kUndefined);
+                                      builtin::AddressSpace address_space,
+                                      builtin::Access access = builtin::Access::kUndefined);
     /// @param ty the element type
     /// @param sz the number of elements in the vector
     /// @return a Vector type. Repeated calls with the same arguments will return
@@ -615,8 +615,8 @@ class TypeManager {
     /// @return a StorageTexture type. Repeated calls with the same arguments will
     /// return the same pointer.
     const spirv::StorageTexture* StorageTexture(type::TextureDimension d,
-                                                type::TexelFormat f,
-                                                type::Access a);
+                                                builtin::TexelFormat f,
+                                                builtin::Access a);
 
   private:
     struct State;

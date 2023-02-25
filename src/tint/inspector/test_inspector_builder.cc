@@ -125,19 +125,20 @@ void InspectorBuilder::AddUniformBuffer(const std::string& name,
                                         ast::Type type,
                                         uint32_t group,
                                         uint32_t binding) {
-    GlobalVar(name, type, type::AddressSpace::kUniform, Binding(AInt(binding)), Group(AInt(group)));
+    GlobalVar(name, type, builtin::AddressSpace::kUniform, Binding(AInt(binding)),
+              Group(AInt(group)));
 }
 
 void InspectorBuilder::AddWorkgroupStorage(const std::string& name, ast::Type type) {
-    GlobalVar(name, type, type::AddressSpace::kWorkgroup);
+    GlobalVar(name, type, builtin::AddressSpace::kWorkgroup);
 }
 
 void InspectorBuilder::AddStorageBuffer(const std::string& name,
                                         ast::Type type,
-                                        type::Access access,
+                                        builtin::Access access,
                                         uint32_t group,
                                         uint32_t binding) {
-    GlobalVar(name, type, type::AddressSpace::kStorage, access, Binding(AInt(binding)),
+    GlobalVar(name, type, builtin::AddressSpace::kStorage, access, Binding(AInt(binding)),
               Group(AInt(group)));
 }
 
@@ -189,7 +190,7 @@ void InspectorBuilder::AddResource(const std::string& name,
 }
 
 void InspectorBuilder::AddGlobalVariable(const std::string& name, ast::Type type) {
-    GlobalVar(name, type, type::AddressSpace::kPrivate);
+    GlobalVar(name, type, builtin::AddressSpace::kPrivate);
 }
 
 const ast::Function* InspectorBuilder::MakeSamplerReferenceBodyFunction(
@@ -278,8 +279,8 @@ ast::Type InspectorBuilder::GetCoordsType(type::TextureDimension dim, ast::Type 
 }
 
 ast::Type InspectorBuilder::MakeStorageTextureTypes(type::TextureDimension dim,
-                                                    type::TexelFormat format) {
-    return ty.storage_texture(dim, format, type::Access::kWrite);
+                                                    builtin::TexelFormat format) {
+    return ty.storage_texture(dim, format, builtin::Access::kWrite);
 }
 
 void InspectorBuilder::AddStorageTexture(const std::string& name,

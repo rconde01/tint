@@ -216,21 +216,21 @@ TEST_P(MslBuiltinTest, Emit) {
     if (param.type == CallParamType::kF16) {
         Enable(builtin::Extension::kF16);
 
-        GlobalVar("h2", ty.vec2<f16>(), type::AddressSpace::kPrivate);
-        GlobalVar("h3", ty.vec3<f16>(), type::AddressSpace::kPrivate);
-        GlobalVar("hm2x2", ty.mat2x2<f16>(), type::AddressSpace::kPrivate);
-        GlobalVar("hm3x2", ty.mat3x2<f16>(), type::AddressSpace::kPrivate);
+        GlobalVar("h2", ty.vec2<f16>(), builtin::AddressSpace::kPrivate);
+        GlobalVar("h3", ty.vec3<f16>(), builtin::AddressSpace::kPrivate);
+        GlobalVar("hm2x2", ty.mat2x2<f16>(), builtin::AddressSpace::kPrivate);
+        GlobalVar("hm3x2", ty.mat3x2<f16>(), builtin::AddressSpace::kPrivate);
     }
 
-    GlobalVar("f2", ty.vec2<f32>(), type::AddressSpace::kPrivate);
-    GlobalVar("f3", ty.vec3<f32>(), type::AddressSpace::kPrivate);
-    GlobalVar("f4", ty.vec4<f32>(), type::AddressSpace::kPrivate);
-    GlobalVar("u1", ty.u32(), type::AddressSpace::kPrivate);
-    GlobalVar("u2", ty.vec2<u32>(), type::AddressSpace::kPrivate);
-    GlobalVar("i2", ty.vec2<i32>(), type::AddressSpace::kPrivate);
-    GlobalVar("b2", ty.vec2<bool>(), type::AddressSpace::kPrivate);
-    GlobalVar("m2x2", ty.mat2x2<f32>(), type::AddressSpace::kPrivate);
-    GlobalVar("m3x2", ty.mat3x2<f32>(), type::AddressSpace::kPrivate);
+    GlobalVar("f2", ty.vec2<f32>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("f3", ty.vec3<f32>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("f4", ty.vec4<f32>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("u1", ty.u32(), builtin::AddressSpace::kPrivate);
+    GlobalVar("u2", ty.vec2<u32>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("i2", ty.vec2<i32>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("b2", ty.vec2<bool>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("m2x2", ty.mat2x2<f32>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("m3x2", ty.mat3x2<f32>(), builtin::AddressSpace::kPrivate);
 
     auto* call = GenerateCall(param.builtin, param.type, this);
     ASSERT_NE(nullptr, call) << "Unhandled builtin";
@@ -370,11 +370,11 @@ INSTANTIATE_TEST_SUITE_P(
                     "unpack_unorm2x16_to_float"}));
 
 TEST_F(MslGeneratorImplTest, Builtin_Call) {
-    GlobalVar("param1", ty.vec2<f32>(), type::AddressSpace::kPrivate);
-    GlobalVar("param2", ty.vec2<f32>(), type::AddressSpace::kPrivate);
+    GlobalVar("param1", ty.vec2<f32>(), builtin::AddressSpace::kPrivate);
+    GlobalVar("param2", ty.vec2<f32>(), builtin::AddressSpace::kPrivate);
 
     auto* call = Call("dot", "param1", "param2");
-    WrapInFunction(CallStmt(call));
+    WrapInFunction(Decl(Var("r", call)));
 
     GeneratorImpl& gen = Build();
 
@@ -1047,8 +1047,8 @@ kernel void test_function() {
 
 TEST_F(MslGeneratorImplTest, Pack2x16Float) {
     auto* call = Call("pack2x16float", "p1");
-    GlobalVar("p1", ty.vec2<f32>(), type::AddressSpace::kPrivate);
-    WrapInFunction(CallStmt(call));
+    GlobalVar("p1", ty.vec2<f32>(), builtin::AddressSpace::kPrivate);
+    WrapInFunction(Decl(Var("r", call)));
 
     GeneratorImpl& gen = Build();
 
@@ -1059,8 +1059,8 @@ TEST_F(MslGeneratorImplTest, Pack2x16Float) {
 
 TEST_F(MslGeneratorImplTest, Unpack2x16Float) {
     auto* call = Call("unpack2x16float", "p1");
-    GlobalVar("p1", ty.u32(), type::AddressSpace::kPrivate);
-    WrapInFunction(CallStmt(call));
+    GlobalVar("p1", ty.u32(), builtin::AddressSpace::kPrivate);
+    WrapInFunction(Decl(Var("r", call)));
 
     GeneratorImpl& gen = Build();
 
@@ -1070,8 +1070,8 @@ TEST_F(MslGeneratorImplTest, Unpack2x16Float) {
 }
 
 TEST_F(MslGeneratorImplTest, DotI32) {
-    GlobalVar("v", ty.vec3<i32>(), type::AddressSpace::kPrivate);
-    WrapInFunction(CallStmt(Call("dot", "v", "v")));
+    GlobalVar("v", ty.vec3<i32>(), builtin::AddressSpace::kPrivate);
+    WrapInFunction(Decl(Var("r", Call("dot", "v", "v"))));
 
     GeneratorImpl& gen = SanitizeAndBuild();
 
@@ -1086,7 +1086,7 @@ T tint_dot3(vec<T,3> a, vec<T,3> b) {
 }
 kernel void test_function() {
   thread int3 tint_symbol = 0;
-  tint_dot3(tint_symbol, tint_symbol);
+  int r = tint_dot3(tint_symbol, tint_symbol);
   return;
 }
 
