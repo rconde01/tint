@@ -44,6 +44,7 @@
 #include "src/tint/type/texture_dimension.h"
 #include "src/tint/utils/reverse.h"
 #include "src/tint/utils/string.h"
+#include "src/tint/utils/string_stream.h"
 
 namespace tint::reader::wgsl {
 namespace {
@@ -213,7 +214,7 @@ ParserImpl::~ParserImpl() = default;
 ParserImpl::Failure::Errored ParserImpl::add_error(const Source& source,
                                                    std::string_view err,
                                                    std::string_view use) {
-    std::stringstream msg;
+    utils::StringStream msg;
     msg << err;
     if (!use.empty()) {
         msg << " for " << use;
@@ -911,7 +912,7 @@ Expect<ENUM> ParserImpl::expect_enum(std::string_view name,
     }
 
     /// Create a sensible error message
-    std::ostringstream err;
+    utils::StringStream err;
     err << "expected " << name;
 
     if (!use.empty()) {
@@ -3164,7 +3165,7 @@ bool ParserImpl::expect(std::string_view use, Token::Type tok) {
         return false;
     }
 
-    std::stringstream err;
+    utils::StringStream err;
     if (tok == Token::Type::kTemplateArgsLeft && t.type() == Token::Type::kLessThan) {
         err << "missing closing '>'";
     } else {
