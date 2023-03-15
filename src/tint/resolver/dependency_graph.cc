@@ -60,6 +60,7 @@
 #include "src/tint/builtin/builtin_value.h"
 #include "src/tint/scope_stack.h"
 #include "src/tint/sem/builtin.h"
+#include "src/tint/switch.h"
 #include "src/tint/symbol_table.h"
 #include "src/tint/utils/block_allocator.h"
 #include "src/tint/utils/compiler_macros.h"
@@ -440,7 +441,8 @@ class DependencyScanner {
         auto* resolved = scope_stack_.Get(to);
         if (!resolved) {
             auto s = symbols_.NameFor(to);
-            if (auto builtin_fn = sem::ParseBuiltinType(s); builtin_fn != sem::BuiltinType::kNone) {
+            if (auto builtin_fn = builtin::ParseFunction(s);
+                builtin_fn != builtin::Function::kNone) {
                 graph_.resolved_identifiers.Add(from, ResolvedIdentifier(builtin_fn));
                 return;
             }
@@ -838,7 +840,7 @@ std::string ResolvedIdentifier::String(const SymbolTable& symbols, diag::List& d
                 return "<unknown>";
             });
     }
-    if (auto builtin_fn = BuiltinFunction(); builtin_fn != sem::BuiltinType::kNone) {
+    if (auto builtin_fn = BuiltinFunction(); builtin_fn != builtin::Function::kNone) {
         return "builtin function '" + utils::ToString(builtin_fn) + "'";
     }
     if (auto builtin_ty = BuiltinType(); builtin_ty != builtin::Builtin::kUndefined) {

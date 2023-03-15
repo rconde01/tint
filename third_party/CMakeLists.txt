@@ -51,3 +51,18 @@ if(${TINT_BUILD_GLSL_WRITER})
     add_subdirectory("${TINT_THIRD_PARTY_DIR}/vulkan-deps/glslang/src" "${CMAKE_BINARY_DIR}/third_party/glslang" EXCLUDE_FROM_ALL)
   endif()
 endif()
+
+if (NOT TARGET libabsl)
+    if (("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang") OR
+        ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang"))
+        add_compile_options(
+            -Wno-array-parameter
+            -Wno-deprecated-builtins
+            -Wno-unknown-warning-option
+        )
+    endif()
+
+    # Recommended setting for compability with future abseil releases.
+    set(ABSL_PROPAGATE_CXX_STD ON)
+    add_subdirectory("${TINT_THIRD_PARTY_DIR}/abseil-cpp" "${CMAKE_CURRENT_BINARY_DIR}/abseil")
+endif()

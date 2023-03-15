@@ -21,6 +21,7 @@
 #include "src/tint/transform/add_empty_entry_point.h"
 #include "src/tint/transform/builtin_polyfill.h"
 #include "src/tint/transform/canonicalize_entry_point_io.h"
+#include "src/tint/transform/clamp_frag_depth.h"
 #include "src/tint/transform/demote_to_helper.h"
 #include "src/tint/transform/direct_variable_access.h"
 #include "src/tint/transform/disable_uniformity_analysis.h"
@@ -28,6 +29,7 @@
 #include "src/tint/transform/for_loop_to_loop.h"
 #include "src/tint/transform/manager.h"
 #include "src/tint/transform/merge_return.h"
+#include "src/tint/transform/multiplanar_external_texture.h"
 #include "src/tint/transform/preserve_padding.h"
 #include "src/tint/transform/promote_side_effects_to_decl.h"
 #include "src/tint/transform/remove_phonies.h"
@@ -41,13 +43,16 @@
 #include "src/tint/transform/vectorize_scalar_matrix_initializers.h"
 #include "src/tint/transform/while_to_loop.h"
 #include "src/tint/transform/zero_init_workgroup_memory.h"
-#include "src/tint/writer/generate_external_texture_bindings.h"
 
 namespace tint::writer::spirv {
 
 SanitizedResult Sanitize(const Program* in, const Options& options) {
     transform::Manager manager;
     transform::DataMap data;
+
+    if (options.clamp_frag_depth) {
+        manager.Add<tint::transform::ClampFragDepth>();
+    }
 
     manager.Add<transform::DisableUniformityAnalysis>();
 
@@ -73,10 +78,10 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
         manager.Add<transform::Robustness>();
     }
 
-    if (options.generate_external_texture_bindings) {
+    if (!options.external_texture_options.bindings_map.empty()) {
         // Note: it is more efficient for MultiplanarExternalTexture to come after Robustness
-        auto new_bindings_map = GenerateExternalTextureBindings(in);
-        data.Add<transform::MultiplanarExternalTexture::NewBindingPoints>(new_bindings_map);
+        data.Add<transform::MultiplanarExternalTexture::NewBindingPoints>(
+            options.external_texture_options.bindings_map);
         manager.Add<transform::MultiplanarExternalTexture>();
     }
 
@@ -89,6 +94,7 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
         polyfills.bgra8unorm = true;
         polyfills.bitshift_modulo = true;
         polyfills.clamp_int = true;
+        polyfills.conv_f32_to_iu32 = true;
         polyfills.count_leading_zeros = true;
         polyfills.count_trailing_zeros = true;
         polyfills.extract_bits = transform::BuiltinPolyfill::Level::kClampParameters;

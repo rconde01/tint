@@ -27,7 +27,6 @@
 #include "src/tint/reader/reader.h"
 #include "src/tint/text/unicode.h"
 #include "src/tint/transform/binding_remapper.h"
-#include "src/tint/transform/clamp_frag_depth.h"
 #include "src/tint/transform/first_index_offset.h"
 #include "src/tint/transform/manager.h"
 #include "src/tint/transform/multiplanar_external_texture.h"
@@ -36,6 +35,8 @@
 #include "src/tint/transform/substitute_override.h"
 #include "src/tint/transform/vertex_pulling.h"
 #include "src/tint/type/manager.h"
+#include "src/tint/writer/array_length_from_uniform_options.h"
+#include "src/tint/writer/binding_point.h"
 #include "src/tint/writer/flatten_bindings.h"
 #include "src/tint/writer/writer.h"
 

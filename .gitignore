@@ -2,6 +2,7 @@
 .DS_Store
 .gclient
 .gclient_entries
+.gclient_previous_sync_commits
 .vs
 .vscode/*
 !.vscode/tasks.json
@@ -10,10 +11,12 @@ coverage.summary
 default.profraw
 lcov.info
 
-/buildtools
+/build/
+/buildtools/
 /cmake-build-*/
 /out
 /testing
+/third_party/abseil-cpp
 /third_party/benchmark
 /third_party/binutils
 /third_party/catapult
@@ -28,5 +31,4 @@ lcov.info
 /tools/clang
 /tools/bin
 
-/build*/
 /test.wgsl

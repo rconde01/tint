@@ -85,6 +85,10 @@ deps = {
     'dep_type': 'cipd',
   },
 
+  'third_party/abseil-cpp': {
+    'url': '{chromium_git}/chromium/src/third_party/abseil-cpp@bc3ab29356a081d0b5dd4ac55e30f4b45d8794cc',
+  },
+
   # Dependencies required for testing
   'testing': {
     'url': '{chromium_git}/chromium/src/testing@d5ea1bf4b64781cfe38f207f56f264eb080d06b2',

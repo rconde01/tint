@@ -488,12 +488,14 @@ class ParserImpl {
     /// Parses a `variable_statement` grammar element
     /// @returns the parsed variable or nullptr
     Maybe<const ast::VariableDeclStatement*> variable_statement();
-    /// Parses a `if_statement` grammar element
+    /// Parses a `if_statement` grammar element, with the attribute list provided as `attrs`.
+    /// @param attrs the list of attributes for the statement
     /// @returns the parsed statement or nullptr
-    Maybe<const ast::IfStatement*> if_statement();
+    Maybe<const ast::IfStatement*> if_statement(AttributeList& attrs);
     /// Parses a `switch_statement` grammar element
+    /// @param attrs the list of attributes for the statement
     /// @returns the parsed statement or nullptr
-    Maybe<const ast::SwitchStatement*> switch_statement();
+    Maybe<const ast::SwitchStatement*> switch_statement(AttributeList& attrs);
     /// Parses a `switch_body` grammar element
     /// @returns the parsed statement or nullptr
     Maybe<const ast::CaseStatement*> switch_body();
@@ -515,12 +517,14 @@ class ParserImpl {
     /// Parses a `for_header` grammar element, erroring on parse failure.
     /// @returns the parsed for header or nullptr
     Expect<std::unique_ptr<ForHeader>> expect_for_header();
-    /// Parses a `for_statement` grammar element
+    /// Parses a `for_statement` grammar element, with the attribute list provided as `attrs`.
+    /// @param attrs the list of attributes for the statement
     /// @returns the parsed for loop or nullptr
-    Maybe<const ast::ForLoopStatement*> for_statement();
-    /// Parses a `while_statement` grammar element
+    Maybe<const ast::ForLoopStatement*> for_statement(AttributeList& attrs);
+    /// Parses a `while_statement` grammar element, with the attribute list provided as `attrs`.
+    /// @param attrs the list of attributes for the statement
     /// @returns the parsed while loop or nullptr
-    Maybe<const ast::WhileStatement*> while_statement();
+    Maybe<const ast::WhileStatement*> while_statement(AttributeList& attrs);
     /// Parses a `break_if_statement` grammar element
     /// @returns the parsed statement or nullptr
     Maybe<const ast::Statement*> break_if_statement();
