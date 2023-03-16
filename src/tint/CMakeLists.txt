@@ -544,6 +544,8 @@ list(APPEND TINT_LIB_SRCS
   writer/array_length_from_uniform_options.cc
   writer/array_length_from_uniform_options.h
   writer/binding_point.h
+  writer/binding_remapper_options.cc
+  writer/binding_remapper_options.h
   writer/check_supported_extensions.cc
   writer/check_supported_extensions.h
   writer/external_texture_options.cc
@@ -1102,7 +1104,6 @@ if(TINT_BUILD_TESTS)
       reader/wgsl/parser_impl_break_stmt_test.cc
       reader/wgsl/parser_impl_bug_cases_test.cc
       reader/wgsl/parser_impl_call_stmt_test.cc
-      reader/wgsl/parser_impl_case_body_test.cc
       reader/wgsl/parser_impl_compound_stmt_test.cc
       reader/wgsl/parser_impl_const_literal_test.cc
       reader/wgsl/parser_impl_continue_stmt_test.cc

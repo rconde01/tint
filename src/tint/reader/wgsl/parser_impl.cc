@@ -213,30 +213,41 @@ ParserImpl::~ParserImpl() = default;
 ParserImpl::Failure::Errored ParserImpl::add_error(const Source& source,
                                                    std::string_view err,
                                                    std::string_view use) {
-    utils::StringStream msg;
-    msg << err;
-    if (!use.empty()) {
-        msg << " for " << use;
+    if (silence_diags_ == 0) {
+        utils::StringStream msg;
+        msg << err;
+        if (!use.empty()) {
+            msg << " for " << use;
+        }
+        add_error(source, msg.str());
     }
-    add_error(source, msg.str());
     return Failure::kErrored;
 }
 
-ParserImpl::Failure::Errored ParserImpl::add_error(const Token& t, const std::string& err) {
+ParserImpl::Failure::Errored ParserImpl::add_error(const Token& t, std::string_view err) {
     add_error(t.source(), err);
     return Failure::kErrored;
 }
 
-ParserImpl::Failure::Errored ParserImpl::add_error(const Source& source, const std::string& err) {
-    if (silence_errors_ == 0) {
+ParserImpl::Failure::Errored ParserImpl::add_error(const Source& source, std::string_view err) {
+    if (silence_diags_ == 0) {
         builder_.Diagnostics().add_error(diag::System::Reader, err, source);
     }
     return Failure::kErrored;
 }
 
-void ParserImpl::deprecated(const Source& source, const std::string& msg) {
-    builder_.Diagnostics().add_warning(diag::System::Reader,
-                                       "use of deprecated language feature: " + msg, source);
+void ParserImpl::add_note(const Source& source, std::string_view err) {
+    if (silence_diags_ == 0) {
+        builder_.Diagnostics().add_note(diag::System::Reader, err, source);
+    }
+}
+
+void ParserImpl::deprecated(const Source& source, std::string_view msg) {
+    if (silence_diags_ == 0) {
+        builder_.Diagnostics().add_warning(
+            diag::System::Reader, "use of deprecated language feature: " + std::string(msg),
+            source);
+    }
 }
 
 const Token& ParserImpl::next() {
@@ -605,7 +616,7 @@ Maybe<Void> ParserImpl::global_decl() {
 
     // We have a statement outside of a function?
     auto& t = peek();
-    auto stat = without_error([&] { return statement(); });
+    auto stat = without_diag([&] { return statement(); });
     if (stat.matched) {
         // Attempt to jump to the next '}' - the function might have just been
         // missing an opening line.
@@ -1717,36 +1728,6 @@ Maybe<const ast::CaseSelector*> ParserImpl::case_selector() {
         return Failure::kNoMatch;
     }
     return create<ast::CaseSelector>(p.source(), expr.value);
-}
-
-// case_body
-//   :
-//   | statement case_body
-Maybe<const ast::BlockStatement*> ParserImpl::case_body() {
-    StatementList stmts;
-    while (continue_parsing()) {
-        Source source;
-        if (match(Token::Type::kFallthrough, &source)) {
-            return add_error(
-                source,
-                "fallthrough is not premitted in WGSL. "
-                "Case can accept multiple selectors if the existing case bodies are empty. "
-                "(e.g. `case 1, 2, 3:`) "
-                "`default` is a valid case selector value. (e.g. `case 1, default:`)");
-        }
-
-        auto stmt = statement();
-        if (stmt.errored) {
-            return Failure::kErrored;
-        }
-        if (!stmt.matched) {
-            break;
-        }
-
-        stmts.Push(stmt.value);
-    }
-
-    return create<ast::BlockStatement>(Source{}, stmts, utils::Empty);
 }
 
 // loop_statement
@@ -3372,10 +3353,10 @@ bool ParserImpl::handle_error(const Token& t) {
 }
 
 template <typename F, typename T>
-T ParserImpl::without_error(F&& body) {
-    silence_errors_++;
+T ParserImpl::without_diag(F&& body) {
+    silence_diags_++;
     auto result = body();
-    silence_errors_--;
+    silence_diags_--;
     return result;
 }
 

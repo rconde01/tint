@@ -1,4 +1,4 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2023 The Tint Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,22 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/tint/ast/type_decl.h"
+#include "src/tint/writer/binding_remapper_options.h"
 
-#include "src/tint/ast/templated_identifier.h"
+namespace tint::writer {
 
-TINT_INSTANTIATE_TYPEINFO(tint::ast::TypeDecl);
+BindingRemapperOptions::BindingRemapperOptions() = default;
 
-namespace tint::ast {
+BindingRemapperOptions::~BindingRemapperOptions() = default;
 
-TypeDecl::TypeDecl(ProgramID pid, NodeID nid, const Source& src, const Identifier* n)
-    : Base(pid, nid, src), name(n) {
-    TINT_ASSERT(AST, name);
-    if (name) {
-        TINT_ASSERT(AST, !name->Is<TemplatedIdentifier>());
-    }
-}
+BindingRemapperOptions::BindingRemapperOptions(const BindingRemapperOptions&) = default;
 
-TypeDecl::~TypeDecl() = default;
+BindingRemapperOptions& BindingRemapperOptions::operator=(const BindingRemapperOptions&) = default;
 
-}  // namespace tint::ast
+BindingRemapperOptions::BindingRemapperOptions(BindingRemapperOptions&&) = default;
+
+}  // namespace tint::writer
