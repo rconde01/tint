@@ -3975,6 +3975,22 @@ sem::SwitchStatement* Resolver::SwitchStatement(const ast::SwitchStatement* stmt
             return false;
         }
 
+        // Handle switch body attributes.
+        for (auto* attr : stmt->body_attributes) {
+            Mark(attr);
+            if (auto* dc = attr->As<ast::DiagnosticAttribute>()) {
+                if (!DiagnosticControl(dc->control)) {
+                    return false;
+                }
+            } else {
+                AddError("attribute is not valid for switch body", attr->source);
+                return false;
+            }
+        }
+        if (!validator_.NoDuplicateAttributes(stmt->body_attributes)) {
+            return false;
+        }
+
         utils::Vector<sem::CaseStatement*, 4> cases;
         cases.Reserve(stmt->body.Length());
         for (auto* case_stmt : stmt->body) {
@@ -3986,6 +4002,8 @@ sem::SwitchStatement* Resolver::SwitchStatement(const ast::SwitchStatement* stmt
             cases.Push(c);
             behaviors.Add(c->Behaviors());
             sem->Cases().emplace_back(c);
+
+            ApplyDiagnosticSeverities(c);
         }
 
         if (behaviors.Contains(sem::Behavior::kBreak)) {
@@ -4281,6 +4299,9 @@ SEM* Resolver::StatementScope(const ast::Statement* ast, SEM* sem, F&& callback)
                 return handle_attributes(f, sem, "for statements");
             },
             [&](const ast::IfStatement* i) { return handle_attributes(i, sem, "if statements"); },
+            [&](const ast::LoopStatement* l) {
+                return handle_attributes(l, sem, "loop statements");
+            },
             [&](const ast::SwitchStatement* s) {
                 return handle_attributes(s, sem, "switch statements");
             },

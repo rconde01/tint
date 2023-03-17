@@ -1025,7 +1025,21 @@ bool GeneratorImpl::EmitDiscard(const ast::DiscardStatement*) {
 }
 
 bool GeneratorImpl::EmitLoop(const ast::LoopStatement* stmt) {
-    line() << "loop {";
+    {
+        auto out = line();
+
+        if (!stmt->attributes.IsEmpty()) {
+            if (!EmitAttributes(out, stmt->attributes)) {
+                return false;
+            }
+            out << " ";
+        }
+
+        out << "loop ";
+        if (!EmitBlockHeader(out, stmt->body)) {
+            return false;
+        }
+    }
     increment_indent();
 
     if (!EmitStatements(stmt->body->statements)) {
@@ -1034,7 +1048,17 @@ bool GeneratorImpl::EmitLoop(const ast::LoopStatement* stmt) {
 
     if (stmt->continuing && !stmt->continuing->Empty()) {
         line();
-        line() << "continuing {";
+        {
+            auto out = line();
+            out << "continuing ";
+            if (!stmt->continuing->attributes.IsEmpty()) {
+                if (!EmitAttributes(out, stmt->continuing->attributes)) {
+                    return false;
+                }
+                out << " ";
+            }
+            out << "{";
+        }
         if (!EmitStatementsWithIndent(stmt->continuing->statements)) {
             return false;
         }
@@ -1205,7 +1229,16 @@ bool GeneratorImpl::EmitSwitch(const ast::SwitchStatement* stmt) {
         if (!EmitExpression(out, stmt->condition)) {
             return false;
         }
-        out << ") {";
+        out << ") ";
+
+        if (!stmt->body_attributes.IsEmpty()) {
+            if (!EmitAttributes(out, stmt->body_attributes)) {
+                return false;
+            }
+            out << " ";
+        }
+
+        out << "{";
     }
 
     {

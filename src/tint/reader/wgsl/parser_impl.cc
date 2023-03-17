@@ -1281,7 +1281,7 @@ Maybe<const ast::Statement*> ParserImpl::statement() {
         return sw.value;
     }
 
-    auto loop = loop_statement();
+    auto loop = loop_statement(attrs.value);
     if (loop.errored) {
         return Failure::kErrored;
     }
@@ -1620,6 +1620,11 @@ Maybe<const ast::SwitchStatement*> ParserImpl::switch_statement(AttributeList& a
         return add_error(peek(), "unable to parse selector expression");
     }
 
+    auto body_attrs = attribute_list();
+    if (body_attrs.errored) {
+        return Failure::kErrored;
+    }
+
     auto body = expect_brace_block("switch statement", [&]() -> Expect<CaseStatementList> {
         bool errored = false;
         CaseStatementList list;
@@ -1645,7 +1650,8 @@ Maybe<const ast::SwitchStatement*> ParserImpl::switch_statement(AttributeList& a
     }
 
     TINT_DEFER(attrs.Clear());
-    return create<ast::SwitchStatement>(source, condition.value, body.value, std::move(attrs));
+    return create<ast::SwitchStatement>(source, condition.value, body.value, std::move(attrs),
+                                        std::move(body_attrs.value));
 }
 
 // switch_body
@@ -1731,11 +1737,16 @@ Maybe<const ast::CaseSelector*> ParserImpl::case_selector() {
 }
 
 // loop_statement
-//   : LOOP BRACKET_LEFT statements continuing_statement? BRACKET_RIGHT
-Maybe<const ast::LoopStatement*> ParserImpl::loop_statement() {
+//   : attribute* LOOP attribute* BRACKET_LEFT statements continuing_statement? BRACKET_RIGHT
+Maybe<const ast::LoopStatement*> ParserImpl::loop_statement(AttributeList& attrs) {
     Source source;
     if (!match(Token::Type::kLoop, &source)) {
         return Failure::kNoMatch;
+    }
+
+    auto body_attrs = attribute_list();
+    if (body_attrs.errored) {
+        return Failure::kErrored;
     }
 
     Maybe<const ast::BlockStatement*> continuing(Failure::kErrored);
@@ -1757,11 +1768,12 @@ Maybe<const ast::LoopStatement*> ParserImpl::loop_statement() {
     }
     auto body_end = last_source();
 
+    TINT_DEFER(attrs.Clear());
     return create<ast::LoopStatement>(
         source,
         create<ast::BlockStatement>(Source::Combine(body_start, body_end), body.value,
-                                    utils::Empty),
-        continuing.value);
+                                    std::move(body_attrs.value)),
+        continuing.value, std::move(attrs));
 }
 
 ForHeader::ForHeader(const ast::Statement* init,
@@ -1969,8 +1981,13 @@ Maybe<const ast::Statement*> ParserImpl::break_if_statement() {
 }
 
 // continuing_compound_statement:
-//   brace_left statement* break_if_statement? brace_right
+//   attribute* BRACE_LEFT statement* break_if_statement? BRACE_RIGHT
 Maybe<const ast::BlockStatement*> ParserImpl::continuing_compound_statement() {
+    auto attrs = attribute_list();
+    if (attrs.errored) {
+        return Failure::kErrored;
+    }
+
     auto source_start = peek().source();
     auto body = expect_brace_block("", [&]() -> Expect<StatementList> {
         StatementList stmts;
@@ -2004,7 +2021,7 @@ Maybe<const ast::BlockStatement*> ParserImpl::continuing_compound_statement() {
     auto source_end = last_source();
 
     return create<ast::BlockStatement>(Source::Combine(source_start, source_end), body.value,
-                                       utils::Empty);
+                                       std::move(attrs.value));
 }
 
 // continuing_statement

@@ -706,8 +706,7 @@ struct SwitchStatementBuilder final : public Castable<SwitchStatementBuilder, St
         auto reversed_cases = cases;
         std::reverse(reversed_cases.begin(), reversed_cases.end());
 
-        return builder->create<ast::SwitchStatement>(Source{}, condition, std::move(reversed_cases),
-                                                     utils::Empty);
+        return builder->Switch(Source{}, condition, std::move(reversed_cases));
     }
 
     /// Switch statement condition
@@ -743,7 +742,7 @@ struct LoopStatementBuilder final : public Castable<LoopStatementBuilder, Statem
     /// @param builder the program builder
     /// @returns the built ast::LoopStatement
     ast::LoopStatement* Build(ProgramBuilder* builder) const override {
-        return builder->create<ast::LoopStatement>(Source{}, body, continuing);
+        return builder->create<ast::LoopStatement>(Source{}, body, continuing, utils::Empty);
     }
 
     /// Loop-statement block body
