@@ -241,13 +241,11 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
     // CanonicalizeEntryPointIO must come after Robustness
     manager.Add<transform::CanonicalizeEntryPointIO>();
 
-    if (options.interstage_locations.any()) {
+    if (options.truncate_interstage_variables) {
         // When interstage_locations is empty, it means there's no user-defined interstage variables
-        // being used in the next stage. This is treated as a special case.
-        // TruncateInterstageVariables transform is trying to solve the HLSL compiler register
-        // mismatch issue. So it is not needed if no register is assigned to any interstage
-        // variables. As a result we only add this transform when there is at least one interstage
-        // locations being used.
+        // being used in the next stage. Still, HLSL compiler register mismatch could happen, if
+        // there's builtin inputs used in the next stage. So we still run
+        // TruncateInterstageVariables transform.
 
         // TruncateInterstageVariables itself will skip when interstage_locations matches exactly
         // with the current stage output.
@@ -281,15 +279,14 @@ SanitizedResult Sanitize(const Program* in, const Options& options) {
     // TODO(crbug.com/tint/1752): This is only necessary when FXC is being used.
     manager.Add<transform::DemoteToHelper>();
 
-    // ArrayLengthFromUniform must come after InlinePointerLets and Simplify, as
-    // it assumes that the form of the array length argument is &var.array.
+    // ArrayLengthFromUniform must come after SimplifyPointers as it assumes that the form of the
+    // array length argument is &var.array.
     manager.Add<transform::ArrayLengthFromUniform>();
     data.Add<transform::ArrayLengthFromUniform::Config>(std::move(array_length_from_uniform_cfg));
     // DecomposeMemoryAccess must come after:
-    // * InlinePointerLets, as we cannot take the address of calls to
-    //   DecomposeMemoryAccess::Intrinsic.
-    // * Simplify, as we need to fold away the address-of and dereferences of
-    // `*(&(intrinsic_load()))` expressions.
+    // * SimplifyPointers, as we cannot take the address of calls to
+    //   DecomposeMemoryAccess::Intrinsic and we need to fold away the address-of and dereferences
+    //   of `*(&(intrinsic_load()))` expressions.
     // * RemovePhonies, as phonies can be assigned a pointer to a
     //   non-constructible buffer, or dynamic array, which DMA cannot cope with.
     manager.Add<transform::DecomposeMemoryAccess>();
@@ -4070,9 +4067,8 @@ bool GeneratorImpl::EmitType(utils::StringStream& out,
             return true;
         },
         [&](const type::Pointer*) {
-            TINT_ICE(Writer, diagnostics_)
-                << "Attempting to emit pointer type. These should have been "
-                   "removed with the InlinePointerLets transform";
+            TINT_ICE(Writer, diagnostics_) << "Attempting to emit pointer type. These should have "
+                                              "been removed with the SimplifyPointers transform";
             return false;
         },
         [&](const type::Sampler* sampler) {
