@@ -90,7 +90,7 @@ namespace tint::writer::msl {
 namespace {
 
 bool last_is_break(const ast::BlockStatement* stmts) {
-    return IsAnyOf<ast::BreakStatement>(stmts->Last());
+    return utils::IsAnyOf<ast::BreakStatement>(stmts->Last());
 }
 
 void PrintF32(utils::StringStream& out, float value) {
@@ -1996,12 +1996,12 @@ bool GeneratorImpl::EmitEntryPointFunction(const ast::Function* func) {
         }
         auto* param_sem = program_->Sem().Get<sem::Parameter>(param);
         auto bp = param_sem->BindingPoint();
-        if (TINT_UNLIKELY(bp.group != 0)) {
+        if (TINT_UNLIKELY(bp->group != 0)) {
             TINT_ICE(Writer, diagnostics_) << "encountered non-zero resource group index (use "
                                               "BindingRemapper to fix)";
             return kInvalidBindingIndex;
         }
-        return bp.binding;
+        return bp->binding;
     };
 
     {

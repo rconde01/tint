@@ -195,8 +195,6 @@ template("libtint_source_set") {
 
 libtint_source_set("libtint_base_src") {
   sources = [
-    "castable.cc",
-    "castable.h",
     "debug.cc",
     "debug.h",
     "diagnostic/diagnostic.cc",
@@ -218,11 +216,12 @@ libtint_source_set("libtint_base_src") {
     "symbol.h",
     "symbol_table.cc",
     "symbol_table.h",
-    "traits.h",
     "utils/bitcast.h",
     "utils/bitset.h",
     "utils/block_allocator.h",
     "utils/bump_allocator.h",
+    "utils/castable.cc",
+    "utils/castable.h",
     "utils/compiler_macros.h",
     "utils/concat.h",
     "utils/crc32.h",
@@ -243,6 +242,9 @@ libtint_source_set("libtint_base_src") {
     "utils/string.h",
     "utils/string_stream.cc",
     "utils/string_stream.h",
+    "utils/traits.h",
+    "utils/unicode.cc",
+    "utils/unicode.h",
     "utils/unique_allocator.h",
     "utils/unique_vector.h",
     "utils/vector.h",
@@ -255,8 +257,6 @@ libtint_source_set("libtint_base_src") {
   } else {
     sources += [ "diagnostic/printer_other.cc" ]
   }
-
-  deps = [ ":libtint_text_src" ]
 }
 
 libtint_source_set("libtint_clone_context_hdrs") {
@@ -303,7 +303,6 @@ libtint_source_set("libtint_program_src") {
     ":libtint_builtins_src",
     ":libtint_constant_src",
     ":libtint_sem_src",
-    ":libtint_text_src",
     ":libtint_type_src",
   ]
 }
@@ -330,13 +329,6 @@ libtint_source_set("libtint_inspector_src") {
     ":libtint_program_src",
     ":libtint_sem_src",
     ":libtint_type_src",
-  ]
-}
-
-libtint_source_set("libtint_text_src") {
-  sources = [
-    "text/unicode.cc",
-    "text/unicode.h",
   ]
 }
 
@@ -451,7 +443,6 @@ libtint_source_set("libtint_transform_src") {
     ":libtint_builtins_src",
     ":libtint_program_src",
     ":libtint_sem_src",
-    ":libtint_text_src",
     ":libtint_type_src",
   ]
 }
@@ -974,7 +965,6 @@ libtint_source_set("libtint_wgsl_reader_src") {
     ":libtint_builtins_src",
     ":libtint_program_src",
     ":libtint_reader_src",
-    ":libtint_text_src",
     ":libtint_type_src",
   ]
 }
@@ -1089,7 +1079,6 @@ source_set("libtint") {
     ":libtint_inspector_src",
     ":libtint_program_src",
     ":libtint_sem_src",
-    ":libtint_text_src",
     ":libtint_transform_src",
     ":libtint_type_src",
     ":libtint_writer_src",
@@ -1511,11 +1500,6 @@ if (tint_build_unittests) {
     ]
   }
 
-  tint_unittests_source_set("tint_unittests_text_src") {
-    sources = [ "text/unicode_test.cc" ]
-    deps = [ ":libtint_text_src" ]
-  }
-
   tint_unittests_source_set("tint_unittests_transform_src") {
     sources = [
       "transform/add_block_attribute_test.cc",
@@ -1590,6 +1574,7 @@ if (tint_build_unittests) {
       "utils/bitset_test.cc",
       "utils/block_allocator_test.cc",
       "utils/bump_allocator_test.cc",
+      "utils/castable_test.cc",
       "utils/crc32_test.cc",
       "utils/defer_test.cc",
       "utils/enum_set_test.cc",
@@ -1606,7 +1591,9 @@ if (tint_build_unittests) {
       "utils/slice_test.cc",
       "utils/string_stream_test.cc",
       "utils/string_test.cc",
+      "utils/traits_test.cc",
       "utils/transform_test.cc",
+      "utils/unicode_test.cc",
       "utils/unique_allocator_test.cc",
       "utils/unique_vector_test.cc",
       "utils/vector_test.cc",
@@ -1981,7 +1968,6 @@ if (tint_build_unittests) {
 
   tint_unittests_source_set("tint_unittests_base_src") {
     sources = [
-      "castable_test.cc",
       "debug_test.cc",
       "number_test.cc",
       "reflection_test.cc",
@@ -1990,7 +1976,6 @@ if (tint_build_unittests) {
       "switch_test.cc",
       "symbol_table_test.cc",
       "symbol_test.cc",
-      "traits_test.cc",
     ]
     deps = [ ":libtint_base_src" ]
   }
@@ -2036,7 +2021,6 @@ if (tint_build_unittests) {
       ":tint_unittests_inspector_src",
       ":tint_unittests_resolver_src",
       ":tint_unittests_sem_src",
-      ":tint_unittests_text_src",
       ":tint_unittests_transform_src",
       ":tint_unittests_type_src",
       ":tint_unittests_utils_src",

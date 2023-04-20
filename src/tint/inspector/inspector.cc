@@ -456,7 +456,7 @@ std::vector<ResourceBinding> Inspector::GetWriteOnlyStorageTextureResourceBindin
 
 std::vector<ResourceBinding> Inspector::GetTextureResourceBindings(
     const std::string& entry_point,
-    const tint::TypeInfo* texture_type,
+    const tint::utils::TypeInfo* texture_type,
     ResourceBinding::ResourceType resource_type) {
     auto* func = FindEntryPointByName(entry_point);
     if (!func) {
@@ -485,19 +485,20 @@ std::vector<ResourceBinding> Inspector::GetTextureResourceBindings(
 
 std::vector<ResourceBinding> Inspector::GetDepthTextureResourceBindings(
     const std::string& entry_point) {
-    return GetTextureResourceBindings(entry_point, &TypeInfo::Of<type::DepthTexture>(),
+    return GetTextureResourceBindings(entry_point, &utils::TypeInfo::Of<type::DepthTexture>(),
                                       ResourceBinding::ResourceType::kDepthTexture);
 }
 
 std::vector<ResourceBinding> Inspector::GetDepthMultisampledTextureResourceBindings(
     const std::string& entry_point) {
-    return GetTextureResourceBindings(entry_point, &TypeInfo::Of<type::DepthMultisampledTexture>(),
+    return GetTextureResourceBindings(entry_point,
+                                      &utils::TypeInfo::Of<type::DepthMultisampledTexture>(),
                                       ResourceBinding::ResourceType::kDepthMultisampledTexture);
 }
 
 std::vector<ResourceBinding> Inspector::GetExternalTextureResourceBindings(
     const std::string& entry_point) {
-    return GetTextureResourceBindings(entry_point, &TypeInfo::Of<type::ExternalTexture>(),
+    return GetTextureResourceBindings(entry_point, &utils::TypeInfo::Of<type::ExternalTexture>(),
                                       ResourceBinding::ResourceType::kExternalTexture);
 }
 
@@ -531,8 +532,8 @@ std::vector<SamplerTexturePair> Inspector::GetSamplerTextureUses(
         auto* texture = pair.first->As<sem::GlobalVariable>();
         auto* sampler = pair.second ? pair.second->As<sem::GlobalVariable>() : nullptr;
         SamplerTexturePair new_pair;
-        new_pair.sampler_binding_point = sampler ? sampler->BindingPoint() : placeholder;
-        new_pair.texture_binding_point = texture->BindingPoint();
+        new_pair.sampler_binding_point = sampler ? *sampler->BindingPoint() : placeholder;
+        new_pair.texture_binding_point = *texture->BindingPoint();
         new_pairs.push_back(new_pair);
     }
     return new_pairs;
@@ -834,8 +835,8 @@ void Inspector::GenerateSamplerTargets() {
 
         GetOriginatingResources(std::array<const ast::Expression*, 2>{t, s},
                                 [&](std::array<const sem::GlobalVariable*, 2> globals) {
-                                    auto texture_binding_point = globals[0]->BindingPoint();
-                                    auto sampler_binding_point = globals[1]->BindingPoint();
+                                    auto texture_binding_point = *globals[0]->BindingPoint();
+                                    auto sampler_binding_point = *globals[1]->BindingPoint();
 
                                     for (auto* entry_point : entry_points) {
                                         const auto& ep_name =
