@@ -1,4 +1,4 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2023 The Tint Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,17 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/tint/ir/value.h"
+#include "src/tint/ir/store.h"
+#include "src/tint/debug.h"
 
-#include "src/tint/ir/constant.h"
-#include "src/tint/ir/runtime.h"
-
-TINT_INSTANTIATE_TYPEINFO(tint::ir::Value);
+TINT_INSTANTIATE_TYPEINFO(tint::ir::Store);
 
 namespace tint::ir {
 
-Value::Value() = default;
+Store::Store(Value* to, Value* from) : Base(to), from_(from) {
+    TINT_ASSERT(IR, from_);
+    from_->AddUsage(this);
+}
 
-Value::~Value() = default;
+Store::~Store() = default;
+
+utils::StringStream& Store::ToString(utils::StringStream& out) const {
+    Result()->ToString(out);
+    out << " = ";
+    from_->ToString(out);
+    return out;
+}
 
 }  // namespace tint::ir

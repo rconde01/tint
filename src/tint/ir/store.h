@@ -12,33 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef SRC_TINT_IR_USER_CALL_H_
-#define SRC_TINT_IR_USER_CALL_H_
+#ifndef SRC_TINT_IR_STORE_H_
+#define SRC_TINT_IR_STORE_H_
 
-#include "src/tint/ir/call.h"
-#include "src/tint/symbol.h"
+#include "src/tint/ir/instruction.h"
 #include "src/tint/utils/castable.h"
 #include "src/tint/utils/string_stream.h"
 
 namespace tint::ir {
 
-/// A user call instruction in the IR.
-class UserCall : public utils::Castable<UserCall, Call> {
+/// An instruction in the IR.
+class Store : public utils::Castable<Store, Instruction> {
   public:
     /// Constructor
-    /// @param result the result value
-    /// @param name the function name
-    /// @param args the function arguments
-    UserCall(Value* result, Symbol name, utils::VectorRef<Value*> args);
-    UserCall(const UserCall& instr) = delete;
-    UserCall(UserCall&& instr) = delete;
-    ~UserCall() override;
+    /// @param to the value to store too
+    /// @param from the value being stored from
+    Store(Value* to, Value* from);
+    Store(const Store& instr) = delete;
+    Store(Store&& instr) = delete;
+    ~Store() override;
 
-    UserCall& operator=(const UserCall& instr) = delete;
-    UserCall& operator=(UserCall&& instr) = delete;
+    Store& operator=(const Store& instr) = delete;
+    Store& operator=(Store&& instr) = delete;
 
-    /// @returns the function name
-    Symbol Name() const { return name_; }
+    /// @returns the value being stored
+    const Value* from() const { return from_; }
 
     /// Write the instruction to the given stream
     /// @param out the stream to write to
@@ -46,9 +44,9 @@ class UserCall : public utils::Castable<UserCall, Call> {
     utils::StringStream& ToString(utils::StringStream& out) const override;
 
   private:
-    Symbol name_{};
+    Value* from_ = nullptr;
 };
 
 }  // namespace tint::ir
 
-#endif  // SRC_TINT_IR_USER_CALL_H_
+#endif  // SRC_TINT_IR_STORE_H_

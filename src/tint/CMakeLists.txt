@@ -720,6 +720,8 @@ if(${TINT_BUILD_IR})
     ir/debug.h
     ir/disassembler.cc
     ir/disassembler.h
+    ir/discard.cc
+    ir/discard.h
     ir/flow_node.cc
     ir/flow_node.h
     ir/function.cc
@@ -732,12 +734,16 @@ if(${TINT_BUILD_IR})
     ir/loop.h
     ir/module.cc
     ir/module.h
+    ir/runtime.cc
+    ir/runtime.h
+    ir/store.cc
+    ir/store.h
     ir/switch.cc
     ir/switch.h
-    ir/temp.cc
-    ir/temp.h
     ir/terminator.cc
     ir/terminator.h
+    ir/unary.cc
+    ir/unary.h
     ir/user_call.cc
     ir/user_call.h
     ir/value.cc
@@ -1413,8 +1419,11 @@ if(TINT_BUILD_TESTS)
       ir/bitcast_test.cc
       ir/builder_impl_test.cc
       ir/constant_test.cc
-      ir/temp_test.cc
+      ir/discard_test.cc
+      ir/runtime_test.cc
+      ir/store_test.cc
       ir/test_helper.h
+      ir/unary_test.cc
     )
   endif()
 

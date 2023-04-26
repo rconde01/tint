@@ -20,44 +20,45 @@ namespace tint::ir {
 namespace {
 
 using namespace tint::number_suffixes;  // NOLINT
-                                        //
+
 using IR_InstructionTest = TestHelper;
 
-TEST_F(IR_InstructionTest, Bitcast) {
+TEST_F(IR_InstructionTest, CreateStore) {
     auto& b = CreateEmptyBuilder();
 
     b.builder.next_runtime_id = Runtime::Id(42);
-    const auto* instr =
-        b.builder.Bitcast(b.builder.ir.types.Get<type::I32>(), b.builder.Constant(4_i));
+
+    auto* rt = b.builder.Runtime(b.builder.ir.types.Get<type::I32>());
+    const auto* instr = b.builder.Store(rt, b.builder.Constant(4_i));
 
     ASSERT_TRUE(instr->Result()->Is<Runtime>());
-    EXPECT_EQ(Runtime::Id(42), instr->Result()->As<Runtime>()->AsId());
     ASSERT_NE(instr->Result()->Type(), nullptr);
+    EXPECT_EQ(Runtime::Id(42), instr->Result()->As<Runtime>()->AsId());
 
-    ASSERT_TRUE(instr->Val()->Is<Constant>());
-    auto val = instr->Val()->As<Constant>()->value;
-    ASSERT_TRUE(val->Is<constant::Scalar<i32>>());
-    EXPECT_EQ(4_i, val->As<constant::Scalar<i32>>()->ValueAs<i32>());
+    ASSERT_TRUE(instr->from()->Is<Constant>());
+    auto lhs = instr->from()->As<Constant>()->value;
+    ASSERT_TRUE(lhs->Is<constant::Scalar<i32>>());
+    EXPECT_EQ(4_i, lhs->As<constant::Scalar<i32>>()->ValueAs<i32>());
 
     utils::StringStream str;
     instr->ToString(str);
-    EXPECT_EQ(str.str(), "%42 (i32) = bitcast(4)");
+    EXPECT_EQ(str.str(), "%42 (i32) = 4");
 }
 
-TEST_F(IR_InstructionTest, Bitcast_Usage) {
+TEST_F(IR_InstructionTest, Store_Usage) {
     auto& b = CreateEmptyBuilder();
 
     b.builder.next_runtime_id = Runtime::Id(42);
-    const auto* instr =
-        b.builder.Bitcast(b.builder.ir.types.Get<type::I32>(), b.builder.Constant(4_i));
+    auto* rt = b.builder.Runtime(b.builder.ir.types.Get<type::I32>());
+    const auto* instr = b.builder.Store(rt, b.builder.Constant(4_i));
 
     ASSERT_NE(instr->Result(), nullptr);
     ASSERT_EQ(instr->Result()->Usage().Length(), 1u);
     EXPECT_EQ(instr->Result()->Usage()[0], instr);
 
-    ASSERT_NE(instr->Val(), nullptr);
-    ASSERT_EQ(instr->Val()->Usage().Length(), 1u);
-    EXPECT_EQ(instr->Val()->Usage()[0], instr);
+    ASSERT_NE(instr->from(), nullptr);
+    ASSERT_EQ(instr->from()->Usage().Length(), 1u);
+    EXPECT_EQ(instr->from()->Usage()[0], instr);
 }
 
 }  // namespace

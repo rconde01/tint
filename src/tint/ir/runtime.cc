@@ -12,17 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/tint/ir/value.h"
-
-#include "src/tint/ir/constant.h"
 #include "src/tint/ir/runtime.h"
 
-TINT_INSTANTIATE_TYPEINFO(tint::ir::Value);
+#include <string>
+
+TINT_INSTANTIATE_TYPEINFO(tint::ir::Runtime);
 
 namespace tint::ir {
 
-Value::Value() = default;
+Runtime::Runtime(const type::Type* type, Id id) : type_(type), id_(id) {}
 
-Value::~Value() = default;
+Runtime::~Runtime() = default;
+
+utils::StringStream& Runtime::ToString(utils::StringStream& out) const {
+    out << "%" << std::to_string(AsId()) << " (" << type_->FriendlyName() << ")";
+    return out;
+}
 
 }  // namespace tint::ir

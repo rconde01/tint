@@ -12,33 +12,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef SRC_TINT_IR_USER_CALL_H_
-#define SRC_TINT_IR_USER_CALL_H_
+#ifndef SRC_TINT_IR_UNARY_H_
+#define SRC_TINT_IR_UNARY_H_
 
-#include "src/tint/ir/call.h"
-#include "src/tint/symbol.h"
+#include "src/tint/ir/instruction.h"
 #include "src/tint/utils/castable.h"
 #include "src/tint/utils/string_stream.h"
 
 namespace tint::ir {
 
-/// A user call instruction in the IR.
-class UserCall : public utils::Castable<UserCall, Call> {
+/// An instruction in the IR.
+class Unary : public utils::Castable<Unary, Instruction> {
   public:
+    /// The kind of instruction.
+    enum class Kind {
+        kAddressOf,
+        kComplement,
+        kIndirection,
+        kNegation,
+        kNot,
+    };
+
     /// Constructor
+    /// @param kind the kind of unary instruction
     /// @param result the result value
-    /// @param name the function name
-    /// @param args the function arguments
-    UserCall(Value* result, Symbol name, utils::VectorRef<Value*> args);
-    UserCall(const UserCall& instr) = delete;
-    UserCall(UserCall&& instr) = delete;
-    ~UserCall() override;
+    /// @param val the lhs of the instruction
+    Unary(Kind kind, Value* result, Value* val);
+    Unary(const Unary& instr) = delete;
+    Unary(Unary&& instr) = delete;
+    ~Unary() override;
 
-    UserCall& operator=(const UserCall& instr) = delete;
-    UserCall& operator=(UserCall&& instr) = delete;
+    Unary& operator=(const Unary& instr) = delete;
+    Unary& operator=(Unary&& instr) = delete;
 
-    /// @returns the function name
-    Symbol Name() const { return name_; }
+    /// @returns the kind of instruction
+    Kind GetKind() const { return kind_; }
+
+    /// @returns the value for the instruction
+    const Value* Val() const { return val_; }
 
     /// Write the instruction to the given stream
     /// @param out the stream to write to
@@ -46,9 +57,10 @@ class UserCall : public utils::Castable<UserCall, Call> {
     utils::StringStream& ToString(utils::StringStream& out) const override;
 
   private:
-    Symbol name_{};
+    Kind kind_;
+    Value* val_ = nullptr;
 };
 
 }  // namespace tint::ir
 
-#endif  // SRC_TINT_IR_USER_CALL_H_
+#endif  // SRC_TINT_IR_UNARY_H_

@@ -1,4 +1,4 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2023 The Tint Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,20 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/tint/ir/temp.h"
+#include "src/tint/ir/discard.h"
+#include "src/tint/debug.h"
 
-#include <string>
-
-TINT_INSTANTIATE_TYPEINFO(tint::ir::Temp);
+TINT_INSTANTIATE_TYPEINFO(tint::ir::Discard);
 
 namespace tint::ir {
 
-Temp::Temp(const type::Type* type, Id id) : type_(type), id_(id) {}
+Discard::Discard(Value* result) : Base(result) {}
 
-Temp::~Temp() = default;
+Discard::~Discard() = default;
 
-utils::StringStream& Temp::ToString(utils::StringStream& out) const {
-    out << "%" << std::to_string(AsId()) << " (" << type_->FriendlyName() << ")";
+utils::StringStream& Discard::ToString(utils::StringStream& out) const {
+    Result()->ToString(out);
+    out << " = discard";
     return out;
 }
 

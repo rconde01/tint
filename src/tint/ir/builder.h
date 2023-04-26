@@ -24,13 +24,16 @@
 #include "src/tint/ir/constant.h"
 #include "src/tint/ir/construct.h"
 #include "src/tint/ir/convert.h"
+#include "src/tint/ir/discard.h"
 #include "src/tint/ir/function.h"
 #include "src/tint/ir/if.h"
 #include "src/tint/ir/loop.h"
 #include "src/tint/ir/module.h"
+#include "src/tint/ir/runtime.h"
+#include "src/tint/ir/store.h"
 #include "src/tint/ir/switch.h"
-#include "src/tint/ir/temp.h"
 #include "src/tint/ir/terminator.h"
+#include "src/tint/ir/unary.h"
 #include "src/tint/ir/user_call.h"
 #include "src/tint/ir/value.h"
 #include "src/tint/type/bool.h"
@@ -38,6 +41,7 @@
 #include "src/tint/type/f32.h"
 #include "src/tint/type/i32.h"
 #include "src/tint/type/u32.h"
+#include "src/tint/type/void.h"
 
 namespace tint::ir {
 
@@ -137,11 +141,11 @@ class Builder {
         return Constant(create<constant::Scalar<bool>>(ir.types.Get<type::Bool>(), v));
     }
 
-    /// Creates a new Temporary
+    /// Creates a new Runtime value
     /// @param type the type of the temporary
     /// @returns the new temporary
-    ir::Temp* Temp(const type::Type* type) {
-        return ir.values.Create<ir::Temp>(type, AllocateTempId());
+    ir::Runtime* Runtime(const type::Type* type) {
+        return ir.values.Create<ir::Runtime>(type, AllocateRuntimeId());
     }
 
     /// Creates an op for `lhs kind rhs`
@@ -278,11 +282,52 @@ class Builder {
     /// @returns the operation
     Binary* Modulo(const type::Type* type, Value* lhs, Value* rhs);
 
+    /// Creates an op for `kind val`
+    /// @param kind the kind of operation
+    /// @param type the result type of the binary expression
+    /// @param val the value of the operation
+    /// @returns the operation
+    Unary* CreateUnary(Unary::Kind kind, const type::Type* type, Value* val);
+
+    /// Creates an AddressOf operation
+    /// @param type the result type of the expression
+    /// @param val the value
+    /// @returns the operation
+    Unary* AddressOf(const type::Type* type, Value* val);
+
+    /// Creates a Complement operation
+    /// @param type the result type of the expression
+    /// @param val the value
+    /// @returns the operation
+    Unary* Complement(const type::Type* type, Value* val);
+
+    /// Creates an Indirection operation
+    /// @param type the result type of the expression
+    /// @param val the value
+    /// @returns the operation
+    Unary* Indirection(const type::Type* type, Value* val);
+
+    /// Creates a Negation operation
+    /// @param type the result type of the expression
+    /// @param val the value
+    /// @returns the operation
+    Unary* Negation(const type::Type* type, Value* val);
+
+    /// Creates a Not operation
+    /// @param type the result type of the expression
+    /// @param val the value
+    /// @returns the operation
+    Unary* Not(const type::Type* type, Value* val);
+
     /// Creates a bitcast instruction
     /// @param type the result type of the bitcast
     /// @param val the value being bitcast
     /// @returns the instruction
     ir::Bitcast* Bitcast(const type::Type* type, Value* val);
+
+    /// Creates a discard instruction
+    /// @returns the instruction
+    ir::Discard* Discard();
 
     /// Creates a user function call instruction
     /// @param type the return type of the call
@@ -315,14 +360,20 @@ class Builder {
                          builtin::Function func,
                          utils::VectorRef<Value*> args);
 
-    /// @returns a unique temp id
-    Temp::Id AllocateTempId();
+    /// Creates an store instruction
+    /// @param to the expression being stored too
+    /// @param from the expression being stored
+    /// @returns the instruction
+    ir::Store* Store(Value* to, Value* from);
+
+    /// @returns a unique runtime id
+    Runtime::Id AllocateRuntimeId();
 
     /// The IR module.
     Module ir;
 
     /// The next temporary number to allocate
-    Temp::Id next_temp_id = 1;
+    Runtime::Id next_runtime_id = 1;
 };
 
 }  // namespace tint::ir

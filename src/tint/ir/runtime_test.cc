@@ -12,17 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/tint/ir/value.h"
-
-#include "src/tint/ir/constant.h"
 #include "src/tint/ir/runtime.h"
-
-TINT_INSTANTIATE_TYPEINFO(tint::ir::Value);
+#include "src/tint/ir/test_helper.h"
+#include "src/tint/utils/string_stream.h"
 
 namespace tint::ir {
+namespace {
 
-Value::Value() = default;
+using namespace tint::number_suffixes;  // NOLINT
 
-Value::~Value() = default;
+using IR_RuntimeTest = TestHelper;
 
+TEST_F(IR_RuntimeTest, id) {
+    auto& b = CreateEmptyBuilder();
+
+    utils::StringStream str;
+
+    b.builder.next_runtime_id = Runtime::Id(4);
+    auto* val = b.builder.Runtime(b.builder.ir.types.Get<type::I32>());
+    EXPECT_EQ(4u, val->AsId());
+
+    val->ToString(str);
+    EXPECT_EQ("%4 (i32)", str.str());
+}
+
+}  // namespace
 }  // namespace tint::ir
