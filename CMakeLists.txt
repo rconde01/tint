@@ -347,6 +347,7 @@ function(tint_default_compile_options TARGET)
     -Wno-undefined-var-template
     -Wno-used-but-marked-unused
     -Weverything
+    -Wno-unsafe-buffer-usage
   )
 
   if (COMPILER_IS_LIKE_GNU)
