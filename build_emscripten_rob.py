@@ -17,6 +17,11 @@ if __name__ == "__main__":
     os.environ["PATH"] = f'{depot_tools_path};{os.environ["PATH"]}'
     os.environ["DEPOT_TOOLS_WIN_TOOLCHAIN"] = "0"
 
+    ninja_unix = os.path.join(depot_tools_path,"ninja")
+
+    if os.path.exists(ninja_unix):
+        os.rename(ninja_unix,os.path.join(depot_tools_path,"ninja.unix"))
+
     gclient_file_template = os.path.join(script_dir, "standalone.gclient")
     gclient_file = os.path.join(script_dir, ".gclient")
 
