@@ -19,17 +19,23 @@ if __name__ == "__main__":
     gclient_file_template = os.path.join(script_dir, "standalone.gclient")
     gclient_file = os.path.join(script_dir, ".gclient")
 
+    orig_dir = os.getcwd()
+
+    try:
+        os.chdir(depot_tools_path)
+
+        subprocess.check_call("gclient", shell=True)
+    finally:
+        os.chdir(orig_dir)
+
     if not os.path.exists(gclient_file):
         shutil.copyfile(gclient_file_template, gclient_file)
 
-    subprocess.check_call("gclient", shell=True)
     subprocess.check_call("gclient sync", shell=True)
 
     cmake_binary_dir = os.path.join(script_dir, "build")
 
     os.makedirs(cmake_binary_dir, exist_ok=True)
-
-    orig_dir = os.getcwd()
 
     try:
         os.chdir(cmake_binary_dir)
