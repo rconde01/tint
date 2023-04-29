@@ -15,7 +15,7 @@ if __name__ == "__main__":
     depot_tools_path = "D:/dev/tools/depot_tools"
     emsdk_path = "D:/dev/other/emsdk"
     os.environ["PATH"] = f'{depot_tools_path};{os.environ["PATH"]}'
-    os.environ["DEPOT_TOOLS_WIN_TOOLCHAIN"] = 0
+    os.environ["DEPOT_TOOLS_WIN_TOOLCHAIN"] = "0"
 
     gclient_file_template = os.path.join(script_dir, "standalone.gclient")
     gclient_file = os.path.join(script_dir, ".gclient")
