@@ -41,5 +41,8 @@ if __name__ == "__main__":
 
         subprocess.check_call(
             f"{emsdk_path}/emsdk_env.bat && emcmake cmake .. -GNinja", shell=True)
+        
+        subprocess.check_call(
+            f"{emsdk_path}/emsdk_env.bat && cmake --build .", shell=True)
     finally:
         os.chdir(orig_dir)
