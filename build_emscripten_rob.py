@@ -27,13 +27,6 @@ if __name__ == "__main__":
 
     orig_dir = os.getcwd()
 
-    try:
-        os.chdir(depot_tools_path)
-
-        subprocess.check_call("gclient", shell=True)
-    finally:
-        os.chdir(orig_dir)
-
     if not os.path.exists(gclient_file):
         shutil.copyfile(gclient_file_template, gclient_file)
 
@@ -47,6 +40,6 @@ if __name__ == "__main__":
         os.chdir(cmake_binary_dir)
 
         subprocess.check_call(
-            f"{emsdk_path}/emsdk_env.bat && cmake .. -GNinja", shell=True)
+            f"{emsdk_path}/emsdk_env.bat && emcmake cmake .. -GNinja", shell=True)
     finally:
         os.chdir(orig_dir)
