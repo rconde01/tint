@@ -14,3 +14,5 @@ target_link_options(wgsl-debugger
 target_compile_options(wgsl-debugger
     PRIVATE -fwasm-exceptions
 )
+
+configure_file(index.html "${CMAKE_BINARY_DIR}/wgsl-debugger.html" COPYONLY)
