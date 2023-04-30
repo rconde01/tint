@@ -40,7 +40,7 @@ if __name__ == "__main__":
         os.chdir(cmake_binary_dir)
 
         subprocess.check_call(
-            f"{emsdk_path}/emsdk_env.bat && emcmake cmake .. -GNinja", shell=True)
+            f"{emsdk_path}/emsdk_env.bat && emcmake cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release", shell=True)
         
         subprocess.check_call(
             f"{emsdk_path}/emsdk_env.bat && cmake --build .", shell=True)
