@@ -42,7 +42,7 @@ if __name__ == "__main__":
         subprocess.check_call(
             f"{emsdk_path}/emsdk_env.bat && " +
             "emcmake cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release " +
-            "-DTINT_BUILD_SAMPLES=OFF " +
+            "-DTINT_BUILD_SAMPLES=ON " + # This is what builds tint.exe
             "-DTINT_BUILD_DOCS=OFF " +
             "-DTINT_BUILD_SPV_READER=OFF " +
             "-DTINT_BUILD_WGSL_READER=ON " +
