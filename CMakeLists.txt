@@ -323,6 +323,10 @@ function(tint_core_compile_options TARGET)
         message(FATAL_ERROR "Coverage generation not supported for the ${CMAKE_CXX_COMPILER_ID} toolchain")
     endif()
   endif(TINT_EMIT_COVERAGE)
+
+  if(EMSCRIPTEN)
+    target_link_options(${TARGET} PRIVATE --emrun)
+  endif()
 endfunction()
 
 function(tint_default_compile_options TARGET)
