@@ -292,8 +292,8 @@ function(tint_core_compile_options TARGET)
   if (COMPILER_IS_LIKE_GNU)
     target_compile_options(${TARGET} PRIVATE
       -std=c++17
-      -fno-exceptions
-      -fno-rtti
+      #-fno-exceptions
+      #-fno-rtti
     )
 
     if (${TINT_ENABLE_MSAN})
