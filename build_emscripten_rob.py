@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import subprocess
 
@@ -30,7 +31,8 @@ if __name__ == "__main__":
     if not os.path.exists(gclient_file):
         shutil.copyfile(gclient_file_template, gclient_file)
 
-    subprocess.check_call("gclient sync", shell=True)
+    if not "--skip-gclient" in sys.argv:
+        subprocess.check_call("gclient sync", shell=True)
 
     cmake_binary_dir = os.path.join(script_dir, "build")
 
@@ -39,20 +41,21 @@ if __name__ == "__main__":
     try:
         os.chdir(cmake_binary_dir)
 
-        subprocess.check_call(
-            f"{emsdk_path}/emsdk_env.bat && " +
-            "emcmake cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release " +
-            "-DTINT_BUILD_SAMPLES=OFF " + # This is what builds tint.exe
-            "-DTINT_BUILD_DOCS=OFF " +
-            "-DTINT_BUILD_SPV_READER=OFF " +
-            "-DTINT_BUILD_WGSL_READER=ON " +
-            "-DTINT_BUILD_GLSL_WRITER=OFF " +
-            "-DTINT_BUILD_HLSL_WRITER=OFF " +
-            "-DTINT_BUILD_MSL_WRITER=OFF " +
-            "-DTINT_BUILD_SPV_WRITER=OFF " +
-            "-DTINT_BUILD_WGSL_WRITER=OFF " +
-            "-DTINT_BUILD_SYNTAX_TREE_WRITER=ON " +
-            "-DTINT_BUILD_TESTS=OFF ", shell=True)
+        if not "--skip-config" in sys.argv:
+            subprocess.check_call(
+                f"{emsdk_path}/emsdk_env.bat && " +
+                "emcmake cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release " +
+                "-DTINT_BUILD_SAMPLES=OFF " + # This is what builds tint.exe
+                "-DTINT_BUILD_DOCS=OFF " +
+                "-DTINT_BUILD_SPV_READER=OFF " +
+                "-DTINT_BUILD_WGSL_READER=ON " +
+                "-DTINT_BUILD_GLSL_WRITER=OFF " +
+                "-DTINT_BUILD_HLSL_WRITER=OFF " +
+                "-DTINT_BUILD_MSL_WRITER=OFF " +
+                "-DTINT_BUILD_SPV_WRITER=OFF " +
+                "-DTINT_BUILD_WGSL_WRITER=OFF " +
+                "-DTINT_BUILD_SYNTAX_TREE_WRITER=ON " +
+                "-DTINT_BUILD_TESTS=OFF ", shell=True)
 
         subprocess.check_call(
             f"{emsdk_path}/emsdk_env.bat && cmake --build .", shell=True)
