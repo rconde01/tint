@@ -1,3 +1,16 @@
+# Tint Mods for WGSL Debugger 
+
+## The Idea
+1. Parse the shader
+2. Find all assignments
+3. Inject code to write variable values to storage buffer
+
+The basic plan:
+1. Add a code rewriter from the AST. This way we can just edit the AST.
+2. Traverse the AST and add new nodes where required
+3. Write out the AST using the re-writer (also need a source map)
+
+
 # Tint
 
 ---
