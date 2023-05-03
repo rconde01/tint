@@ -24,17 +24,12 @@ using IR_InstructionTest = TestHelper;
 TEST_F(IR_InstructionTest, Discard) {
     auto& b = CreateEmptyBuilder();
 
-    b.builder.next_runtime_id = Runtime::Id(42);
-    const auto* instr = b.builder.Discard();
-
-    ASSERT_TRUE(instr->Result()->Is<Runtime>());
-    EXPECT_EQ(Runtime::Id(42), instr->Result()->As<Runtime>()->AsId());
-    ASSERT_NE(instr->Result()->Type(), nullptr);
-    ASSERT_NE(instr->Result()->Type()->As<type::Void>(), nullptr);
+    const auto* inst = b.builder.Discard();
+    ASSERT_TRUE(inst->Is<ir::Discard>());
 
     utils::StringStream str;
-    instr->ToString(str);
-    EXPECT_EQ(str.str(), "%42 (void) = discard");
+    inst->ToInstruction(str);
+    EXPECT_EQ(str.str(), "discard");
 }
 
 }  // namespace

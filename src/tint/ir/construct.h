@@ -25,20 +25,21 @@ namespace tint::ir {
 class Construct : public utils::Castable<Construct, Call> {
   public:
     /// Constructor
-    /// @param result the result value
+    /// @param id the instruction id
+    /// @param type the result type
     /// @param args the constructor arguments
-    Construct(Value* result, utils::VectorRef<Value*> args);
-    Construct(const Construct& instr) = delete;
-    Construct(Construct&& instr) = delete;
+    Construct(uint32_t id, const type::Type* type, utils::VectorRef<Value*> args);
+    Construct(const Construct& inst) = delete;
+    Construct(Construct&& inst) = delete;
     ~Construct() override;
 
-    Construct& operator=(const Construct& instr) = delete;
-    Construct& operator=(Construct&& instr) = delete;
+    Construct& operator=(const Construct& inst) = delete;
+    Construct& operator=(Construct&& inst) = delete;
 
     /// Write the instruction to the given stream
     /// @param out the stream to write to
     /// @returns the stream
-    utils::StringStream& ToString(utils::StringStream& out) const override;
+    utils::StringStream& ToInstruction(utils::StringStream& out) const override;
 };
 
 }  // namespace tint::ir

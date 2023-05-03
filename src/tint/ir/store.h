@@ -28,22 +28,25 @@ class Store : public utils::Castable<Store, Instruction> {
     /// @param to the value to store too
     /// @param from the value being stored from
     Store(Value* to, Value* from);
-    Store(const Store& instr) = delete;
-    Store(Store&& instr) = delete;
+    Store(const Store& inst) = delete;
+    Store(Store&& inst) = delete;
     ~Store() override;
 
-    Store& operator=(const Store& instr) = delete;
-    Store& operator=(Store&& instr) = delete;
+    Store& operator=(const Store& inst) = delete;
+    Store& operator=(Store&& inst) = delete;
 
+    /// @returns the value being stored too
+    const Value* to() const { return to_; }
     /// @returns the value being stored
     const Value* from() const { return from_; }
 
     /// Write the instruction to the given stream
     /// @param out the stream to write to
     /// @returns the stream
-    utils::StringStream& ToString(utils::StringStream& out) const override;
+    utils::StringStream& ToInstruction(utils::StringStream& out) const override;
 
   private:
+    Value* to_ = nullptr;
     Value* from_ = nullptr;
 };
 

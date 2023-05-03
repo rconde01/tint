@@ -15,29 +15,29 @@
 #ifndef SRC_TINT_IR_DISCARD_H_
 #define SRC_TINT_IR_DISCARD_H_
 
-#include "src/tint/ir/instruction.h"
+#include "src/tint/debug.h"
+#include "src/tint/ir/call.h"
 #include "src/tint/utils/castable.h"
 #include "src/tint/utils/string_stream.h"
 
 namespace tint::ir {
 
 /// A discard instruction in the IR.
-class Discard : public utils::Castable<Discard, Instruction> {
+class Discard : public utils::Castable<Discard, Call> {
   public:
     /// Constructor
-    /// @param result the result id
-    explicit Discard(Value* result);
-    Discard(const Discard& instr) = delete;
-    Discard(Discard&& instr) = delete;
+    Discard();
+    Discard(const Discard& inst) = delete;
+    Discard(Discard&& inst) = delete;
     ~Discard() override;
 
-    Discard& operator=(const Discard& instr) = delete;
-    Discard& operator=(Discard&& instr) = delete;
+    Discard& operator=(const Discard& inst) = delete;
+    Discard& operator=(Discard&& inst) = delete;
 
     /// Write the instruction to the given stream
     /// @param out the stream to write to
     /// @returns the stream
-    utils::StringStream& ToString(utils::StringStream& out) const override;
+    utils::StringStream& ToInstruction(utils::StringStream& out) const override;
 };
 
 }  // namespace tint::ir

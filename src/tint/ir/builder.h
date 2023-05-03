@@ -29,13 +29,13 @@
 #include "src/tint/ir/if.h"
 #include "src/tint/ir/loop.h"
 #include "src/tint/ir/module.h"
-#include "src/tint/ir/runtime.h"
 #include "src/tint/ir/store.h"
 #include "src/tint/ir/switch.h"
 #include "src/tint/ir/terminator.h"
 #include "src/tint/ir/unary.h"
 #include "src/tint/ir/user_call.h"
 #include "src/tint/ir/value.h"
+#include "src/tint/ir/var.h"
 #include "src/tint/type/bool.h"
 #include "src/tint/type/f16.h"
 #include "src/tint/type/f32.h"
@@ -139,13 +139,6 @@ class Builder {
     /// @returns the new constant
     ir::Constant* Constant(bool v) {
         return Constant(create<constant::Scalar<bool>>(ir.types.Get<type::Bool>(), v));
-    }
-
-    /// Creates a new Runtime value
-    /// @param type the type of the temporary
-    /// @returns the new temporary
-    ir::Runtime* Runtime(const type::Type* type) {
-        return ir.values.Create<ir::Runtime>(type, AllocateRuntimeId());
     }
 
     /// Creates an op for `lhs kind rhs`
@@ -366,14 +359,26 @@ class Builder {
     /// @returns the instruction
     ir::Store* Store(Value* to, Value* from);
 
-    /// @returns a unique runtime id
-    Runtime::Id AllocateRuntimeId();
+    /// Creates a new `var` declaration
+    /// @param type the var type
+    /// @param address_space the address space
+    /// @param access the access mode
+    /// @returns the instruction
+    ir::Var* Declare(const type::Type* type,
+                     builtin::AddressSpace address_space,
+                     builtin::Access access);
+
+    /// Retrieves the root block for the module, creating if necessary
+    /// @returns the root block
+    ir::Block* CreateRootBlockIfNeeded();
 
     /// The IR module.
     Module ir;
 
-    /// The next temporary number to allocate
-    Runtime::Id next_runtime_id = 1;
+  private:
+    uint32_t next_inst_id() { return next_instruction_id_++; }
+
+    uint32_t next_instruction_id_ = 1;
 };
 
 }  // namespace tint::ir

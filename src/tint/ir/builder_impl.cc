@@ -39,6 +39,7 @@
 #include "src/tint/ast/identifier_expression.h"
 #include "src/tint/ast/if_statement.h"
 #include "src/tint/ast/int_literal_expression.h"
+#include "src/tint/ast/let.h"
 #include "src/tint/ast/literal_expression.h"
 #include "src/tint/ast/loop_statement.h"
 #include "src/tint/ast/override.h"
@@ -50,6 +51,7 @@
 #include "src/tint/ast/switch_statement.h"
 #include "src/tint/ast/templated_identifier.h"
 #include "src/tint/ast/unary_op_expression.h"
+#include "src/tint/ast/var.h"
 #include "src/tint/ast/variable_decl_statement.h"
 #include "src/tint/ast/while_statement.h"
 #include "src/tint/ir/function.h"
@@ -69,8 +71,10 @@
 #include "src/tint/sem/value_constructor.h"
 #include "src/tint/sem/value_conversion.h"
 #include "src/tint/sem/value_expression.h"
+#include "src/tint/sem/variable.h"
 #include "src/tint/switch.h"
 #include "src/tint/type/void.h"
+#include "src/tint/utils/scoped_assignment.h"
 
 namespace tint::ir {
 namespace {
@@ -169,10 +173,13 @@ ResultType BuilderImpl::Build() {
             [&](const ast::Alias*) {
                 // Folded away and doesn't appear in the IR.
             },
-            // [&](const ast::Variable* var) {
-            // TODO(dsinclair): Implement
-            // },
-            [&](const ast::Function* func) { return EmitFunction(func); },
+            [&](const ast::Variable* var) {
+                // Setup the current flow node to be the root block for the module. The builder will
+                // handle creating it if it doesn't exist already.
+                TINT_SCOPED_ASSIGNMENT(current_flow_block, builder.CreateRootBlockIfNeeded());
+                EmitVariable(var);
+            },
+            [&](const ast::Function* func) { EmitFunction(func); },
             // [&](const ast::Enable*) {
             // TODO(dsinclair): Implement? I think these need to be passed along so further stages
             // know what is enabled.
@@ -291,69 +298,69 @@ void BuilderImpl::EmitCompoundAssignment(const ast::CompoundAssignmentStatement*
     }
 
     auto* ty = lhs.Get()->Type();
-    Binary* instr = nullptr;
+    Binary* inst = nullptr;
     switch (stmt->op) {
         case ast::BinaryOp::kAnd:
-            instr = builder.And(ty, lhs.Get(), rhs.Get());
+            inst = builder.And(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kOr:
-            instr = builder.Or(ty, lhs.Get(), rhs.Get());
+            inst = builder.Or(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kXor:
-            instr = builder.Xor(ty, lhs.Get(), rhs.Get());
+            inst = builder.Xor(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kLogicalAnd:
-            instr = builder.LogicalAnd(ty, lhs.Get(), rhs.Get());
+            inst = builder.LogicalAnd(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kLogicalOr:
-            instr = builder.LogicalOr(ty, lhs.Get(), rhs.Get());
+            inst = builder.LogicalOr(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kEqual:
-            instr = builder.Equal(ty, lhs.Get(), rhs.Get());
+            inst = builder.Equal(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kNotEqual:
-            instr = builder.NotEqual(ty, lhs.Get(), rhs.Get());
+            inst = builder.NotEqual(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kLessThan:
-            instr = builder.LessThan(ty, lhs.Get(), rhs.Get());
+            inst = builder.LessThan(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kGreaterThan:
-            instr = builder.GreaterThan(ty, lhs.Get(), rhs.Get());
+            inst = builder.GreaterThan(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kLessThanEqual:
-            instr = builder.LessThanEqual(ty, lhs.Get(), rhs.Get());
+            inst = builder.LessThanEqual(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kGreaterThanEqual:
-            instr = builder.GreaterThanEqual(ty, lhs.Get(), rhs.Get());
+            inst = builder.GreaterThanEqual(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kShiftLeft:
-            instr = builder.ShiftLeft(ty, lhs.Get(), rhs.Get());
+            inst = builder.ShiftLeft(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kShiftRight:
-            instr = builder.ShiftRight(ty, lhs.Get(), rhs.Get());
+            inst = builder.ShiftRight(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kAdd:
-            instr = builder.Add(ty, lhs.Get(), rhs.Get());
+            inst = builder.Add(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kSubtract:
-            instr = builder.Subtract(ty, lhs.Get(), rhs.Get());
+            inst = builder.Subtract(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kMultiply:
-            instr = builder.Multiply(ty, lhs.Get(), rhs.Get());
+            inst = builder.Multiply(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kDivide:
-            instr = builder.Divide(ty, lhs.Get(), rhs.Get());
+            inst = builder.Divide(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kModulo:
-            instr = builder.Modulo(ty, lhs.Get(), rhs.Get());
+            inst = builder.Modulo(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kNone:
             TINT_ICE(IR, diagnostics_) << "missing binary operand type";
             return;
     }
-    current_flow_block->instructions.Push(instr);
+    current_flow_block->instructions.Push(inst);
 
-    auto store = builder.Store(lhs.Get(), instr->Result());
+    auto store = builder.Store(lhs.Get(), inst);
     current_flow_block->instructions.Push(store);
 }
 
@@ -430,8 +437,8 @@ void BuilderImpl::EmitLoop(const ast::LoopStatement* stmt) {
         BranchToIfNeeded(loop_node->start.target);
     }
 
-    // The loop merge can get disconnected if the loop returns directly, or the continuing target
-    // branches, eventually, to the merge, but nothing branched to the continuing target.
+    // The loop merge can get disconnected if the loop returns directly, or the continuing
+    // target branches, eventually, to the merge, but nothing branched to the continuing target.
     current_flow_block = loop_node->merge.target->As<Block>();
     if (!IsConnected(loop_node->merge.target)) {
         current_flow_block = nullptr;
@@ -613,12 +620,12 @@ void BuilderImpl::EmitContinue(const ast::ContinueStatement*) {
 }
 
 // Discard is being treated as an instruction. The semantics in WGSL is demote_to_helper, so the
-// code has to continue as before it just predicates writes. If WGSL grows some kind of terminating
-// discard that would probably make sense as a FlowNode but would then require figuring out the
-// multi-level exit that is triggered.
+// code has to continue as before it just predicates writes. If WGSL grows some kind of
+// terminating discard that would probably make sense as a FlowNode but would then require
+// figuring out the multi-level exit that is triggered.
 void BuilderImpl::EmitDiscard(const ast::DiscardStatement*) {
-    auto* instr = builder.Discard();
-    current_flow_block->instructions.Push(instr);
+    auto* inst = builder.Discard();
+    current_flow_block->instructions.Push(inst);
 }
 
 void BuilderImpl::EmitBreakIf(const ast::BreakIfStatement* stmt) {
@@ -655,6 +662,15 @@ void BuilderImpl::EmitBreakIf(const ast::BreakIfStatement* stmt) {
 }
 
 utils::Result<Value*> BuilderImpl::EmitExpression(const ast::Expression* expr) {
+    // If this is a value that has been const-eval'd return the result.
+    if (auto* sem = program_->Sem().Get(expr)->As<sem::ValueExpression>()) {
+        if (auto* v = sem->ConstantValue()) {
+            if (auto* cv = v->Clone(clone_ctx_)) {
+                return builder.Constant(cv);
+            }
+        }
+    }
+
     return tint::Switch(
         expr,
         // [&](const ast::IndexAccessorExpression* a) {
@@ -682,14 +698,35 @@ utils::Result<Value*> BuilderImpl::EmitExpression(const ast::Expression* expr) {
 }
 
 void BuilderImpl::EmitVariable(const ast::Variable* var) {
+    auto* sem = program_->Sem().Get(var);
+
     return tint::Switch(  //
         var,
-        // [&](const ast::Var* var) {
-        // TODO(dsinclair): Implement
-        // },
-        // [&](const ast::Let*) {
-        // TODO(dsinclair): Implement
-        // },
+        [&](const ast::Var* v) {
+            auto* ty = sem->Type()->Clone(clone_ctx_.type_ctx);
+            auto* val = builder.Declare(ty, sem->AddressSpace(), sem->Access());
+            current_flow_block->instructions.Push(val);
+
+            if (v->initializer) {
+                auto init = EmitExpression(v->initializer);
+                if (!init) {
+                    return;
+                }
+
+                auto* store = builder.Store(val, init.Get());
+                current_flow_block->instructions.Push(store);
+            }
+            // TODO(dsinclair): Store the mapping from the var name to the `Declare` value
+        },
+        [&](const ast::Let* l) {
+            // A `let` doesn't exist as a standalone item in the IR, it's just the result of the
+            // initializer.
+            auto init = EmitExpression(l->initializer);
+            if (!init) {
+                return;
+            }
+            // TODO(dsinclair): Store the mapping from the let name to the `init` value
+        },
         [&](const ast::Override*) {
             add_error(var->source,
                       "found an `Override` variable. The SubstituteOverrides "
@@ -701,8 +738,8 @@ void BuilderImpl::EmitVariable(const ast::Variable* var) {
             // should never be used.
             //
             // TODO(dsinclair): Probably want to store the const variable somewhere and then in
-            // identifier expression log an error if we ever see a const identifier. Add this when
-            // identifiers and variables are supported.
+            // identifier expression log an error if we ever see a const identifier. Add this
+            // when identifiers and variables are supported.
         },
         [&](Default) {
             add_error(var->source, "unknown variable: " + std::string(var->TypeInfo().name));
@@ -718,27 +755,27 @@ utils::Result<Value*> BuilderImpl::EmitUnary(const ast::UnaryOpExpression* expr)
     auto* sem = program_->Sem().Get(expr);
     auto* ty = sem->Type()->Clone(clone_ctx_.type_ctx);
 
-    Unary* instr = nullptr;
+    Unary* inst = nullptr;
     switch (expr->op) {
         case ast::UnaryOp::kAddressOf:
-            instr = builder.AddressOf(ty, val.Get());
+            inst = builder.AddressOf(ty, val.Get());
             break;
         case ast::UnaryOp::kComplement:
-            instr = builder.Complement(ty, val.Get());
+            inst = builder.Complement(ty, val.Get());
             break;
         case ast::UnaryOp::kIndirection:
-            instr = builder.Indirection(ty, val.Get());
+            inst = builder.Indirection(ty, val.Get());
             break;
         case ast::UnaryOp::kNegation:
-            instr = builder.Negation(ty, val.Get());
+            inst = builder.Negation(ty, val.Get());
             break;
         case ast::UnaryOp::kNot:
-            instr = builder.Not(ty, val.Get());
+            inst = builder.Not(ty, val.Get());
             break;
     }
 
-    current_flow_block->instructions.Push(instr);
-    return instr->Result();
+    current_flow_block->instructions.Push(inst);
+    return inst;
 }
 
 utils::Result<Value*> BuilderImpl::EmitBinary(const ast::BinaryExpression* expr) {
@@ -755,69 +792,69 @@ utils::Result<Value*> BuilderImpl::EmitBinary(const ast::BinaryExpression* expr)
     auto* sem = program_->Sem().Get(expr);
     auto* ty = sem->Type()->Clone(clone_ctx_.type_ctx);
 
-    Binary* instr = nullptr;
+    Binary* inst = nullptr;
     switch (expr->op) {
         case ast::BinaryOp::kAnd:
-            instr = builder.And(ty, lhs.Get(), rhs.Get());
+            inst = builder.And(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kOr:
-            instr = builder.Or(ty, lhs.Get(), rhs.Get());
+            inst = builder.Or(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kXor:
-            instr = builder.Xor(ty, lhs.Get(), rhs.Get());
+            inst = builder.Xor(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kLogicalAnd:
-            instr = builder.LogicalAnd(ty, lhs.Get(), rhs.Get());
+            inst = builder.LogicalAnd(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kLogicalOr:
-            instr = builder.LogicalOr(ty, lhs.Get(), rhs.Get());
+            inst = builder.LogicalOr(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kEqual:
-            instr = builder.Equal(ty, lhs.Get(), rhs.Get());
+            inst = builder.Equal(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kNotEqual:
-            instr = builder.NotEqual(ty, lhs.Get(), rhs.Get());
+            inst = builder.NotEqual(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kLessThan:
-            instr = builder.LessThan(ty, lhs.Get(), rhs.Get());
+            inst = builder.LessThan(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kGreaterThan:
-            instr = builder.GreaterThan(ty, lhs.Get(), rhs.Get());
+            inst = builder.GreaterThan(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kLessThanEqual:
-            instr = builder.LessThanEqual(ty, lhs.Get(), rhs.Get());
+            inst = builder.LessThanEqual(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kGreaterThanEqual:
-            instr = builder.GreaterThanEqual(ty, lhs.Get(), rhs.Get());
+            inst = builder.GreaterThanEqual(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kShiftLeft:
-            instr = builder.ShiftLeft(ty, lhs.Get(), rhs.Get());
+            inst = builder.ShiftLeft(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kShiftRight:
-            instr = builder.ShiftRight(ty, lhs.Get(), rhs.Get());
+            inst = builder.ShiftRight(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kAdd:
-            instr = builder.Add(ty, lhs.Get(), rhs.Get());
+            inst = builder.Add(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kSubtract:
-            instr = builder.Subtract(ty, lhs.Get(), rhs.Get());
+            inst = builder.Subtract(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kMultiply:
-            instr = builder.Multiply(ty, lhs.Get(), rhs.Get());
+            inst = builder.Multiply(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kDivide:
-            instr = builder.Divide(ty, lhs.Get(), rhs.Get());
+            inst = builder.Divide(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kModulo:
-            instr = builder.Modulo(ty, lhs.Get(), rhs.Get());
+            inst = builder.Modulo(ty, lhs.Get(), rhs.Get());
             break;
         case ast::BinaryOp::kNone:
             TINT_ICE(IR, diagnostics_) << "missing binary operand type";
             return utils::Failure;
     }
 
-    current_flow_block->instructions.Push(instr);
-    return instr->Result();
+    current_flow_block->instructions.Push(inst);
+    return inst;
 }
 
 utils::Result<Value*> BuilderImpl::EmitBitcast(const ast::BitcastExpression* expr) {
@@ -828,10 +865,10 @@ utils::Result<Value*> BuilderImpl::EmitBitcast(const ast::BitcastExpression* exp
 
     auto* sem = program_->Sem().Get(expr);
     auto* ty = sem->Type()->Clone(clone_ctx_.type_ctx);
-    auto* instr = builder.Bitcast(ty, val.Get());
+    auto* inst = builder.Bitcast(ty, val.Get());
 
-    current_flow_block->instructions.Push(instr);
-    return instr->Result();
+    current_flow_block->instructions.Push(inst);
+    return inst;
 }
 
 void BuilderImpl::EmitCall(const ast::CallStatement* stmt) {
@@ -874,29 +911,29 @@ utils::Result<Value*> BuilderImpl::EmitCall(const ast::CallExpression* expr) {
 
     auto* ty = sem->Target()->ReturnType()->Clone(clone_ctx_.type_ctx);
 
-    Instruction* instr = nullptr;
+    Instruction* inst = nullptr;
 
     // If this is a builtin function, emit the specific builtin value
     if (auto* b = sem->Target()->As<sem::Builtin>()) {
-        instr = builder.Builtin(ty, b->Type(), args);
+        inst = builder.Builtin(ty, b->Type(), args);
     } else if (sem->Target()->As<sem::ValueConstructor>()) {
-        instr = builder.Construct(ty, std::move(args));
+        inst = builder.Construct(ty, std::move(args));
     } else if (auto* conv = sem->Target()->As<sem::ValueConversion>()) {
         auto* from = conv->Source()->Clone(clone_ctx_.type_ctx);
-        instr = builder.Convert(ty, from, std::move(args));
+        inst = builder.Convert(ty, from, std::move(args));
     } else if (expr->target->identifier->Is<ast::TemplatedIdentifier>()) {
         TINT_UNIMPLEMENTED(IR, diagnostics_) << "missing templated ident support";
         return utils::Failure;
     } else {
         // Not a builtin and not a templated call, so this is a user function.
         auto name = CloneSymbol(expr->target->identifier->symbol);
-        instr = builder.UserCall(ty, name, std::move(args));
+        inst = builder.UserCall(ty, name, std::move(args));
     }
-    if (instr == nullptr) {
+    if (inst == nullptr) {
         return utils::Failure;
     }
-    current_flow_block->instructions.Push(instr);
-    return instr->Result();
+    current_flow_block->instructions.Push(inst);
+    return inst;
 }
 
 utils::Result<Value*> BuilderImpl::EmitLiteral(const ast::LiteralExpression* lit) {

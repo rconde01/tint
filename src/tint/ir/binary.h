@@ -51,17 +51,18 @@ class Binary : public utils::Castable<Binary, Instruction> {
     };
 
     /// Constructor
+    /// @param id the instruction id
     /// @param kind the kind of binary instruction
-    /// @param result the result value
+    /// @param type the result type
     /// @param lhs the lhs of the instruction
     /// @param rhs the rhs of the instruction
-    Binary(Kind kind, Value* result, Value* lhs, Value* rhs);
-    Binary(const Binary& instr) = delete;
-    Binary(Binary&& instr) = delete;
+    Binary(uint32_t id, Kind kind, const type::Type* type, Value* lhs, Value* rhs);
+    Binary(const Binary& inst) = delete;
+    Binary(Binary&& inst) = delete;
     ~Binary() override;
 
-    Binary& operator=(const Binary& instr) = delete;
-    Binary& operator=(Binary&& instr) = delete;
+    Binary& operator=(const Binary& inst) = delete;
+    Binary& operator=(Binary&& inst) = delete;
 
     /// @returns the kind of instruction
     Kind GetKind() const { return kind_; }
@@ -75,7 +76,7 @@ class Binary : public utils::Castable<Binary, Instruction> {
     /// Write the instruction to the given stream
     /// @param out the stream to write to
     /// @returns the stream
-    utils::StringStream& ToString(utils::StringStream& out) const override;
+    utils::StringStream& ToInstruction(utils::StringStream& out) const override;
 
   private:
     Kind kind_;

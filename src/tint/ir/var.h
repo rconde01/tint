@@ -12,34 +12,41 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef SRC_TINT_IR_USER_CALL_H_
-#define SRC_TINT_IR_USER_CALL_H_
+#ifndef SRC_TINT_IR_VAR_H_
+#define SRC_TINT_IR_VAR_H_
 
-#include "src/tint/ir/call.h"
-#include "src/tint/symbol.h"
+#include "src/tint/builtin/access.h"
+#include "src/tint/builtin/address_space.h"
+#include "src/tint/ir/instruction.h"
 #include "src/tint/utils/castable.h"
 #include "src/tint/utils/string_stream.h"
 
 namespace tint::ir {
 
-/// A user call instruction in the IR.
-class UserCall : public utils::Castable<UserCall, Call> {
+/// An instruction in the IR.
+class Var : public utils::Castable<Var, Instruction> {
   public:
     /// Constructor
     /// @param id the instruction id
-    /// @param type the result type
-    /// @param name the function name
-    /// @param args the function arguments
-    UserCall(uint32_t id, const type::Type* type, Symbol name, utils::VectorRef<Value*> args);
-    UserCall(const UserCall& inst) = delete;
-    UserCall(UserCall&& inst) = delete;
-    ~UserCall() override;
+    /// @param type the type
+    /// @param address_space the address space of the var
+    /// @param access the access mode of the var
+    Var(uint32_t id,
+        const type::Type* type,
+        builtin::AddressSpace address_space,
+        builtin::Access access);
+    Var(const Var& inst) = delete;
+    Var(Var&& inst) = delete;
+    ~Var() override;
 
-    UserCall& operator=(const UserCall& inst) = delete;
-    UserCall& operator=(UserCall&& inst) = delete;
+    Var& operator=(const Var& inst) = delete;
+    Var& operator=(Var&& inst) = delete;
 
-    /// @returns the function name
-    Symbol Name() const { return name_; }
+    /// @returns the address space
+    builtin::AddressSpace AddressSpace() const { return address_space_; }
+
+    /// @returns the access mode
+    builtin::Access Access() const { return access_; }
 
     /// Write the instruction to the given stream
     /// @param out the stream to write to
@@ -47,9 +54,10 @@ class UserCall : public utils::Castable<UserCall, Call> {
     utils::StringStream& ToInstruction(utils::StringStream& out) const override;
 
   private:
-    Symbol name_{};
+    builtin::AddressSpace address_space_;
+    builtin::Access access_;
 };
 
 }  // namespace tint::ir
 
-#endif  // SRC_TINT_IR_USER_CALL_H_
+#endif  // SRC_TINT_IR_VAR_H_

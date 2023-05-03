@@ -1,4 +1,4 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2023 The Tint Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,21 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/tint/ir/runtime.h"
+#include "src/tint/ir/converter.h"
 
-#include <string>
-
-TINT_INSTANTIATE_TYPEINFO(tint::ir::Runtime);
+#include "src/tint/ir/builder_impl.h"
+#include "src/tint/program.h"
 
 namespace tint::ir {
 
-Runtime::Runtime(const type::Type* type, Id id) : type_(type), id_(id) {}
+// static
+Converter::Result Converter::FromProgram(const Program* program) {
+    if (!program->IsValid()) {
+        return Result{std::string("input program is not valid")};
+    }
 
-Runtime::~Runtime() = default;
+    BuilderImpl b(program);
+    auto r = b.Build();
+    if (!r) {
+        return b.Diagnostics().str();
+    }
 
-utils::StringStream& Runtime::ToString(utils::StringStream& out) const {
-    out << "%" << std::to_string(AsId()) << " (" << type_->FriendlyName() << ")";
-    return out;
+    return Result{r.Move()};
+}
+
+// static
+const Program* Converter::ToProgram() {
+    return nullptr;
 }
 
 }  // namespace tint::ir

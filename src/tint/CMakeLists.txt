@@ -264,6 +264,8 @@ list(APPEND TINT_LIB_SRCS
   reflection.h
   reader/reader.cc
   reader/reader.h
+  resolver/builtin_structs.cc
+  resolver/builtin_structs.h
   resolver/const_eval.cc
   resolver/const_eval.h
   resolver/dependency_graph.cc
@@ -716,6 +718,8 @@ if(${TINT_BUILD_IR})
     ir/construct.h
     ir/convert.cc
     ir/convert.h
+    ir/converter.cc
+    ir/converter.h
     ir/debug.cc
     ir/debug.h
     ir/disassembler.cc
@@ -734,8 +738,6 @@ if(${TINT_BUILD_IR})
     ir/loop.h
     ir/module.cc
     ir/module.h
-    ir/runtime.cc
-    ir/runtime.h
     ir/store.cc
     ir/store.h
     ir/switch.cc
@@ -748,6 +750,8 @@ if(${TINT_BUILD_IR})
     ir/user_call.h
     ir/value.cc
     ir/value.h
+    ir/var.cc
+    ir/var.h
   )
 endif()
 
@@ -911,6 +915,7 @@ if(TINT_BUILD_TESTS)
     resolver/attribute_validation_test.cc
     resolver/bitcast_validation_test.cc
     resolver/builtin_enum_test.cc
+    resolver/builtin_structs_test.cc
     resolver/builtin_test.cc
     resolver/builtin_validation_test.cc
     resolver/builtins_validation_test.cc
@@ -1420,7 +1425,6 @@ if(TINT_BUILD_TESTS)
       ir/builder_impl_test.cc
       ir/constant_test.cc
       ir/discard_test.cc
-      ir/runtime_test.cc
       ir/store_test.cc
       ir/test_helper.h
       ir/unary_test.cc
