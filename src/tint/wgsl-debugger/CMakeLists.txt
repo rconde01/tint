@@ -1,4 +1,8 @@
-add_executable(wgsl-debugger embind.cpp get_syntax_tree.cpp)
+add_executable(wgsl-debugger
+    embind.cpp
+    get_syntax_tree.cpp
+    get_wgsl.cpp
+)
 
 tint_default_compile_options(wgsl-debugger)
 

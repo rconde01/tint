@@ -53,7 +53,7 @@ if __name__ == "__main__":
                 "-DTINT_BUILD_HLSL_WRITER=OFF " +
                 "-DTINT_BUILD_MSL_WRITER=OFF " +
                 "-DTINT_BUILD_SPV_WRITER=OFF " +
-                "-DTINT_BUILD_WGSL_WRITER=OFF " +
+                "-DTINT_BUILD_WGSL_WRITER=ON " +
                 "-DTINT_BUILD_SYNTAX_TREE_WRITER=ON " +
                 "-DTINT_BUILD_TESTS=OFF ", shell=True)
 
