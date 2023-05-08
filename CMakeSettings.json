@@ -10,7 +10,13 @@
       "cmakeCommandArgs": "",
       "buildCommandArgs": "",
       "ctestCommandArgs": "",
-      "variables": []
+      "variables": [
+        {
+          "name": "TINT_BUILD_SYNTAX_TREE_WRITER",
+          "value": "ON",
+          "type": "STRING"
+        }
+      ]
     },
     {
       "name": "x64-Release",

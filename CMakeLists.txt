@@ -374,7 +374,7 @@ function(tint_default_compile_options TARGET)
       /bigobj
       /EHsc
       /W4
-      /WX
+      #/WX
       /wd4068
       /wd4127
       /wd4244

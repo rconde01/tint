@@ -2,13 +2,14 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "debug_transform.h"
 #include "get_wgsl.hpp"
-#include "src/tint/reader/wgsl/parser.h"
-#include "src/tint/source.h"
-#include "src/tint/writer/wgsl/generator.h"  // nogncheck
 #include "src/tint/clone_context.h"
 #include "src/tint/program_builder.h"
+#include "src/tint/reader/wgsl/parser.h"
+#include "src/tint/source.h"
 #include "src/tint/utils/block_allocator.h"
+#include "src/tint/writer/wgsl/generator.h"  // nogncheck
 
 // from clone_context_test.cc
 // struct Allocator {
@@ -28,34 +29,15 @@ auto get_wgsl(std::string const& program_contents) -> std::string {
   auto program = std::make_unique<tint::Program>(
       tint::reader::wgsl::Parse(source_file.get()));
 
-  auto builder = tint::ProgramBuilder();
+  tint::transform::DebugTransform tranform;
 
-  tint::CloneContext ctx(&builder,program.get());
+  tint::transform::DataMap output;
 
-  auto functions = program->AST().Functions();
-
-  for(auto f : functions){
-    if(f->IsEntryPoint()){
-        for(auto s : f->body->statements){
-            ctx.InsertAfter(
-                f->body->statements,
-                s,
-                builder.Var(
-                    "wgsl_dgb_",
-                    tint::ast::Type{ builder.Expr(builder.Ident("f32"))}
-                )
-            );
-        }
-    }
-  }
-
-  ctx.Clone();
-
-  auto new_program = tint::Program(std::move(builder));
+  auto trans_result = tranform.Apply(program.get(), {}, output);
 
   tint::writer::wgsl::Options gen_options;
 
-  auto result = tint::writer::wgsl::Generate(&new_program, gen_options);
+  auto result = tint::writer::wgsl::Generate(&*trans_result, gen_options);
   if (!result.success) {
     std::ostringstream o;
 
