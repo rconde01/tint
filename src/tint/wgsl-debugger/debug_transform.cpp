@@ -1,7 +1,7 @@
 #include "debug_transform.h"
 
-#include <utility>
 #include <string>
+#include <utility>
 
 #include "src/tint/ast/attribute.h"
 #include "src/tint/ast/builtin_attribute.h"
@@ -30,8 +30,20 @@ struct DebugTransform::State {
   const sem::Info& sem = src->Sem();
 
   const SymbolTable& sym = src->Symbols();
+  const ProgramBuilder::TypesBuilder& ty = ctx.dst->ty;
 
   Transform::ApplyResult Run() {
+    utils::Vector<const ast::StructMember*, 2> members;
+
+    members.Push(b.Member("counter", ty.atomic(ty.u32())));
+    members.Push(b.Member("data", ty.array(ty.u32())));
+
+    auto dbg_struct =
+        ctx.dst->Structure("_DebugBufferContents", std::move(members));
+
+    b.GlobalVar("_dbg_bug", ty.Of(dbg_struct), builtin::AddressSpace::kStorage,
+                utils::Vector{b.Binding(AInt(0)), b.Group(AInt(0))});
+
     ctx.ReplaceAll([&](const ast::Function* fn) -> const ast::Function* {
       // Rebuild the function
       utils::Vector<const ast::Parameter*, 8> params;
@@ -47,8 +59,8 @@ struct DebugTransform::State {
         statements.Push(ctx.Clone(s));
 
         if (s->Is<ast::AssignmentStatement>()) {
-          auto var = ctx.dst->Var("wgsl_dbg_" + std::to_string(count++),ctx.dst->ty.f32());
-          auto var_stmt = ctx.dst->Decl(var);
+          auto var = b.Var("wgsl_dbg_" + std::to_string(count++), ty.f32());
+          auto var_stmt = b.Decl(var);
 
           statements.Push(var_stmt);
         }
@@ -56,13 +68,13 @@ struct DebugTransform::State {
 
       auto body_attributes = ctx.Clone(fn->body->attributes);
 
-      auto * body = ctx.dst->Block(statements,std::move(body_attributes));
+      auto* body = b.Block(std::move(statements), std::move(body_attributes));
       auto attributes = ctx.Clone(fn->attributes);
       auto return_type_attributes = ctx.Clone(fn->return_type_attributes);
 
-      return ctx.dst->create<ast::Function>(name, params, return_type, body,
-                                            std::move(attributes),
-                                            std::move(return_type_attributes));
+      return b.create<ast::Function>(name, params, return_type, body,
+                                     std::move(attributes),
+                                     std::move(return_type_attributes));
     });
 
     ctx.Clone();
