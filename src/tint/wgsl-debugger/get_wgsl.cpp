@@ -9,7 +9,8 @@
 #include "src/tint/reader/wgsl/parser.h"
 #include "src/tint/source.h"
 #include "src/tint/utils/block_allocator.h"
-#include "src/tint/writer/wgsl/generator.h"  // nogncheck
+#include "src/tint/writer/syntax_tree/generator.h"
+#include "src/tint/writer/wgsl/generator.h"
 
 // from clone_context_test.cc
 // struct Allocator {
@@ -23,11 +24,22 @@
 // };
 
 auto get_wgsl(std::string const& program_contents) -> std::string {
+  std::ostringstream o;
+
   auto source_file = std::make_unique<tint::Source::File>(
       "no_file", std::string(program_contents.begin(), program_contents.end()));
 
   auto program = std::make_unique<tint::Program>(
       tint::reader::wgsl::Parse(source_file.get()));
+
+  if (!program->IsValid()) {
+    return "Error parsing original program.";
+  }
+
+  // auto ast_result = tint::writer::syntax_tree::Generate(
+  //     program.get(), tint::writer::syntax_tree::Options{});
+
+  // o << ast_result.ast;
 
   tint::transform::DebugTransform tranform;
 
@@ -39,12 +51,11 @@ auto get_wgsl(std::string const& program_contents) -> std::string {
 
   auto result = tint::writer::wgsl::Generate(&*trans_result, gen_options);
   if (!result.success) {
-    std::ostringstream o;
-
     o << "Failed to dump AST: " << result.error << std::endl;
 
-    return o.str();
   } else {
-    return result.wgsl;
+    o << result.wgsl;
   }
+
+  return o.str();
 }

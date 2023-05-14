@@ -13,12 +13,15 @@ auto main() -> int {
                                 vec2<f32>(0.5, -0.5));
   return vec4<f32>(pos[idx], 0.0, 1.0);
 }
-@fragment fn main_f(@builtin(position) coord
-                    : vec4<f32>, )
+@fragment fn main_f()
     ->@location(0) vec4<f32> {
-  var result = vec4<f32>(0.0, coord.x / 300, 1.0, 1.0);  // 0x80/0xff ~= 0.502
+  var result = vec4<f32>(0.0, 1.0, 1.0, 1.0);  // 0x80/0xff ~= 0.502
 
   result[0] = result[0];
+
+  var i = u32(1);
+
+  result = result;
 
   return result;
 }

@@ -37,10 +37,11 @@ struct DebugTransform::State {
   const ProgramBuilder::TypesBuilder& ty = ctx.dst->ty;
 
   Transform::ApplyResult Run() {
-    auto const buf_name = "_wgsl_dbg_buf";
-    auto const buf_fragment_num_name = "_wgsl_dbg_fragment_num";
-    auto const buf_fragment_offset_name = "_wgsl_dbg_fragment_offset";
-    auto const buf_fragment_stride_name = "_wgsl_dbg_fragment_stride";
+    auto const buf_name = "__wbuf";
+    auto const buf_fragment_num_name = "__wfragnum";
+    auto const buf_fragment_offset_name = "__wfragoff";
+    auto const buf_fragment_stride_name = "__wfragstride";
+    auto const buf_custom_pos_param = "__wpos";
 
     auto get_expression_type = [&](ast::Expression const* exp) {
       auto exp_sem = sem.GetVal(exp);
@@ -106,28 +107,44 @@ struct DebugTransform::State {
 
     InstrumentationData i_data{};
 
+    auto get_dgb_buf_indexer = [&]() {
+      auto buf_data = b.MemberAccessor(b.Ident(buf_name), b.Ident("data"));
+      auto buf_data_indexer = b.Add(b.Mul(b.Ident(buf_fragment_num_name),
+                                          b.Ident(buf_fragment_stride_name)),
+                                    b.Ident(buf_fragment_offset_name));
+      auto buf_indexed = b.IndexAccessor(buf_data, buf_data_indexer);
+
+      return buf_indexed;
+    };
+
     auto add_debug_capture = [&](auto& statements,
                                  ast::AssignmentStatement const* assign) {
       auto capture_type = get_expression_type(assign->lhs);
 
-      // buf.data[fragment_num * stride + offset++] = bitcast<u32>(result.r);
-
-      auto get_indexer = [&](std::uint32_t index) {
-        auto buf_data = b.MemberAccessor(b.Ident(buf_name), b.Ident("data"));
-        auto buf_data_indexer = b.Add(b.Mul(b.Ident(buf_fragment_num_name),
-                                            b.Ident(buf_fragment_stride_name)),
-                                      b.Ident(buf_fragment_offset_name));
-        auto buf_indexed = b.IndexAccessor(buf_data, buf_data_indexer);
-
-        return buf_indexed;
-      };
+      // buf.data[fragment_num * stride + offset] = bitcast<u32>(result.r);
+      // offset++;
 
       switch (capture_type) {
         case ExpressionType::f32:
+        case ExpressionType::i32:
+        case ExpressionType::u32:
           statements.Push(b.Assign(
-              get_indexer(0),
+              get_dgb_buf_indexer(),
               b.Bitcast(ty.u32(), ctx.CloneWithoutTransform(assign->lhs))));
           statements.Push(b.Increment(b.Ident(buf_fragment_offset_name)));
+          break;
+
+        case ExpressionType::vec4_f32:
+        case ExpressionType::vec4_i32:
+        case ExpressionType::vec4_u32:
+          for (size_t i = 0; i < 4; ++i) {
+            statements.Push(b.Assign(
+                get_dgb_buf_indexer(),
+                b.Bitcast(ty.u32(), b.IndexAccessor(
+                                        ctx.CloneWithoutTransform(assign->lhs),
+                                        b.Expr(tint::u32(i))))));
+            statements.Push(b.Increment(b.Ident(buf_fragment_offset_name)));
+          }
           break;
       }
     };
@@ -161,8 +178,6 @@ struct DebugTransform::State {
     auto dbg_buf_fragment_stride =
         b.GlobalConst(buf_fragment_stride_name, ty.u32(), b.Expr(tint::u32(0)));
 
-    size_t logPointId = 0;
-
     // For each function
     // * If function is not entry point, add initial parameter which is
     //   the base capture number.
@@ -179,7 +194,44 @@ struct DebugTransform::State {
 
       utils::Vector<const ast::Statement*, 8> statements;
 
+      for (auto p : fn->params)
+        params.Push(ctx.CloneWithoutTransform(p));
+
       if (is_fragment_entry(fn)) {
+        // If doesn't contain position, add it, otherwise get the name
+        ast::Parameter const* position_param{};
+
+        for (auto p : fn->params) {
+          for (auto a : p->attributes) {
+            // TODO: does As yield null...cheaper to do as/check?
+            if (a->Is<ast::BuiltinAttribute>()) {
+              auto bia = a->As<ast::BuiltinAttribute>();
+
+              auto name = bia->builtin->As<ast::IdentifierExpression>()
+                              ->identifier->symbol.Name();
+
+              if (name == "position") {
+                position_param = p;
+                break;
+              }
+            }
+          }
+        }
+
+        if (!position_param) {
+          // no insert so do gynastics
+          utils::Vector<const ast::Parameter*, 8> tmp = std::move(params);
+          params.Clear();
+          params.Reserve(tmp.Length() + 1);
+          params.Push(b.Param(buf_custom_pos_param, ty.vec4(ty.f32()),
+                              tint::utils::Vector{b.Builtin("position")}));
+
+          position_param = params[0];
+
+          for (auto t : tmp)
+            params.Push(t);
+        }
+
         // let wgsl_buf_fragment_num = atomicAdd(&buf.counter, 1u) - 1u;
         auto access = b.MemberAccessor(dbg_buf, b.Ident("counter"));
         auto access_ref = b.AddressOf(access);
@@ -195,6 +247,30 @@ struct DebugTransform::State {
         auto decl = b.Decl(let);
 
         statements.Push(decl);
+
+        // var wgsl_buf_fragment_offset = 0;
+        statements.Push(b.Decl(b.Var(b.Ident(buf_fragment_offset_name),
+                                     ty.u32(), b.Expr(tint::u32(0)))));
+
+        // store fragment position
+        // buf.data[offset * stride + 0u] = u32(pos.x) | (u32(pos.y) << 16u);
+        {
+          auto indexer = get_dgb_buf_indexer();
+
+          auto xu32 = b.Call(b.Ident("u32"),
+                             tint::utils::Vector{b.MemberAccessor(
+                                 b.Ident(position_param->name), b.Ident("x"))});
+
+          auto yu32 = b.Call(b.Ident("u32"),
+                             tint::utils::Vector{b.MemberAccessor(
+                                 b.Ident(position_param->name), b.Ident("y"))});
+
+          statements.Push(b.Assign(
+              indexer,
+              b.Or(xu32, b.Shl(yu32, b.Expr(tint::Number<uint32_t>(16))))));
+
+          statements.Push(b.Increment(b.Ident(buf_fragment_offset_name)));
+        }
       }
 
       int count{};
