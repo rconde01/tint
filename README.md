@@ -1,3 +1,23 @@
+# ideas
+
+## implementation
+* recurse through functions, instrumenting and counting captures as you go
+  * Need a separate copy for each function call to get the correct bit number...or, can we pass an base number arg?
+* handling loops?
+  * max iterations could be a setting
+* store bits for each captured variables corresponding to index capture number as you might go through different branches which do or do not hit captures
+* find the maximum usage for any given path and allocate that much for each call of the fragment shader
+  * we could either overallocate, or do a first pass where we just count the total number of fragments...requires a readback
+
+## features
+* fragment view or frame view
+  * fragment view shows you individual values for a fragment
+  * frame view puts all fragments into an image to view at once visually
+
+## options
+* capture sub-section of the render frame for less memory usage
+* max iterations for unbounded loops
+
 # Tint
 
 ---

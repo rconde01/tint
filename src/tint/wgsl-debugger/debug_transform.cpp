@@ -1,5 +1,6 @@
 #include "debug_transform.h"
 
+#include <cassert>
 #include <string>
 #include <utility>
 
@@ -7,12 +8,15 @@
 #include "src/tint/ast/builtin_attribute.h"
 #include "src/tint/ast/function.h"
 #include "src/tint/ast/module.h"
+#include "src/tint/ast/stage_attribute.h"
 #include "src/tint/ast/struct.h"
 #include "src/tint/builtin/builtin_value.h"
 #include "src/tint/program_builder.h"
 #include "src/tint/sem/function.h"
 #include "src/tint/sem/statement.h"
 #include "src/tint/sem/struct.h"
+#include "src/tint/type/reference.h"
+#include "src/tint/type/vector.h"
 #include "src/tint/utils/scoped_assignment.h"
 #include "src/tint/utils/vector.h"
 
@@ -33,6 +37,94 @@ struct DebugTransform::State {
   const ProgramBuilder::TypesBuilder& ty = ctx.dst->ty;
 
   Transform::ApplyResult Run() {
+    auto get_expression_type = [&](ast::Expression const* exp) {
+      auto exp_sem = sem.GetVal(exp);
+      auto exp_type = exp_sem->Type();
+
+      if (exp_type->Is<tint::type::Reference>()) {
+        auto ref = exp_type->As<tint::type::Reference>();
+        auto store_type = ref->StoreType();
+
+        using vec_type = tint::type::Vector;
+
+        if (store_type->Is<vec_type>()) {
+          auto vec = store_type->As<vec_type>();
+          auto element_type = vec->type();
+
+          if (element_type->Is<tint::type::F32>()) {
+            switch (vec->Width()) {
+              case 2:
+                return ExpressionType::vec2_f32;
+              case 3:
+                return ExpressionType::vec3_f32;
+              case 4:
+                return ExpressionType::vec4_f32;
+              default:
+                assert(false);
+            }
+          } else if (element_type->Is<tint::type::I32>()) {
+            switch (vec->Width()) {
+              case 2:
+                return ExpressionType::vec2_i32;
+              case 3:
+                return ExpressionType::vec3_i32;
+              case 4:
+                return ExpressionType::vec4_i32;
+              default:
+                assert(false);
+            }
+
+          } else if (element_type->Is<tint::type::U32>()) {
+            switch (vec->Width()) {
+              case 2:
+                return ExpressionType::vec2_u32;
+              case 3:
+                return ExpressionType::vec3_u32;
+              case 4:
+                return ExpressionType::vec4_u32;
+              default:
+                assert(false);
+            }
+          }
+        } else {
+          if (store_type->Is<tint::type::F32>())
+            return ExpressionType::f32;
+          else if (store_type->Is<tint::type::I32>())
+            return ExpressionType::i32;
+          else if (store_type->Is<tint::type::U32>())
+            return ExpressionType::u32;
+        }
+      }
+
+      return ExpressionType::i32;
+    };
+
+    InstrumentationData i_data{};
+
+    auto add_debug_capture = [&](auto statements,
+                                 ast::AssignmentStatement const* assign) {
+      auto capture_type = get_expression_type(assign->lhs);
+
+      // auto var = b.Var("wgsl_dbg_" + std::to_string(count++), ty.f32());
+      // auto var_stmt = b.Decl(var);
+
+      // statements.Push(var_stmt);
+    };
+
+    auto is_fragment_entry = [](ast::Function const* fn) {
+      if (!fn->IsEntryPoint())
+        return false;
+
+      for (auto a : fn->attributes) {
+        if (a->Is<tint::ast::StageAttribute>()) {
+          return a->As<tint::ast::StageAttribute>()->stage ==
+                 tint::ast::PipelineStage::kFragment;
+        }
+      }
+
+      return false;
+    };
+
     utils::Vector<const ast::StructMember*, 2> members;
 
     members.Push(b.Member("counter", ty.atomic(ty.u32())));
@@ -41,8 +133,18 @@ struct DebugTransform::State {
     auto dbg_struct =
         ctx.dst->Structure("_DebugBufferContents", std::move(members));
 
-    b.GlobalVar("_dbg_bug", ty.Of(dbg_struct), builtin::AddressSpace::kStorage,
-                utils::Vector{b.Binding(AInt(0)), b.Group(AInt(0))});
+    auto dbg_buf = b.GlobalVar(
+        "_dbg_buf", ty.Of(dbg_struct), builtin::AddressSpace::kStorage,
+        utils::Vector{b.Binding(AInt(0)), b.Group(AInt(0))});
+
+    size_t logPointId = 0;
+
+    // For each function
+    // * If function is not entry point, add initial parameter which is
+    //   the base capture number.
+    // * we may need to clone functions used from both fragment and vertex entry
+    // points
+    //   since the vertex ones may not capture?
 
     ctx.ReplaceAll([&](const ast::Function* fn) -> const ast::Function* {
       // Rebuild the function
@@ -53,16 +155,31 @@ struct DebugTransform::State {
 
       utils::Vector<const ast::Statement*, 8> statements;
 
+      if (is_fragment_entry(fn)) {
+        // let wgsl_buf_offset = atomicAdd(&buf.counter, 1u) - 1u;
+        auto access = b.MemberAccessor(dbg_buf, b.Ident("counter"));
+        auto access_ref = b.AddressOf(access);
+        auto literal_one = b.Expr(tint::u32(1));
+        auto func = b.Call(b.Ident("atomicAdd"),
+                           tint::utils::Vector{access_ref, literal_one});
+        auto literal_one_2 = b.Expr(tint::u32(1));
+
+        auto sub = b.Sub(func, literal_one_2);
+
+        auto let = b.Let(b.Ident("wgsl_buf_offset"), sub);
+
+        auto decl = b.Decl(let);
+
+        statements.Push(decl);
+      }
+
       int count{};
 
       for (auto s : fn->body->statements) {
         statements.Push(ctx.Clone(s));
 
         if (s->Is<ast::AssignmentStatement>()) {
-          auto var = b.Var("wgsl_dbg_" + std::to_string(count++), ty.f32());
-          auto var_stmt = b.Decl(var);
-
-          statements.Push(var_stmt);
+          add_debug_capture(statements, s->As<ast::AssignmentStatement>());
         }
       }
 
