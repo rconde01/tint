@@ -37,6 +37,11 @@ struct DebugTransform::State {
   const ProgramBuilder::TypesBuilder& ty = ctx.dst->ty;
 
   Transform::ApplyResult Run() {
+    auto const buf_name = "_wgsl_dbg_buf";
+    auto const buf_fragment_num_name = "_wgsl_dbg_fragment_num";
+    auto const buf_fragment_offset_name = "_wgsl_dbg_fragment_offset";
+    auto const buf_fragment_stride_name = "_wgsl_dbg_fragment_stride";
+
     auto get_expression_type = [&](ast::Expression const* exp) {
       auto exp_sem = sem.GetVal(exp);
       auto exp_type = exp_sem->Type();
@@ -101,14 +106,30 @@ struct DebugTransform::State {
 
     InstrumentationData i_data{};
 
-    auto add_debug_capture = [&](auto statements,
+    auto add_debug_capture = [&](auto& statements,
                                  ast::AssignmentStatement const* assign) {
       auto capture_type = get_expression_type(assign->lhs);
 
-      // auto var = b.Var("wgsl_dbg_" + std::to_string(count++), ty.f32());
-      // auto var_stmt = b.Decl(var);
+      // buf.data[fragment_num * stride + offset++] = bitcast<u32>(result.r);
 
-      // statements.Push(var_stmt);
+      auto get_indexer = [&](std::uint32_t index) {
+        auto buf_data = b.MemberAccessor(b.Ident(buf_name), b.Ident("data"));
+        auto buf_data_indexer = b.Add(b.Mul(b.Ident(buf_fragment_num_name),
+                                            b.Ident(buf_fragment_stride_name)),
+                                      b.Ident(buf_fragment_offset_name));
+        auto buf_indexed = b.IndexAccessor(buf_data, buf_data_indexer);
+
+        return buf_indexed;
+      };
+
+      switch (capture_type) {
+        case ExpressionType::f32:
+          statements.Push(b.Assign(
+              get_indexer(0),
+              b.Bitcast(ty.u32(), ctx.CloneWithoutTransform(assign->lhs))));
+          statements.Push(b.Increment(b.Ident(buf_fragment_offset_name)));
+          break;
+      }
     };
 
     auto is_fragment_entry = [](ast::Function const* fn) {
@@ -134,8 +155,11 @@ struct DebugTransform::State {
         ctx.dst->Structure("_DebugBufferContents", std::move(members));
 
     auto dbg_buf = b.GlobalVar(
-        "_dbg_buf", ty.Of(dbg_struct), builtin::AddressSpace::kStorage,
+        buf_name, ty.Of(dbg_struct), builtin::AddressSpace::kStorage,
         utils::Vector{b.Binding(AInt(0)), b.Group(AInt(0))});
+
+    auto dbg_buf_fragment_stride =
+        b.GlobalConst(buf_fragment_stride_name, ty.u32(), b.Expr(tint::u32(0)));
 
     size_t logPointId = 0;
 
@@ -156,7 +180,7 @@ struct DebugTransform::State {
       utils::Vector<const ast::Statement*, 8> statements;
 
       if (is_fragment_entry(fn)) {
-        // let wgsl_buf_offset = atomicAdd(&buf.counter, 1u) - 1u;
+        // let wgsl_buf_fragment_num = atomicAdd(&buf.counter, 1u) - 1u;
         auto access = b.MemberAccessor(dbg_buf, b.Ident("counter"));
         auto access_ref = b.AddressOf(access);
         auto literal_one = b.Expr(tint::u32(1));
@@ -166,7 +190,7 @@ struct DebugTransform::State {
 
         auto sub = b.Sub(func, literal_one_2);
 
-        auto let = b.Let(b.Ident("wgsl_buf_offset"), sub);
+        auto let = b.Let(b.Ident(buf_fragment_num_name), sub);
 
         auto decl = b.Decl(let);
 
