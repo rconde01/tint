@@ -41,6 +41,7 @@ struct DebugTransform::State {
     auto const buf_fragment_num_name = "__wfragnum";
     auto const buf_fragment_offset_name = "__wfragoff";
     auto const buf_fragment_stride_name = "__wfragstride";
+    auto const buf_fragment_base_off = "__wfragbaseoff";
     auto const buf_custom_pos_param = "__wpos";
 
     auto get_expression_type = [&](ast::Expression const* exp) {
@@ -109,8 +110,7 @@ struct DebugTransform::State {
 
     auto get_dgb_buf_indexer = [&]() {
       auto buf_data = b.MemberAccessor(b.Ident(buf_name), b.Ident("data"));
-      auto buf_data_indexer = b.Add(b.Mul(b.Ident(buf_fragment_num_name),
-                                          b.Ident(buf_fragment_stride_name)),
+      auto buf_data_indexer = b.Add(b.Ident(buf_fragment_base_off),
                                     b.Ident(buf_fragment_offset_name));
       auto buf_indexed = b.IndexAccessor(buf_data, buf_data_indexer);
 
@@ -233,24 +233,37 @@ struct DebugTransform::State {
         }
 
         // let wgsl_buf_fragment_num = atomicAdd(&buf.counter, 1u) - 1u;
-        auto access = b.MemberAccessor(dbg_buf, b.Ident("counter"));
-        auto access_ref = b.AddressOf(access);
-        auto literal_one = b.Expr(tint::u32(1));
-        auto func = b.Call(b.Ident("atomicAdd"),
-                           tint::utils::Vector{access_ref, literal_one});
-        auto literal_one_2 = b.Expr(tint::u32(1));
+        {
+          auto access = b.MemberAccessor(dbg_buf, b.Ident("counter"));
+          auto access_ref = b.AddressOf(access);
+          auto literal_one = b.Expr(tint::u32(1));
+          auto func = b.Call(b.Ident("atomicAdd"),
+                             tint::utils::Vector{access_ref, literal_one});
+          auto literal_one_2 = b.Expr(tint::u32(1));
 
-        auto sub = b.Sub(func, literal_one_2);
+          auto sub = b.Sub(func, literal_one_2);
 
-        auto let = b.Let(b.Ident(buf_fragment_num_name), sub);
+          auto let = b.Let(b.Ident(buf_fragment_num_name), sub);
 
-        auto decl = b.Decl(let);
+          auto decl = b.Decl(let);
 
-        statements.Push(decl);
+          statements.Push(decl);
+        }
+
+        // let baseoff = frag_num*stride;
+        {
+          auto let = b.Let(b.Ident(buf_fragment_base_off),
+                           b.Mul(b.Ident(buf_fragment_num_name),
+                                 b.Ident(buf_fragment_stride_name)));
+
+          statements.Push(b.Decl(let));
+        }
 
         // var wgsl_buf_fragment_offset = 0;
-        statements.Push(b.Decl(b.Var(b.Ident(buf_fragment_offset_name),
-                                     ty.u32(), b.Expr(tint::u32(0)))));
+        {
+          statements.Push(b.Decl(b.Var(b.Ident(buf_fragment_offset_name),
+                                       ty.u32(), b.Expr(tint::u32(0)))));
+        }
 
         // store fragment position
         // buf.data[offset * stride + 0u] = u32(pos.x) | (u32(pos.y) << 16u);
