@@ -24,6 +24,28 @@ TINT_INSTANTIATE_TYPEINFO(tint::transform::DebugTransform);
 
 namespace tint::transform {
 
+// clang-format off
+/*
+   Debug storage layout
+
+   Globals
+   * stride
+   * capture-data-size (Sum of worst case capture size in bytes)
+   * capture-usage-bits-size = ceil(Num Captures / 32)
+
+   Description          Offset (bytes)               Size (bytes)
+   ---------------------------------------------------------------------------
+   Fragment Number      0                            4
+   -- Repeat --
+                        start = 4 + stride*fragment_num
+   Fragment Position    0                            4
+   Fragment Depth       4                            4
+   Capture Usage Bits   8                            capture-usage-bits-size
+   Capture Data         8 + capture-usage-bits-size  capture-data-size
+
+*/
+// clang-format on
+
 struct DebugTransform::State {
   const Program* const src;
 
@@ -42,6 +64,7 @@ struct DebugTransform::State {
     auto const buf_fragment_offset_name = "__wfragoff";
     auto const buf_fragment_stride_name = "__wfragstride";
     auto const buf_fragment_base_off = "__wfragbaseoff";
+    auto const buf_usage_bit_base = "__wusagebitbase";
     auto const buf_custom_pos_param = "__wpos";
 
     auto get_expression_type = [&](ast::Expression const* exp) {
@@ -122,8 +145,19 @@ struct DebugTransform::State {
       auto capture_type = get_expression_type(assign->lhs);
 
       // buf.data[bitbase + var_num / 32] |= (1 << (var_num % 32));
+      { 
+         auto buf_data = b.MemberAccessor(b.Ident(buf_name), b.Ident("data"));
+        auto buf_data_indexer = b.Add(b.Ident(buf_fragment_base_off),
+                                      b.Ident(buf_fragment_offset_name));
+
+      }
+
+
+
       // buf.data[fragment_num * stride + offset] = bitcast<u32>(result.r);
       // offset++;
+
+
 
       switch (capture_type) {
         case ExpressionType::f32:
