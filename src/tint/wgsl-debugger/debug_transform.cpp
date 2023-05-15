@@ -108,7 +108,7 @@ struct DebugTransform::State {
 
     InstrumentationData i_data{};
 
-    auto get_dgb_buf_indexer = [&]() {
+    auto get_dbg_buf_indexer = [&]() {
       auto buf_data = b.MemberAccessor(b.Ident(buf_name), b.Ident("data"));
       auto buf_data_indexer = b.Add(b.Ident(buf_fragment_base_off),
                                     b.Ident(buf_fragment_offset_name));
@@ -121,6 +121,7 @@ struct DebugTransform::State {
                                  ast::AssignmentStatement const* assign) {
       auto capture_type = get_expression_type(assign->lhs);
 
+      // buf.data[bitbase + var_num / 32] |= (1 << (var_num % 32));
       // buf.data[fragment_num * stride + offset] = bitcast<u32>(result.r);
       // offset++;
 
@@ -129,9 +130,35 @@ struct DebugTransform::State {
         case ExpressionType::i32:
         case ExpressionType::u32:
           statements.Push(b.Assign(
-              get_dgb_buf_indexer(),
+              get_dbg_buf_indexer(),
               b.Bitcast(ty.u32(), ctx.CloneWithoutTransform(assign->lhs))));
           statements.Push(b.Increment(b.Ident(buf_fragment_offset_name)));
+          break;
+
+        case ExpressionType::vec2_f32:
+        case ExpressionType::vec2_i32:
+        case ExpressionType::vec2_u32:
+          for (size_t i = 0; i < 2; ++i) {
+            statements.Push(b.Assign(
+                get_dbg_buf_indexer(),
+                b.Bitcast(ty.u32(), b.IndexAccessor(
+                                        ctx.CloneWithoutTransform(assign->lhs),
+                                        b.Expr(tint::u32(i))))));
+            statements.Push(b.Increment(b.Ident(buf_fragment_offset_name)));
+          }
+          break;
+
+        case ExpressionType::vec3_f32:
+        case ExpressionType::vec3_i32:
+        case ExpressionType::vec3_u32:
+          for (size_t i = 0; i < 3; ++i) {
+            statements.Push(b.Assign(
+                get_dbg_buf_indexer(),
+                b.Bitcast(ty.u32(), b.IndexAccessor(
+                                        ctx.CloneWithoutTransform(assign->lhs),
+                                        b.Expr(tint::u32(i))))));
+            statements.Push(b.Increment(b.Ident(buf_fragment_offset_name)));
+          }
           break;
 
         case ExpressionType::vec4_f32:
@@ -139,7 +166,7 @@ struct DebugTransform::State {
         case ExpressionType::vec4_u32:
           for (size_t i = 0; i < 4; ++i) {
             statements.Push(b.Assign(
-                get_dgb_buf_indexer(),
+                get_dbg_buf_indexer(),
                 b.Bitcast(ty.u32(), b.IndexAccessor(
                                         ctx.CloneWithoutTransform(assign->lhs),
                                         b.Expr(tint::u32(i))))));
@@ -184,6 +211,53 @@ struct DebugTransform::State {
     // * we may need to clone functions used from both fragment and vertex entry
     // points
     //   since the vertex ones may not capture?
+
+    // First pass
+    // * Calculate stride
+    // * Calculate size of bit field section
+
+    size_t pixel_size_bytes = 0;
+    size_t num_captures = 0;
+
+    // Later we can analyze all branches to find the maximum usage for all
+    // scenarios, but for now just take the worst case
+    ctx.ReplaceAll([&](const ast::Function* fn) -> const ast::Function* {
+      if (is_fragment_entry(fn)) {
+        for (auto s : fn->body->statements) {
+          if (s->Is<ast::AssignmentStatement>()) {
+            num_captures++;
+
+            auto expression_type =
+                get_expression_type(s->As<ast::AssignmentStatement>()->lhs);
+
+            switch (expression_type) {
+              case ExpressionType::f32:
+              case ExpressionType::i32:
+              case ExpressionType::u32:
+                pixel_size_bytes += 4;
+                break;
+              case ExpressionType::vec2_f32:
+              case ExpressionType::vec2_u32:
+              case ExpressionType::vec2_i32:
+                pixel_size_bytes += 8;
+                break;
+              case ExpressionType::vec3_f32:
+              case ExpressionType::vec3_u32:
+              case ExpressionType::vec3_i32:
+                pixel_size_bytes += 12;
+                break;
+              case ExpressionType::vec4_f32:
+              case ExpressionType::vec4_u32:
+              case ExpressionType::vec4_i32:
+                pixel_size_bytes += 16;
+                break;
+            }
+          }
+        }
+      }
+
+      return fn;
+    });
 
     ctx.ReplaceAll([&](const ast::Function* fn) -> const ast::Function* {
       // Rebuild the function
@@ -265,10 +339,12 @@ struct DebugTransform::State {
                                        ty.u32(), b.Expr(tint::u32(0)))));
         }
 
+        // TODO: initialize bit flag memory
+
         // store fragment position
         // buf.data[offset * stride + 0u] = u32(pos.x) | (u32(pos.y) << 16u);
         {
-          auto indexer = get_dgb_buf_indexer();
+          auto indexer = get_dbg_buf_indexer();
 
           auto xu32 = b.Call(b.Ident("u32"),
                              tint::utils::Vector{b.MemberAccessor(
