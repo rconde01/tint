@@ -60,12 +60,12 @@ struct DebugTransform::State {
 
   Transform::ApplyResult Run() {
     auto const buf_name = "__wbuf";
-    auto const buf_fragment_num_name = "__wfragnum";
-    auto const buf_fragment_offset_name = "__wfragoff";
-    auto const buf_fragment_stride_name = "__wfragstride";
-    auto const buf_fragment_base_off_name = "__wfragbaseoff";
-    auto const buf_fragment_data_base_off = "__wfragdatabaseoff";
-    auto const buf_usage_bit_base = "__wusagebitbase";
+    auto const buf_usage_data_base_off = "__wUsageDataBaseOff";
+    auto const buf_fragment_data_base_off = "__wFragDataBaseOff";
+    auto const buf_fragment_num_name = "__wFragNum";
+    auto const buf_fragment_offset_name = "__wFragOff";
+    auto const buf_fragment_stride_name = "__wFragStride";
+    auto const buf_fragment_base_off_name = "__wFragBaseOff";
     auto const buf_custom_pos_param = "__wpos";
 
     auto get_expression_type = [&](ast::Expression const* exp) {
@@ -148,8 +148,17 @@ struct DebugTransform::State {
       // buf.data[bitbase + var_num / 32] |= (1 << (var_num % 32));
       {
         auto buf_data = b.MemberAccessor(b.Ident(buf_name), b.Ident("data"));
-        auto buf_data_indexer = b.Add(b.Ident(buf_fragment_base_off_name),
-                                      b.Ident(buf_fragment_offset_name));
+        auto buf_data_index = b.Add(
+            b.Ident(buf_fragment_base_off_name),
+            b.Div(b.Ident(buf_fragment_offset_name), b.Expr(tint::u32(32))));
+        auto buf_data_indexed = b.IndexAccessor(buf_data, buf_data_index);
+        auto bit_data = b.Shl(
+            b.Expr(tint::u32(1)),
+            b.Mod(b.Ident(buf_fragment_offset_name), b.Expr(tint::u32(32))));
+        auto compound_assign =
+            b.CompoundAssign(buf_data_indexed, bit_data, ast::BinaryOp::kOr);
+
+        statements.Push(compound_assign);
       }
 
       // buf.data[fragment_num * stride + offset] = bitcast<u32>(result.r);
@@ -285,16 +294,19 @@ struct DebugTransform::State {
     }
 
     auto const fragment_stride = pixel_size_bytes / 4;
+    auto const usage_data_base_offset = 4;
     auto const usage_bits_size =
         ((num_captures / 32) + num_captures % 32 != 0) * 4;
-    auto const fragment_data_start = usage_bits_size;
+    auto const fragment_data_start = usage_data_base_offset + usage_bits_size;
 
-    auto dbg_buf_fragment_data_base_off =
-        b.GlobalConst(buf_fragment_base_off_name, ty.u32(),
-                      b.Expr(tint::u32(fragment_data_start)));
+    b.GlobalConst(buf_usage_data_base_off, ty.u32(),
+                  b.Expr(tint::u32(usage_data_base_offset)));
 
-    auto dbg_buf_fragment_stride = b.GlobalConst(
-        buf_fragment_stride_name, ty.u32(), b.Expr(tint::u32(fragment_stride)));
+    b.GlobalConst(buf_fragment_data_base_off, ty.u32(),
+                  b.Expr(tint::u32(fragment_data_start)));
+
+    b.GlobalConst(buf_fragment_stride_name, ty.u32(),
+                  b.Expr(tint::u32(fragment_stride)));
 
     ctx.ReplaceAll([&](const ast::Function* fn) -> const ast::Function* {
       // Rebuild the function
@@ -318,10 +330,10 @@ struct DebugTransform::State {
             if (a->Is<ast::BuiltinAttribute>()) {
               auto bia = a->As<ast::BuiltinAttribute>();
 
-              auto name = bia->builtin->As<ast::IdentifierExpression>()
-                              ->identifier->symbol.Name();
+              auto param_name = bia->builtin->As<ast::IdentifierExpression>()
+                                    ->identifier->symbol.Name();
 
-              if (name == "position") {
+              if (param_name == "position") {
                 position_param = p;
                 break;
               }
@@ -399,8 +411,6 @@ struct DebugTransform::State {
           statements.Push(b.Increment(b.Ident(buf_fragment_offset_name)));
         }
       }
-
-      int count{};
 
       for (auto s : fn->body->statements) {
         statements.Push(ctx.Clone(s));
