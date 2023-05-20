@@ -63,7 +63,8 @@ struct DebugTransform::State {
     auto const buf_fragment_num_name = "__wfragnum";
     auto const buf_fragment_offset_name = "__wfragoff";
     auto const buf_fragment_stride_name = "__wfragstride";
-    auto const buf_fragment_base_off = "__wfragbaseoff";
+    auto const buf_fragment_base_off_name = "__wfragbaseoff";
+    auto const buf_fragment_data_base_off = "__wfragdatabaseoff";
     auto const buf_usage_bit_base = "__wusagebitbase";
     auto const buf_custom_pos_param = "__wpos";
 
@@ -133,7 +134,7 @@ struct DebugTransform::State {
 
     auto get_dbg_buf_indexer = [&]() {
       auto buf_data = b.MemberAccessor(b.Ident(buf_name), b.Ident("data"));
-      auto buf_data_indexer = b.Add(b.Ident(buf_fragment_base_off),
+      auto buf_data_indexer = b.Add(b.Ident(buf_fragment_base_off_name),
                                     b.Ident(buf_fragment_offset_name));
       auto buf_indexed = b.IndexAccessor(buf_data, buf_data_indexer);
 
@@ -145,19 +146,14 @@ struct DebugTransform::State {
       auto capture_type = get_expression_type(assign->lhs);
 
       // buf.data[bitbase + var_num / 32] |= (1 << (var_num % 32));
-      { 
-         auto buf_data = b.MemberAccessor(b.Ident(buf_name), b.Ident("data"));
-        auto buf_data_indexer = b.Add(b.Ident(buf_fragment_base_off),
+      {
+        auto buf_data = b.MemberAccessor(b.Ident(buf_name), b.Ident("data"));
+        auto buf_data_indexer = b.Add(b.Ident(buf_fragment_base_off_name),
                                       b.Ident(buf_fragment_offset_name));
-
       }
-
-
 
       // buf.data[fragment_num * stride + offset] = bitcast<u32>(result.r);
       // offset++;
-
-
 
       switch (capture_type) {
         case ExpressionType::f32:
@@ -236,9 +232,6 @@ struct DebugTransform::State {
         buf_name, ty.Of(dbg_struct), builtin::AddressSpace::kStorage,
         utils::Vector{b.Binding(AInt(0)), b.Group(AInt(0))});
 
-    auto dbg_buf_fragment_stride =
-        b.GlobalConst(buf_fragment_stride_name, ty.u32(), b.Expr(tint::u32(0)));
-
     // For each function
     // * If function is not entry point, add initial parameter which is
     //   the base capture number.
@@ -255,7 +248,7 @@ struct DebugTransform::State {
 
     // Later we can analyze all branches to find the maximum usage for all
     // scenarios, but for now just take the worst case
-    ctx.ReplaceAll([&](const ast::Function* fn) -> const ast::Function* {
+    for (auto fn : src->AST().Functions()) {
       if (is_fragment_entry(fn)) {
         for (auto s : fn->body->statements) {
           if (s->Is<ast::AssignmentStatement>()) {
@@ -289,9 +282,19 @@ struct DebugTransform::State {
           }
         }
       }
+    }
 
-      return fn;
-    });
+    auto const fragment_stride = pixel_size_bytes / 4;
+    auto const usage_bits_size =
+        ((num_captures / 32) + num_captures % 32 != 0) * 4;
+    auto const fragment_data_start = usage_bits_size;
+
+    auto dbg_buf_fragment_data_base_off =
+        b.GlobalConst(buf_fragment_base_off_name, ty.u32(),
+                      b.Expr(tint::u32(fragment_data_start)));
+
+    auto dbg_buf_fragment_stride = b.GlobalConst(
+        buf_fragment_stride_name, ty.u32(), b.Expr(tint::u32(fragment_stride)));
 
     ctx.ReplaceAll([&](const ast::Function* fn) -> const ast::Function* {
       // Rebuild the function
@@ -358,11 +361,12 @@ struct DebugTransform::State {
           statements.Push(decl);
         }
 
-        // let baseoff = frag_num*stride;
+        // let baseoff = frag_num*stride + frag_start_offset;
         {
-          auto let = b.Let(b.Ident(buf_fragment_base_off),
-                           b.Mul(b.Ident(buf_fragment_num_name),
-                                 b.Ident(buf_fragment_stride_name)));
+          auto let = b.Let(b.Ident(buf_fragment_base_off_name),
+                           b.Add(b.Mul(b.Ident(buf_fragment_num_name),
+                                       b.Ident(buf_fragment_stride_name)),
+                                 b.Ident(buf_fragment_base_off_name)));
 
           statements.Push(b.Decl(let));
         }
