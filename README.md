@@ -1,5 +1,10 @@
 # ideas
 
+5-20-23
+* loops make determining what is captured difficult
+  * Need to specify max loop iterations, and then each iteration gets a set of bits
+* to reconstruct arrays/matrices, need to know which indices were set if not all
+
 ## implementation
 * recurse through functions, instrumenting and counting captures as you go
   * Need a separate copy for each function call to get the correct bit number...or, can we pass an base number arg?
